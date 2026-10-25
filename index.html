@@ -52,7 +52,8 @@ const BASE = {                          // Basiswerte, Klasse und Karten veränd
   dmgMul: 1.0,
   reachMul: 1.0,                        // Reichweite (Nahkampf)
   arcAdd: 0,                            // Grad zusätzlicher Schwungbogen
-  block: 0.8,                           // Anteil, den der Schild abfängt
+  block: 1.0,                           // Anteil, den der Schild von vorn abfängt
+  blockArc: 80,                         // halber Blockwinkel in Grad
   splashMul: 1.0,                       // Flächenradius (Magie)
   fov: 100,                             // Grad, Sichtkegel
   rangeMul: 1.0,                        // Sichtweite
@@ -94,11 +95,12 @@ const CLASSES = [
 ];
 const VISION = { range: 640, near: 85 };
 const DASH = { dist: 160, time: 0.2, cooldown: 12 };
-const STAGE_BASE = 80;                  // Meter bis zur ersten Kartenwahl
-const STAGE_GROWTH = 15;                // jede Stufe etwas länger
+const STAGE_STEP = 10;                  // alle 3 Kartenwahlen wird der Abstand um 10 m länger (30, 30, 30, 40, 40, 40, …)
+const BOSS_DIST = 400;                  // hier endet der Lauf mit dem Boss
 const ENEMY_TYPES = {
   grunt:  { hp: 50, speed: 80,  chase: 95,  r: 14 },
-  rusher: { hp: 40, speed: 125, chase: 135, r: 13 }
+  rusher: { hp: 40, speed: 125, chase: 135, r: 13 },
+  boss:   { hp: 500, speed: 70, chase: 85, r: 30, boss: true }   // Bogenmeister: 10-fache HP, doppelter Schaden, große Pfeile
 };
 
 // ---------- Karten ----------
@@ -128,7 +130,7 @@ const CARDS = [
   { id: 'klinge',   name: 'Geschärfte Klinge',    kind: 'Segen',  rarity: 'gewoehnlich', icon: 'sword',   max: 3, types: ['melee'], stat: '+15 % Schaden',       text: 'Ein Wetzstein, eine ruhige Nacht, eine bessere Schneide.', flavor: '„Scharf genug zum Rasieren.“', apply: S => { S.dmgMul *= 1.15; } },
   { id: 'lang',     name: 'Langes Eisen',         kind: 'Segen',  rarity: 'gewoehnlich', icon: 'sword',   max: 2, types: ['melee'], stat: '+20 % Reichweite',    text: 'Eine längere Klinge hält den Feind auf Abstand.', flavor: '„Ein Zoll kann ein Leben sein.“',      apply: S => { S.reachMul *= 1.2; } },
   { id: 'breit',    name: 'Breiter Hieb',         kind: 'Segen',  rarity: 'selten',      icon: 'arc',     max: 2, types: ['melee'], stat: '+30° Schwungbogen',   text: 'Dein Hieb erfasst mehr Gegner auf einmal.',      flavor: '„Wer zu nah steht, steht falsch.“',    apply: S => { S.arcAdd += 30; } },
-  { id: 'wall',     name: 'Schildwall',           kind: 'Segen',  rarity: 'selten',      icon: 'shield',  max: 2, types: ['melee'], stat: 'Schild fängt +10 % mehr ab', text: 'Dein Schild hält fast alles von vorn auf.', flavor: '„Sie kommen nicht vorbei.“',           apply: S => { S.block = Math.min(0.97, S.block + 0.1); } },
+  { id: 'wall',     name: 'Schildwall',           kind: 'Segen',  rarity: 'selten',      icon: 'shield',  max: 2, types: ['melee'], stat: 'Blockwinkel +30°', text: 'Dein Schild deckt dich auch seitlich.', flavor: '„Sie kommen nicht vorbei.“',           apply: S => { S.blockArc += 15; } },
   // Magie
   { id: 'macht',    name: 'Zauberkraft',          kind: 'Segen',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+15 % Schaden',       text: 'Die Magie fließt stärker durch den Stab.',       flavor: '„Mehr Glut, weniger Zweifel.“',        apply: S => { S.dmgMul *= 1.15; } },
   { id: 'quell',    name: 'Manaquell',            kind: 'Segen',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+25 % Manaregeneration', text: 'Eine verborgene Quelle füllt dich schneller auf.', flavor: '„Das Wasser ist kalt und klar.“',    apply: S => { S.manaRegenMul *= 1.25; } },
@@ -560,7 +562,7 @@ function recomputeStats() {
   for (const id of G.cards) CARD_BY_ID[id].apply(S);
   for (const id of G.buffs || []) BUFF_BY_ID[id].apply(S);
 }
-function stageLength(stage) { return STAGE_BASE + (stage - 1) * STAGE_GROWTH; }
+function stageLength(stage) { return 30 + Math.floor((stage - 1) / 3) * STAGE_STEP; }
 
 function newGame(cls) {
   G = {
@@ -570,8 +572,8 @@ function newGame(cls) {
     kills: 0, dist: 0,
     merchants: [], buffs: [], spent: 0, chunkSinceMerchant: MERCHANT_MIN_GAP,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
-    stage: 1, stageStart: 0, nextPick: STAGE_BASE,
-    nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false,
+    stage: 1, stageStart: 0, nextPick: stageLength(1),
+    nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, bossSpawned: false, camLock: false, boss: null,
     player: {
       x: WORLD_W / 2, y: -60, r: 14, hp: 1, angle: -Math.PI / 2,
       mag: 0, mana: 0, manaDelay: 0, cooldown: 0, reloadT: 0, bloom: 0, speed: 0,
@@ -609,7 +611,7 @@ function makeEnemy(type, x, y, alert) {
     state: alert ? 'alert' : 'idle',
     reaction: alert ? 0.4 : 0.7,
     cooldown: rand(0.5, 1.5), burst: 0, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: rand(1, 2.5),
-    lastX: G.player.x, lastY: G.player.y, lostT: 0, stuckT: 0, steerT: 0, steerDir: 1, hit: 0, melee: 0
+    lastX: G.player.x, lastY: G.player.y, lostT: 0, stuckT: 0, steerT: 0, steerDir: 1, hit: 0, melee: 0, in: false
   };
 }
 function generate() {
@@ -684,7 +686,7 @@ const BUFFS = [
   { id: 'falkensalbe', name: 'Falkensalbe',          kind: 'Trank', rarity: 'selten',      icon: 'flask', stat: 'Sichtkegel +20°',      text: 'Du siehst mehr, ohne dich zu drehen.',               flavor: '„Brennt in den Augen. Lohnt sich.“',   apply: S => { S.fov += 20; } },
   { id: 'staerkung',   name: 'Stärkungssegen',       kind: 'Trank', rarity: 'selten',      icon: 'flask', stat: '+30 Leben',            text: 'Ein warmes Gefühl und ein breiterer Rücken.',        flavor: '„Der Segen eines Fremden.“',           apply: S => { S.maxHp += 30; } },
   { id: 'nachtsicht',  name: 'Nachtsicht-Tropfen',   kind: 'Trank', rarity: 'selten',      icon: 'flask', stat: 'Sichtweite +25 %',     text: 'Der Wald wird heller, als er ist.',                  flavor: '„Nicht länger als eine Nacht benutzen.“', apply: S => { S.rangeMul *= 1.25; } },
-  { id: 'schildoel',   name: 'Schildöl',             kind: 'Trank', rarity: 'selten',      icon: 'flask', types: ['melee'], stat: 'Schild fängt +10 % mehr ab', text: 'Hölzer und Eisen halten länger.',       flavor: '„Gut geschmiert hält länger.“',        apply: S => { S.block = Math.min(0.97, S.block + 0.1); } },
+  { id: 'schildoel',   name: 'Schildöl',             kind: 'Trank', rarity: 'selten',      icon: 'flask', types: ['melee'], stat: 'Blockwinkel +30°', text: 'Das Schild liegt beweglicher in der Hand.', flavor: '„Gut geschmiert hält länger.“',        apply: S => { S.blockArc += 15; } },
   { id: 'zauberoel',   name: 'Zauberöl',             kind: 'Trank', rarity: 'selten',      icon: 'flask', types: ['spell'], stat: '+25 % Flächenradius', text: 'Der Funke breitet sich weiter aus.',            flavor: '„Brennt auch auf Wasser.“',            apply: S => { S.splashMul *= 1.25; } },
   { id: 'drachenblut', name: 'Drachenblut',          kind: 'Trank', rarity: 'episch',      icon: 'flask', stat: '+35 % Schaden',        text: 'Heiß, dick und unerhört kräftig.',                   flavor: '„Der Drache hat nichts gemerkt.“',     apply: S => { S.dmgMul *= 1.35; } },
   { id: 'windtrank',   name: 'Windtrank',            kind: 'Trank', rarity: 'episch',      icon: 'flask', stat: '+25 % Lauftempo',      text: 'Der Wind trägt deine Schritte.',                     flavor: '„Aus einem Sturm in Flaschen.“',       apply: S => { S.moveSpeed *= 1.25; } },
@@ -924,6 +926,7 @@ function update(dt) {
   }
   p.speed = Math.min(moved / dt, S.moveSpeed * 1.3);
   p.dashCd = Math.max(0, p.dashCd - dt);
+  p.invuln = Math.max(0, (p.invuln || 0) - dt);
   p.swingT = Math.max(0, p.swingT - dt);
   p.y = clamp(p.y, G.camTop + p.r, G.camTop + VIEW_H - p.r);   // nicht aus dem Bild zurück
 
@@ -948,12 +951,13 @@ function update(dt) {
   }
 
   // Kamera: nur nach oben, ab oberem Drittel
-  if (p.y < G.camTop + VIEW_H / 3) G.camTop = p.y - VIEW_H / 3;
+  if (!G.camLock && p.y < G.camTop + VIEW_H / 3) G.camTop = p.y - VIEW_H / 3;
   G.dist = Math.max(G.dist, -p.y / PX_PER_M);
   generate();
 
   updateEnemies(dt);
-  spawnReinforcements();
+  if (G.dist >= BOSS_DIST && !G.bossSpawned) spawnBoss();
+  if (!G.bossSpawned) spawnReinforcements();
   updateBullets(dt);
 
   for (const k of G.pickups) {
@@ -981,10 +985,24 @@ function update(dt) {
   G.arcs = G.arcs.filter(a => a.life > 0);
   G.rings = G.rings.filter(r => r.life > 0);
 
+  if (G.boss && G.boss.hp <= 0 && !G.won) { winRun(); return; }
   if (p.hp <= 0) { die(); return; }
-  if (G.dist >= G.nextPick) openPick();
+  if (G.dist >= G.nextPick && !G.bossSpawned) openPick();
 }
 
+function spawnBoss() {
+  G.bossSpawned = true; G.camLock = true;
+  const b = makeEnemy('boss', WORLD_W / 2, G.camTop + 70, true);
+  b.in = true; b.reaction = 1.2;
+  G.enemies.push(b); G.boss = b;
+  say('Der Bogenmeister stellt sich dir in den Weg!'); sfx('horde_horn');
+}
+function winRun() {
+  G.won = true;
+  sfx('stage_up');
+  finishRun();
+  state = 'dead';
+}
 function say(t) { G.msg = t; G.msgT = 2.2; }
 
 // ---------- Kartenwahl ----------
@@ -1058,11 +1076,12 @@ function updateEnemies(dt) {
   for (const e of G.enemies) {
     const T = ENEMY_TYPES[e.type];
     e.hit = Math.max(0, e.hit - dt);
+    if (!e.in && e.y >= G.camTop + e.r) e.in = true;   // ab jetzt dürfen sie das Bild nicht mehr verlassen
     const dx = p.x - e.x, dy = p.y - e.y, dist = Math.hypot(dx, dy);
     const los = hasLOS(e.x, e.y, p.x, p.y);
 
     if (e.state === 'idle') {
-      if (los && dist < 440) { e.reaction -= dt; if (e.reaction <= 0) alertEnemy(e); }
+      if (los && dist < 440 && e.in) { e.reaction -= dt; if (e.reaction <= 0) alertEnemy(e); }
       else e.reaction = Math.min(0.7, e.reaction + dt);
       continue;
     }
@@ -1074,7 +1093,7 @@ function updateEnemies(dt) {
     let dirx = 0, diry = 0, speed = T.speed;
     const tx = e.lastX - e.x, ty = e.lastY - e.y, td = Math.hypot(tx, ty) || 1;
 
-    if (e.type === 'grunt') {
+    if (e.type === 'grunt' || e.type === 'boss') {
       if (los && dist < 640) {
         e.reaction -= dt;
         e.strafeT -= dt;
@@ -1083,9 +1102,10 @@ function updateEnemies(dt) {
         else if (dist < 230) { dirx = -dx / dist; diry = -dy / dist; }
         else { dirx = -dy / dist * e.strafe; diry = dx / dist * e.strafe; speed = T.speed * 0.8; }
         e.cooldown -= dt;
-        if (e.reaction <= 0 && e.cooldown <= 0) {
+        if (e.reaction <= 0 && e.cooldown <= 0 && e.in) {
           const a = e.angle + (Math.random() + Math.random() - 1) * 6 * deg;
-          addBullet(e.x, e.y, a, 430, 8, 'enemy', 760, 0);
+          if (T.boss) addBullet(e.x, e.y, a, 400, 16, 'enemy', 900, 0, { rad: 7, big: true });
+          else addBullet(e.x, e.y, a, 430, 8, 'enemy', 760, 0);
           sfx('enemy_shoot', clamp(1 - dist / 800, 0.15, 1));
           e.burst++;
           if (e.burst >= 3) { e.burst = 0; e.cooldown = rand(1.3, 2.2); } else e.cooldown = 0.17;
@@ -1114,6 +1134,7 @@ function updateEnemies(dt) {
       const ox = e.x - o.x, oy = e.y - o.y, od = Math.hypot(ox, oy);
       if (od > 0 && od < e.r + o.r) moveCircle(e, ox / od * 40 * dt, oy / od * 40 * dt);
     }
+    if (e.in) { e.x = clamp(e.x, e.r, WORLD_W - e.r); e.y = clamp(e.y, G.camTop + e.r, G.camTop + VIEW_H - e.r); }
     if (e.lostT > 6 && e.type === 'grunt') { e.state = 'idle'; e.reaction = 0.7; }
   }
 }
@@ -1145,7 +1166,8 @@ function spawnReinforcements() {
 // srcAngle: Richtung vom Spieler zur Quelle; wird mit dem Schild abgefangen
 function hurtPlayer(d, srcAngle) {
   const p = G.player;
-  if (isBlocking() && srcAngle !== undefined && Math.abs(normAngle(srcAngle - p.angle)) < 80 * deg) {
+  if (p.invuln > 0) return;
+  if (isBlocking() && srcAngle !== undefined && Math.abs(normAngle(srcAngle - p.angle)) < S.blockArc * deg) {
     d *= (1 - S.block);
     sfx('block');
     spark(p.x + Math.cos(p.angle) * 18, p.y + Math.sin(p.angle) * 18, '#fff3c8');
@@ -1175,7 +1197,7 @@ function updateBullets(dt) {
         if (t < tHit) { tHit = t; target = e; }
       }
     } else {
-      const t = segCircle(b.px, b.py, b.x, b.y, p.x, p.y, p.r);
+      const t = segCircle(b.px, b.py, b.x, b.y, p.x, p.y, p.r + (b.rad || 0));
       if (t < tHit) { tHit = t; target = p; }
     }
     if (tObs === Infinity && tHit === Infinity) continue;
@@ -1453,7 +1475,11 @@ function drawEntities() {
   const p = G.player;
   for (const e of G.enemies) {
     if (e.hp <= 0 || !visible(e)) continue;
-    if (e.type === 'grunt') drawSkeleton(e); else drawGhoul(e);
+    if (e.type === 'boss') {
+      const r0 = e.r, k = r0 / 14;
+      e.r = 14; ctx.save(); ctx.translate(e.x, e.y); ctx.scale(k, k); ctx.translate(-e.x, -e.y); drawSkeleton(e);
+      ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, 18, 0, 7); ctx.stroke(); ctx.restore(); e.r = r0;
+    } else if (e.type === 'grunt') drawSkeleton(e); else drawGhoul(e);
     if (settings.hpbars) {
       ctx.fillStyle = '#000'; ctx.fillRect(e.x - 14, e.y - e.r - 12, 28, 4);
       ctx.fillStyle = e.state === 'alert' ? '#ff7a8a' : '#d9b13a';
@@ -1478,8 +1504,8 @@ function drawEntities() {
       continue;
     }
     ctx.strokeStyle = b.from === 'player' ? '#fff3c8' : '#ff7a7a';
-    ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(b.x - b.vx * 0.016, b.y - b.vy * 0.016); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.lineWidth = b.big ? 6 : 2.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(b.x - b.vx * (b.big ? 0.05 : 0.016), b.y - b.vy * (b.big ? 0.05 : 0.016)); ctx.lineTo(b.x, b.y); ctx.stroke();
   }
   for (const r of G.rings) {
     const f = 1 - r.life / r.max;
@@ -1676,8 +1702,8 @@ function drawRails() {
   const my = 576 - prog * 480;
   rr(4, my - 10, 42, 20, 10); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 1; ctx.stroke();
   text(String(Math.floor(G.dist)), 25, my + 4, 12, '#f0e6c8', 'center', F_TITLE);
-  text('NÄCHSTE KARTE', 60, 606, 10, '#b8c4d0', 'center', F_TITLE);
-  text('bei ' + Math.ceil(G.nextPick) + ' m', 60, 630, 17, '#8ee8ff', 'center', F_TITLE);
+  text(G.bossSpawned ? 'ENDKAMPF' : 'NÄCHSTE KARTE', 60, 606, 10, '#b8c4d0', 'center', F_TITLE);
+  text(G.bossSpawned ? 'Boss' : 'bei ' + Math.ceil(G.nextPick) + ' m', 60, 630, 17, '#8ee8ff', 'center', F_TITLE);
   text('Rekord ' + Math.floor(best) + ' m', 60, 664, 15, '#b8c4d0', 'center', F_TEXT);
 
   // Untere Leiste
@@ -1721,7 +1747,7 @@ function drawRails() {
   } else {
     const cdp = 1 - p.cooldown / w.interval;
     text(isBlocking() ? 'Schild oben' : 'Rechtsklick: Schild', rx - 120, 700, 14, '#b8c4d0', 'right', F_TEXT);
-    text('BLOCK ' + Math.round(S.block * 100) + ' %', rx, 686, 14, '#e8eef4', 'right', F_TITLE);
+    text('BLOCK ' + Math.round(S.blockArc * 2) + '°', rx, 686, 14, '#e8eef4', 'right', F_TITLE);
     rr(rx - 110, 692, 110, 12, 6); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#8a929a'; ctx.lineWidth = 2; ctx.stroke();
     rr(rx - 107, 695, 104 * clamp(cdp, 0, 1), 6, 3); ctx.fillStyle = cdp >= 1 ? '#d2dae2' : '#6a747e'; ctx.fill();
   }
@@ -1773,9 +1799,15 @@ function drawFieldHUD() {
     rr(sx - 62, sy - 18, 124, 30, 15); ctx.fillStyle = 'rgba(10,17,13,.92)'; ctx.fill(); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.stroke();
     text(keyLabel(bind('interact')) + ' · Handeln', sx, sy + 3, 16, '#f2c14e', 'center', F_TITLE);
   }
+  if (G.boss && G.boss.hp > 0) {
+    const f = G.boss.hp / G.boss.maxHp;
+    text('BOGENMEISTER', VIEW_W / 2, 24, 14, '#f0e6c8', 'center', F_TITLE);
+    rr(VIEW_W / 2 - 200, 32, 400, 12, 6); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
+    rr(VIEW_W / 2 - 198, 34, Math.max(8, 396 * f), 8, 4); ctx.fillStyle = '#d9473f'; ctx.fill();
+  }
   if (G.msgT > 0) {
     ctx.globalAlpha = Math.min(1, G.msgT * 2);
-    text(G.msg, VIEW_W / 2, 56, 20, '#f2c14e', 'center', F_TITLE);
+    text(G.msg, VIEW_W / 2, 72, 20, '#f2c14e', 'center', F_TITLE);
     ctx.globalAlpha = 1;
   }
   if (G.hurtT > 0 && settings.hitfx > 0) {
@@ -2321,7 +2353,7 @@ function drawMerchantScreen() {
     if (o.old && !o.sold) text('statt ' + o.old, x + cw / 2, y + ch + 90, 13, '#8a9aa0', 'center', F_TEXT, 'italic');
     if (!o.sold && !afford) text('zu wenig Mondsilber', x + cw / 2, y + ch + 108, 13, '#ff9a9a', 'center', F_TEXT, 'italic');
   });
-  uiButton(X + W - 200, Y + H - 60, 170, 42, 'Weiterziehen', () => { state = 'play'; merchantNow = null; });
+  uiButton(X + W - 200, Y + H - 60, 170, 42, 'Weiterziehen', () => { state = 'play'; merchantNow = null; G.player.invuln = 0.5; });
   text('Bezahlt wird mit deinem gesamten Mondsilber.', X + 270, Y + H - 28, 14, '#8a9aa0', 'left', F_TEXT, 'italic');
   if (hovered) drawCard(hovered, clamp(mouse.fx + 22, 20, 1040), clamp(mouse.fy - 170, 20, 380), 1.0, true);
 }
@@ -2445,11 +2477,11 @@ function draw() {
   if (state === 'merchant') { drawMerchantScreen(); drawCursor(); }
   if (state === 'dead') {
     overlay(0.78);
-    text(G.gaveUp ? 'Aufgegeben' : 'Gefallen', 640, 290, 56, G.gaveUp ? '#f2c14e' : '#ff7a8a', 'center', F_TITLE);
+    text(G.won ? 'Der Weg ist frei' : G.gaveUp ? 'Aufgegeben' : 'Gefallen', 640, 290, 56, G.won ? '#4fd08a' : G.gaveUp ? '#f2c14e' : '#ff7a8a', 'center', F_TITLE);
     text(G.cls.name + ' · ' + Math.floor(G.dist) + ' m · ' + G.kills + ' Gefallene · ' + G.cards.length + ' Karten', 640, 346, 24, '#f0e6c8', 'center', F_TEXT);
     text('Rekord: ' + Math.floor(best) + ' m', 640, 384, 19, '#b8c4d0', 'center', F_TEXT);
     text('+ ' + G.earned + ' Mondsilber', 640, 420, 22, '#c8d0d8', 'center', F_TITLE);
-    text('Klick oder Enter: neuen Streiter wählen', 640, 470, 20, '#f2c14e', 'center', F_TEXT, 'italic');
+    text('Klick oder Enter: zurück ins Menü', 640, 470, 20, '#f2c14e', 'center', F_TEXT, 'italic');
     drawCursor();
   }
 }
@@ -2459,7 +2491,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.8';
+const VERSION = 'v0.9';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -2888,7 +2920,7 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
   if (state === 'menu' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
-  if (state === 'dead' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
+  if (state === 'dead' && (e.code === 'Enter' || e.code === 'Space')) { state = 'menu'; return; }
   if (state === 'options') { if (e.code === 'Escape') closePanel(); return; }
   if (state === 'controls') { if (e.code === 'Escape') state = 'options'; return; }
   if (state === 'feedback') { if (e.code === 'Escape') closeFeedback(); return; }
@@ -2910,7 +2942,7 @@ addEventListener('keydown', e => {
     if (e.code === 'Escape') state = 'menu';
     return;
   }
-  if (state === 'merchant') { if (e.code === 'Escape' || e.code === bind('interact')) { state = 'play'; merchantNow = null; } return; }
+  if (state === 'merchant') { if (e.code === 'Escape' || e.code === bind('interact')) { state = 'play'; merchantNow = null; G.player.invuln = 0.5; } return; }
   if (state === 'play') {
     if (e.code === bind('interact')) { const nm = nearMerchant(); if (nm) { openMerchant(nm); return; } }
     if (e.code === bind('reload')) startReload();
@@ -2961,7 +2993,7 @@ canvas.addEventListener('mousedown', e => {
     if (selectHover >= 0) { sfx('ui_click'); startRun(selectHover); }
     return;
   }
-  if (state === 'dead') { toSelect(); return; }
+  if (state === 'dead') { state = 'menu'; return; }
   if (state === 'pick') { if (pickHover >= 0) choosePick(pickHover); return; }
   mouse.down = true; mouse.pressed = true;
 });
