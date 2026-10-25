@@ -21,6 +21,7 @@
 <div id="fb">
   <input id="fbTitle" type="text" maxlength="120" placeholder="Kurz gesagt: worum geht es?" autocomplete="off" spellcheck="false">
   <textarea id="fbBody" maxlength="6000" placeholder="Beschreibe deine Idee, den Fehler oder was dir aufgefallen ist …"></textarea>
+  <input id="scName" type="text" maxlength="20" placeholder="Dein Name" autocomplete="off" spellcheck="false">
   <input id="fbToken" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
 </div>
 <script src="audio/config.js"></script>
@@ -2442,9 +2443,11 @@ function drawMenu() {
   });
   text('Prototyp ' + VERSION + ' · ' + keyLabel(bind('music')) + ' Musik · ' + keyLabel(bind('sfx')) + ' Effekte', 80, 704, 16, '#b8c4d0', 'left', F_TEXT);
   text('Klick oder Enter zum Starten', 440, 456, 17, '#f2c14e', 'left', F_TEXT, 'italic');
+  drawBoard();
 }
 
 function draw() {
+  if (state !== 'dead') fbEl.name.classList.remove('on');
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.fillStyle = '#0a110d'; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
   if (state === 'book') { drawBookScreen(); drawCursor(); return; }
@@ -2475,15 +2478,7 @@ function draw() {
   if (isPanel(state)) { overlay(0.86); drawPanelScreen(); if (state !== 'feedback') drawCursor(); }
   if (state === 'pick') { drawPickScreen(); drawCursor(); }
   if (state === 'merchant') { drawMerchantScreen(); drawCursor(); }
-  if (state === 'dead') {
-    overlay(0.78);
-    text(G.won ? 'Der Weg ist frei' : G.gaveUp ? 'Aufgegeben' : 'Gefallen', 640, 290, 56, G.won ? '#4fd08a' : G.gaveUp ? '#f2c14e' : '#ff7a8a', 'center', F_TITLE);
-    text(G.cls.name + ' · ' + Math.floor(G.dist) + ' m · ' + G.kills + ' Gefallene · ' + G.cards.length + ' Karten', 640, 346, 24, '#f0e6c8', 'center', F_TEXT);
-    text('Rekord: ' + Math.floor(best) + ' m', 640, 384, 19, '#b8c4d0', 'center', F_TEXT);
-    text('+ ' + G.earned + ' Mondsilber', 640, 420, 22, '#c8d0d8', 'center', F_TITLE);
-    text('Klick oder Enter: zurück ins Menü', 640, 470, 20, '#f2c14e', 'center', F_TEXT, 'italic');
-    drawCursor();
-  }
+  if (state === 'dead') drawDeadScreen();
 }
 function drawCursor() {
   ctx.fillStyle = '#fff3c8'; ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2;
@@ -2491,7 +2486,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.9';
+const VERSION = 'v0.10';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -2777,7 +2772,7 @@ function drawControlsScreen() {
 }
 
 // Feedback: Eingabefelder liegen als echte HTML-Elemente über dem Bild
-const fbEl = { title: document.getElementById('fbTitle'), body: document.getElementById('fbBody'), token: document.getElementById('fbToken') };
+const fbEl = { name: document.getElementById('scName'), title: document.getElementById('fbTitle'), body: document.getElementById('fbBody'), token: document.getElementById('fbToken') };
 const fb = { busy: false, msg: '', kind: '', url: '', tokenEdit: false };
 if (FEEDBACK_ENDPOINT) { fbEl.token.type = 'text'; fbEl.token.placeholder = 'Dein Name (optional)'; fbEl.token.maxLength = 40; try { fbEl.token.value = localStorage.getItem(NAME_KEY) || ''; } catch (e) {} }
 let ghToken = ''; try { ghToken = localStorage.getItem(TOKEN_KEY) || ''; } catch (e) {}
@@ -2905,10 +2900,88 @@ function drawPanelScreen() {
 }
 applySettings();
 
+// ---------- Rangliste ----------
+const SCORES_URL = FEEDBACK_ENDPOINT ? FEEDBACK_ENDPOINT + '/scores' : '';
+const board = { list: null, err: false, at: 0, loading: false };
+let scoreSt = { run: null };
+const runScore = () => Math.floor(G.dist) + G.kills * 3 + (G.won ? 500 : 0);
+const savedName = () => { try { return localStorage.getItem(NAME_KEY) || ''; } catch (e) { return ''; } };
+async function loadBoard() {
+  if (!SCORES_URL || board.loading) return;
+  board.loading = true; board.at = performance.now();
+  try {
+    const res = await fetch(SCORES_URL);
+    if (!res.ok) throw 0;
+    board.list = (await res.json()).scores || []; board.err = false;
+  } catch (e) { board.err = true; }
+  board.loading = false;
+}
+async function submitScore() {
+  const run = G;
+  if (!SCORES_URL || CHEAT || scoreSt.busy || scoreSt.done) return;
+  const name = fbEl.name.value.trim();
+  if (!name) { scoreSt.msg = 'Bitte einen Namen eingeben.'; scoreSt.kind = 'err'; return; }
+  scoreSt.busy = true; scoreSt.msg = 'Speichere …'; scoreSt.kind = '';
+  try {
+    const res = await fetch(SCORES_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, cls: run.cls.id, dist: Math.floor(run.dist), kills: run.kills, won: run.won }) });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok) {
+      try { localStorage.setItem(NAME_KEY, name); } catch (e) {}
+      if (j.scores) { board.list = j.scores; board.err = false; board.at = performance.now(); }
+      scoreSt.done = true; scoreSt.kind = 'ok'; fbEl.name.blur();
+      scoreSt.msg = j.best ? 'Eingetragen: Platz ' + j.rank + '!' : 'Dein bisheriger Rekord ist besser und bleibt stehen.';
+      sfx('card_pick');
+    } else { scoreSt.kind = 'err'; scoreSt.msg = res.status === 429 ? 'Zu viele Einträge – bitte kurz warten.' : (j.error || 'Das Speichern hat nicht geklappt.'); }
+  } catch (e) { scoreSt.kind = 'err'; scoreSt.msg = 'Keine Verbindung zur Rangliste.'; }
+  scoreSt.busy = false;
+}
+function leaveDead() { fbEl.name.blur(); state = 'menu'; }
+function drawDeadScreen() {
+  uiBtns = [];
+  if (scoreSt.run !== G) { scoreSt = { run: G, busy: false, done: false, msg: '', kind: '', t0: performance.now() }; fbEl.name.value = savedName(); }
+  overlay(0.8);
+  const form = !!SCORES_URL && !CHEAT && !scoreSt.done;
+  text(G.won ? 'Der Weg ist frei' : G.gaveUp ? 'Aufgegeben' : 'Gefallen', 640, 200, 56, G.won ? '#4fd08a' : G.gaveUp ? '#f2c14e' : '#ff7a8a', 'center', F_TITLE);
+  text(G.cls.name + ' · ' + Math.floor(G.dist) + ' m · ' + G.kills + ' Gefallene · ' + G.cards.length + ' Karten', 640, 252, 24, '#f0e6c8', 'center', F_TEXT);
+  text('Rekord: ' + Math.floor(best) + ' m   ·   + ' + G.earned + ' Mondsilber', 640, 290, 19, '#b8c4d0', 'center', F_TEXT);
+  titleText(runScore() + ' Punkte', 640, 352, 40, 'center');
+  if (G.won) text('Weg + 3 je Gefallenem + 500 Siegbonus', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
+  else text('Weg + 3 je Gefallenem', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
+  if (SCORES_URL && CHEAT) text('Testmodus: kein Eintrag in die Rangliste', 640, 470, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
+  if (form) {
+    text('Dein Name für die Rangliste', 640, 446, 18, '#f0e6c8', 'center', F_TEXT);
+    fbPlace(fbEl.name, { x: 430, y: 462, w: 280, h: 44 }, true);
+    uiButton(724, 462, 126, 44, scoreSt.busy ? '…' : 'Eintragen', submitScore, { primary: true, size: 16, disabled: scoreSt.busy });
+  } else fbEl.name.classList.remove('on');
+  if (scoreSt.msg) text(scoreSt.msg, 640, 540, 18, scoreSt.kind === 'ok' ? '#4fd08a' : scoreSt.kind === 'err' ? '#ff7a8a' : '#c8d4de', 'center', F_TEXT);
+  uiButton(540, 572, 200, 46, form ? 'Überspringen' : 'Zum Menü', leaveDead, { size: 17, primary: !form });
+  drawCursor();
+}
+function drawBoard() {
+  if (!SCORES_URL) return;
+  if (!board.loading && performance.now() - board.at > 30000) loadBoard();
+  const x = 890, y = 272, w = 350, h = 392;
+  rr(x, y, w, h, 14); ctx.fillStyle = 'rgba(10,17,13,.86)'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
+  text('Rangliste', x + 20, y + 36, 22, '#f2c14e', 'left', F_TITLE);
+  text('Punkte', x + w - 18, y + 34, 13, '#8a9aa0', 'right', F_TEXT);
+  ctx.fillStyle = '#2e3e32'; ctx.fillRect(x + 16, y + 46, w - 32, 1);
+  const me = savedName().toLowerCase();
+  if (!board.list) text(board.err ? 'Rangliste nicht erreichbar' : 'Lädt …', x + w / 2, y + 120, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
+  else if (!board.list.length) text('Noch keine Einträge – sei der Erste!', x + w / 2, y + 120, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
+  else board.list.slice(0, 10).forEach((e, i) => {
+    const ry = y + 76 + i * 33, mine = me && e.name.toLowerCase() === me, col = mine ? '#f2c14e' : '#e8dcbc';
+    text(String(i + 1), x + 20, ry, 17, i < 3 ? '#f2c14e' : '#8a9aa0', 'left', F_TITLE);
+    text(fit(e.name, 150, '17px ' + F_TEXT) + (e.won ? ' ✓' : ''), x + 52, ry, 17, col, 'left', F_TEXT, mine ? 'bold' : '');
+    text(e.dist + ' m', x + w - 92, ry, 14, '#8a9aa0', 'right', F_TEXT);
+    text(String(e.score), x + w - 18, ry, 17, col, 'right', F_TITLE);
+  });
+}
+
 // ---------- Eingabe ----------
 function toSelect() { selectHover = lastClass; state = 'select'; }
 addEventListener('keydown', e => {
   audioInit();
+  if (e.target === fbEl.name) { if (e.code === 'Enter') submitScore(); else if (e.code === 'Escape') leaveDead(); return; }
   if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) {
     if (e.code === 'Escape') closeFeedback();
     else if (e.code === 'Enter' && (e.ctrlKey || e.metaKey)) sendFeedback();
@@ -2920,7 +2993,13 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
   if (state === 'menu' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
-  if (state === 'dead' && (e.code === 'Enter' || e.code === 'Space')) { state = 'menu'; return; }
+  if (state === 'dead') {
+    if (e.code === 'Escape') leaveDead();
+    else if (e.code === 'Enter' && performance.now() - (scoreSt.t0 || 0) > 700) {
+      if (SCORES_URL && !CHEAT && !scoreSt.done) { if (fbEl.name.value.trim()) submitScore(); else fbEl.name.focus(); } else leaveDead();
+    }
+    return;
+  }
   if (state === 'options') { if (e.code === 'Escape') closePanel(); return; }
   if (state === 'controls') { if (e.code === 'Escape') state = 'options'; return; }
   if (state === 'feedback') { if (e.code === 'Escape') closeFeedback(); return; }
@@ -2993,7 +3072,7 @@ canvas.addEventListener('mousedown', e => {
     if (selectHover >= 0) { sfx('ui_click'); startRun(selectHover); }
     return;
   }
-  if (state === 'dead') { state = 'menu'; return; }
+  if (state === 'dead') { uiClick(); return; }
   if (state === 'pick') { if (pickHover >= 0) choosePick(pickHover); return; }
   mouse.down = true; mouse.pressed = true;
 });
