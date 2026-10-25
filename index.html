@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Jump Up</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1b2338; overflow: hidden; touch-action: none; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { background: #bfe6ff; height: 100vh; max-height: 100vh; aspect-ratio: 2 / 3; max-width: 100vw; }
+</style>
+</head>
+<body>
+<canvas id="game" width="400" height="600"></canvas>
+<script>
+// ---------- Setup ----------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+const GRAVITY = 1400;      // px/s²
+const JUMP_V = -700;       // normale Sprunggeschwindigkeit
+const SPRING_V = -1150;    // Sprungfeder
+const MOVE_SPEED = 320;
+const PLAYER = { w: 36, h: 36 };
+
+let player, platforms, enemies, bullets, cameraY, score, best, state, highestY, lastTime;
+best = Number(localStorage.getItem('jumpup-best') || 0);
+
+// ---------- Eingabe ----------
+const keys = {};
+let touchDir = 0;
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space' || e.code === 'ArrowUp') e.preventDefault();
+  if (state === 'dead' || state === 'menu') {
+    if (e.code === 'Enter' || e.code === 'Space') start();
+  } else if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') shoot();
+});
+addEventListener('keyup', e => keys[e.code] = false);
+
+function pointerDir(e) {
+  const r = canvas.getBoundingClientRect();
+  return (e.clientX - r.left) / r.width < 0.5 ? -1 : 1;
+}
+canvas.addEventListener('pointerdown', e => {
+  if (state !== 'play') { start(); return; }
+  touchDir = pointerDir(e);
+});
+canvas.addEventListener('pointermove', e => { if (e.buttons || e.pointerType === 'touch') touchDir = pointerDir(e); });
+addEventListener('pointerup', () => touchDir = 0);
+
+// ---------- Spiel-Logik ----------
+function start() {
+  player = { x: W / 2 - PLAYER.w / 2, y: H - 120, vx: 0, vy: JUMP_V, face: 1 };
+  platforms = [];
+  enemies = [];
+  bullets = [];
+  cameraY = 0;
+  score = 0;
+  highestY = player.y;
+  platforms.push({ x: W / 2 - 40, y: H - 60, w: 80, type: 'normal' });
+  genUntil(-H);
+  state = 'play';
+}
+
+// Erzeugt Plattformen nach oben, solange bis y-Grenze erreicht ist
+let topGenY;
+function genUntil(limitY) {
+  if (topGenY === undefined || state !== 'play') topGenY = H - 60;
+  while (topGenY > limitY) {
+    const difficulty = Math.min(score / 6000, 1);
+    topGenY -= 40 + Math.random() * (30 + difficulty * 50);
+    const w = 70;
+    const x = Math.random() * (W - w);
+    const r = Math.random();
+    let type = 'normal';
+    if (r < 0.15 + difficulty * 0.1) type = 'moving';
+    else if (r < 0.30 + difficulty * 0.2) type = 'breakable';
+    const p = { x, y: topGenY, w, type, dir: Math.random() < 0.5 ? -1 : 1, broken: false };
+    if (type === 'normal' && Math.random() < 0.08) p.spring = true;
+    platforms.push(p);
+    if (type !== 'breakable' && Math.random() < 0.03 + difficulty * 0.04) {
+      enemies.push({ x: x + 10, y: topGenY - 40, w: 36, h: 30, t: Math.random() * 6 });
+    }
+  }
+}
+
+function shoot() {
+  if (state !== 'play') return;
+  bullets.push({ x: player.x + PLAYER.w / 2, y: player.y, vy: -700 });
+}
+
+function update(dt) {
+  if (state !== 'play') return;
+
+  // Bewegung links/rechts
+  let dir = 0;
+  if (keys.ArrowLeft || keys.KeyA) dir -= 1;
+  if (keys.ArrowRight || keys.KeyD) dir += 1;
+  if (touchDir) dir = touchDir;
+  player.vx = dir * MOVE_SPEED;
+  if (dir) player.face = dir;
+  player.x += player.vx * dt;
+  if (player.x + PLAYER.w < 0) player.x = W;       // Bildschirm-Wrap
+  if (player.x > W) player.x = -PLAYER.w;
+
+  // Schwerkraft
+  const prevBottom = player.y + PLAYER.h;
+  player.vy += GRAVITY * dt;
+  player.y += player.vy * dt;
+
+  // Plattform-Kollision (nur beim Fallen, von oben)
+  if (player.vy > 0) {
+    for (const p of platforms) {
+      if (p.broken) continue;
+      const bottom = player.y + PLAYER.h;
+      if (prevBottom <= p.y + 4 && bottom >= p.y &&
+          player.x + PLAYER.w > p.x + 6 && player.x < p.x + p.w - 6) {
+        if (p.type === 'breakable') { p.broken = true; continue; }
+        player.y = p.y - PLAYER.h;
+        player.vy = p.spring ? SPRING_V : JUMP_V;
+        break;
+      }
+    }
+  }
+
+  // Bewegliche Plattformen & Gegner
+  for (const p of platforms) {
+    if (p.type === 'moving') {
+      p.x += p.dir * 80 * dt;
+      if (p.x < 0 || p.x + p.w > W) p.dir *= -1;
+    }
+    if (p.broken) p.y += 400 * dt;
+  }
+  for (const e of enemies) {
+    e.t += dt;
+    e.xo = Math.sin(e.t * 2) * 40;
+  }
+
+  // Schüsse
+  for (const b of bullets) b.y += b.vy * dt;
+  for (const b of bullets) {
+    for (const e of enemies) {
+      if (!e.dead && Math.abs(b.x - (e.x + e.xo + e.w / 2)) < e.w / 2 && Math.abs(b.y - (e.y + e.h / 2)) < e.h / 2) {
+        e.dead = true; b.y = -1e9; score += 300;
+      }
+    }
+  }
+
+  // Gegner-Kollision: von oben draufspringen = besiegen, sonst Game Over
+  for (const e of enemies) {
+    if (e.dead) continue;
+    const ex = e.x + e.xo;
+    if (player.x < ex + e.w && player.x + PLAYER.w > ex && player.y < e.y + e.h && player.y + PLAYER.h > e.y) {
+      if (player.vy > 0 && player.y + PLAYER.h < e.y + e.h * 0.6) {
+        e.dead = true; player.vy = JUMP_V; score += 300;
+      } else { die(); return; }
+    }
+  }
+
+  // Kamera folgt nur nach oben
+  if (player.y < highestY) {
+    score += (highestY - player.y);
+    highestY = player.y;
+  }
+  cameraY = Math.min(cameraY, player.y - H * 0.4);
+
+  // Aufräumen & Nachladen
+  platforms = platforms.filter(p => p.y < cameraY + H + 100);
+  enemies = enemies.filter(e => !e.dead && e.y < cameraY + H + 100);
+  bullets = bullets.filter(b => b.y > cameraY - 50);
+  genUntil(cameraY - 100);
+
+  if (player.y > cameraY + H) die();
+}
+
+function die() {
+  state = 'dead';
+  const s = Math.floor(score / 10);
+  if (s > best) { best = s; try { localStorage.setItem('jumpup-best', best); } catch (e) {} }
+}
+
+// ---------- Zeichnen ----------
+function drawPlayer() {
+  const x = player.x, y = player.y - cameraY;
+  ctx.fillStyle = '#6fd04a';
+  ctx.beginPath(); ctx.roundRect(x, y, PLAYER.w, PLAYER.h, 10); ctx.fill();
+  ctx.fillStyle = '#fff';
+  const ex = player.face > 0 ? 20 : 6;
+  ctx.fillRect(x + ex, y + 8, 8, 8); ctx.fillRect(x + ex + (player.face > 0 ? 8 : -2) - 4, y + 8, 0, 0);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(x + ex + (player.face > 0 ? 3 : 1), y + 10, 4, 4);
+  // Beine
+  ctx.fillStyle = '#4aa32c';
+  ctx.fillRect(x + 6, y + PLAYER.h, 6, 5); ctx.fillRect(x + PLAYER.w - 12, y + PLAYER.h, 6, 5);
+}
+
+function drawPlatform(p) {
+  const y = p.y - cameraY;
+  ctx.fillStyle = p.type === 'moving' ? '#4a90e2' : p.type === 'breakable' ? '#a0693a' : '#58b247';
+  ctx.beginPath(); ctx.roundRect(p.x, y, p.w, 12, 5); ctx.fill();
+  if (p.type === 'breakable') {
+    ctx.strokeStyle = '#5c3a1c'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(p.x + 25, y); ctx.lineTo(p.x + 32, y + 12);
+    ctx.moveTo(p.x + 46, y); ctx.lineTo(p.x + 40, y + 12); ctx.stroke();
+  }
+  if (p.spring) {
+    ctx.fillStyle = '#e8e8e8'; ctx.fillRect(p.x + p.w / 2 - 8, y - 10, 16, 10);
+    ctx.fillStyle = '#d33'; ctx.fillRect(p.x + p.w / 2 - 8, y - 14, 16, 4);
+  }
+}
+
+function drawEnemy(e) {
+  const x = e.x + e.xo, y = e.y - cameraY;
+  ctx.fillStyle = '#b03a8c';
+  ctx.beginPath(); ctx.roundRect(x, y, e.w, e.h, 12); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(x + 7, y + 8, 8, 8); ctx.fillRect(x + e.w - 15, y + 8, 8, 8);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(x + 10, y + 11, 4, 4); ctx.fillRect(x + e.w - 12, y + 11, 4, 4);
+}
+
+function text(str, x, y, size, color = '#fff', align = 'center') {
+  ctx.font = `bold ${size}px system-ui, sans-serif`;
+  ctx.textAlign = align;
+  ctx.fillStyle = color;
+  ctx.fillText(str, x, y);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  if (state === 'menu') {
+    text('JUMP UP', W / 2, 220, 52, '#1b2338');
+    text('← → / A D oder Touch: bewegen', W / 2, 300, 18, '#1b2338');
+    text('Leertaste / ↑: schießen', W / 2, 330, 18, '#1b2338');
+    text('Auf Gegner springen = besiegen', W / 2, 360, 18, '#1b2338');
+    text('Enter / Klick zum Starten', W / 2, 440, 22, '#1b2338');
+    return;
+  }
+  platforms.forEach(drawPlatform);
+  enemies.forEach(drawEnemy);
+  ctx.fillStyle = '#ffd23f';
+  bullets.forEach(b => ctx.fillRect(b.x - 3, b.y - cameraY - 8, 6, 12));
+  drawPlayer();
+
+  text(String(Math.floor(score / 10)), 14, 32, 26, '#1b2338', 'left');
+  text('Best ' + best, W - 14, 32, 18, '#1b2338', 'right');
+
+  if (state === 'dead') {
+    ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(0, 0, W, H);
+    text('Game Over', W / 2, 240, 44);
+    text('Punkte: ' + Math.floor(score / 10), W / 2, 290, 24);
+    text('Best: ' + best, W / 2, 322, 24);
+    text('Enter / Klick für neues Spiel', W / 2, 390, 20);
+  }
+}
+
+function loop(t) {
+  const dt = Math.min((t - (lastTime || t)) / 1000, 0.033);
+  lastTime = t;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+state = 'menu';
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
