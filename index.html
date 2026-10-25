@@ -2462,6 +2462,9 @@ function drawCursor() {
 const VERSION = 'v0.8';
 const FEEDBACK_REPO = 'sventie/jump-up';
 const TOKEN_KEY = 'left-behind-gh-token';
+// Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
+const FEEDBACK_ENDPOINT = '';
+const NAME_KEY = 'left-behind-name';
 let panelFrom = 'pause', armedAct = null, armedAt = 0, listenAct = null, controlsMsg = '', dragSlider = null, uiSliders = [];
 const isPanel = st => st === 'options' || st === 'controls' || st === 'feedback';
 const BIND_NAMES = { up: 'Nach vorn', left: 'Nach links', down: 'Zurück', right: 'Nach rechts', dash: 'Fähigkeit', reload: 'Spannen', interact: 'Handeln', music: 'Musik', sfx: 'Effekte' };
@@ -2744,6 +2747,7 @@ function drawControlsScreen() {
 // Feedback: Eingabefelder liegen als echte HTML-Elemente über dem Bild
 const fbEl = { title: document.getElementById('fbTitle'), body: document.getElementById('fbBody'), token: document.getElementById('fbToken') };
 const fb = { busy: false, msg: '', kind: '', url: '', tokenEdit: false };
+if (FEEDBACK_ENDPOINT) { fbEl.token.type = 'text'; fbEl.token.placeholder = 'Dein Name (optional)'; fbEl.token.maxLength = 40; try { fbEl.token.value = localStorage.getItem(NAME_KEY) || ''; } catch (e) {} }
 let ghToken = ''; try { ghToken = localStorage.getItem(TOKEN_KEY) || ''; } catch (e) {}
 const FB_RECT = { title: { x: 276, y: 198, w: 728, h: 40 }, body: { x: 276, y: 282, w: 728, h: 170 }, token: { x: 276, y: 482, w: 560, h: 36 } };
 function fbPlace(el, r, show) {
@@ -2782,6 +2786,7 @@ function openInBrowser() {
 }
 async function sendFeedback() {
   if (fb.busy) return;
+  if (FEEDBACK_ENDPOINT) return sendViaService();
   const title = fbEl.title.value.trim(), token = (fb.tokenEdit || !ghToken ? fbEl.token.value.trim() : '') || ghToken;
   if (!title) { fb.msg = 'Bitte einen Titel eingeben.'; fb.kind = 'err'; return; }
   if (!token) { fb.msg = 'Zum direkten Senden fehlt der GitHub-Zugangstoken. Alternativ: „Im Browser öffnen“.'; fb.kind = 'err'; return; }
@@ -2812,21 +2817,39 @@ async function sendFeedback() {
   } catch (e) { fb.kind = 'err'; fb.msg = 'Keine Verbindung zu GitHub. Prüfe das Netz oder nutze „Im Browser öffnen“.'; }
   fb.busy = false;
 }
+async function sendViaService() {
+  const title = fbEl.title.value.trim(), name = fbEl.token.value.trim();
+  if (!title) { fb.msg = 'Bitte einen Titel eingeben.'; fb.kind = 'err'; return; }
+  fb.busy = true; fb.msg = 'Sende …'; fb.kind = ''; fb.url = '';
+  try {
+    const res = await fetch(FEEDBACK_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, body: feedbackBody(), name }) });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok) {
+      fb.msg = 'Danke! Dein Feedback wurde gesendet (Issue #' + j.number + ').'; fb.kind = 'ok';
+      fbEl.title.value = ''; fbEl.body.value = ''; sfx('card_pick');
+      try { localStorage.setItem(NAME_KEY, name); } catch (e) {}
+    } else { fb.kind = 'err'; fb.msg = res.status === 429 ? 'Zu viele Nachrichten – bitte in einer Minute noch einmal.' : (j.error || 'Das Senden hat nicht geklappt (Status ' + res.status + ').'); }
+  } catch (e) { fb.kind = 'err'; fb.msg = 'Keine Verbindung zum Feedback-Dienst.'; }
+  fb.busy = false;
+}
 function drawFeedbackScreen() {
   uiBtns = []; uiSliders = [];
   const X = 240, Y = 48, Wd = 800, Ht = 624;
   windowFrame(X, Y, Wd, Ht);
   kicker('Rückmeldung', 276, 100);
   titleText('Feedback', 276, 152, 44);
-  text('Landet direkt als Issue auf GitHub', 1004, 148, 15, '#8a9aa0', 'right', F_TEXT);
+  text(FEEDBACK_ENDPOINT ? 'Geht direkt an den Entwickler' : 'Landet direkt als Issue auf GitHub', 1004, 148, 15, '#8a9aa0', 'right', F_TEXT);
   text('Titel', 276, 190, 18, '#f0e6c8');
   text('Beschreibung', 276, 274, 18, '#f0e6c8');
   text('Idee, Fehler oder Beobachtung – gern ausführlich', 1004, 274, 14, '#8a9aa0', 'right', F_TEXT);
-  const hasTok = !!ghToken && !fb.tokenEdit;
+  const hasTok = !FEEDBACK_ENDPOINT && !!ghToken && !fb.tokenEdit;
   fbPlace(fbEl.title, FB_RECT.title, true);
   fbPlace(fbEl.body, FB_RECT.body, true);
   fbPlace(fbEl.token, FB_RECT.token, !hasTok);
-  if (hasTok) {
+  if (FEEDBACK_ENDPOINT) {
+    text('Dein Name (optional)', 276, 474, 18, '#f0e6c8');
+    text('Damit ich weiß, von wem die Idee kommt.', 276, 542, 14, '#8a9aa0');
+  } else if (hasTok) {
     text('✓ GitHub-Zugang gespeichert (nur in diesem Browser)', 276, 506, 17, '#4fd08a');
     uiButton(676, 482, 100, 34, 'Ändern', () => { fb.tokenEdit = true; setTimeout(() => fbEl.token.focus(), 0); }, { size: 14 });
     uiButton(786, 482, 110, 34, 'Entfernen', () => { ghToken = ''; try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} }, { size: 14 });
