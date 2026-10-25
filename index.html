@@ -2343,8 +2343,8 @@ const menuButtons = [
   { label: 'Neuer Durchlauf', main: true, x: 80, y: 420, w: 330, h: 56, action: () => { selectHover = lastClass; state = 'select'; } },
   { label: 'Kartenbuch', x: 80, y: 490, w: 330, h: 56, action: () => { bookClass = lastClass; bookPage = 0; bookHover = null; state = 'book'; } },
   { label: 'Bibliothek', x: 80, y: 560, w: 330, h: 56, action: () => { state = 'shop'; } },
-  { label: 'Optionen', small: true, x: 1040, y: 24, w: 112, h: 38, action: () => openOptions('menu') },
-  { label: 'Feedback', small: true, x: 1162, y: 24, w: 112, h: 38, action: () => openFeedback('menu') }
+  { label: 'Optionen', small: true, x: 80, y: 632, w: 160, h: 38, action: () => openOptions('menu') },
+  { label: 'Feedback', small: true, x: 250, y: 632, w: 160, h: 38, action: () => openFeedback('menu') }
 ];
 function drawMenu() {
   let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
@@ -2408,7 +2408,7 @@ function drawMenu() {
     text(b.label, b.x + b.w / 2, b.y + 36, 19, b.main ? '#1c140c' : (b.action ? '#e8dcbc' : '#7a8a7a'), 'center', F_TITLE);
     if (b.note) text(b.note, b.x + b.w - 22, b.y + 34, 14, '#7a8a7a', 'right', F_TEXT, 'italic');
   });
-  text('Prototyp ' + VERSION + ' · ' + keyLabel(bind('music')) + ' Musik · ' + keyLabel(bind('sfx')) + ' Effekte', 80, 690, 16, '#b8c4d0', 'left', F_TEXT);
+  text('Prototyp ' + VERSION + ' · ' + keyLabel(bind('music')) + ' Musik · ' + keyLabel(bind('sfx')) + ' Effekte', 80, 704, 16, '#b8c4d0', 'left', F_TEXT);
   text('Klick oder Enter zum Starten', 440, 456, 17, '#f2c14e', 'left', F_TEXT, 'italic');
 }
 
