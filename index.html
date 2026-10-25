@@ -8,10 +8,12 @@
 <style>
   html, body { margin: 0; height: 100%; background: #060a08; overflow: hidden; }
   body { display: flex; align-items: center; justify-content: center; }
-  canvas { display: block; cursor: none; background: #0a110d; }
+  #bg { position: fixed; left: 0; top: 0; width: 100%; height: 100%; z-index: 0; }
+  #game { position: relative; z-index: 1; display: block; cursor: none; background: #0a110d; box-shadow: 0 0 0 2px #3a2e12, 0 0 70px 20px rgba(0, 0, 0, .75); }
 </style>
 </head>
 <body>
+<canvas id="bg"></canvas>
 <canvas id="game"></canvas>
 <script>
 // =====================================================================
@@ -138,6 +140,7 @@ const ICONS = {
   crown:  'M3 18l1.5-10 4.5 4 3-7 3 7 4.5-4L21 18zM3 21h18',
   sword:  'M12 2l2.5 3v9.5h-5V5zM7 14.5h10M12 14.5V21M10 21h4',
   arc:    'M3 17c0-7 4-12 9-12s9 5 9 12M12 5v8M7 8l2.5 4M17 8l-2.5 4',
+  moon:   'M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z',
   blast:  'M12 4v3M12 17v3M4 12h3M17 12h3M6.3 6.3l2.1 2.1M15.6 15.6l2.1 2.1M6.3 17.7l2.1-2.1M15.6 8.4l2.1-2.1M14.5 12A2.5 2.5 0 1 1 9.5 12 2.5 2.5 0 0 1 14.5 12z'
 };
 const ICON_PATHS = {};
@@ -145,9 +148,21 @@ for (const k in ICONS) ICON_PATHS[k] = new Path2D(ICONS[k]);
 
 // ---------- Sammlung & Kartenbücher (im Browser gespeichert) ----------
 const DECK_SIZE = 12, MAX_COPIES = 3;
-// Prototyp: Die Bibliothek (Packs) gibt es noch nicht, deshalb ist die Sammlung vorerst gefüllt
-const STARTER_COUNT = { gewoehnlich: 3, selten: 2, episch: 1, legendaer: 1 };
-const SAVE_KEY = 'left-behind-save-v1';
+// Startsammlung: nur Eisen-Karten. Den Rest findest du in Kartenpacks der Bibliothek.
+const STARTER_COUNT = { gewoehnlich: 2, selten: 0, episch: 0, legendaer: 0 };
+const START_SILVER = 150;
+const SAVE_KEY = 'left-behind-save-v2';
+// Test: index.html?cheat gibt alle Karten und viel Mondsilber
+const CHEAT = /[?&]cheat/.test(location.search);
+const CHEAT_COUNT = { gewoehnlich: 3, selten: 2, episch: 1, legendaer: 1 };
+const RARITY_KEYS = ['gewoehnlich', 'selten', 'episch', 'legendaer'];
+const RECYCLE_VALUE = { gewoehnlich: 10, selten: 30, episch: 90, legendaer: 300 };
+const PACKS = [
+  { id: 'eisen',   name: 'Eisen-Fibel',      price: 120,  odds: [70, 24, 5, 1],  min: null,        cover: ['#7a8288', '#3a4248'], ink: '#e8eef2', seal: '#aeb6c0', content: '5 Karten · meist Eisen' },
+  { id: 'smaragd', name: 'Smaragd-Folio',    price: 300,  odds: [45, 38, 14, 3], min: 'selten',    cover: ['#2e8a58', '#154a2e'], ink: '#d8f6e4', seal: '#4fd08a', content: '5 Karten · 1 Smaragd sicher' },
+  { id: 'mond',    name: 'Mondstein-Kodex',  price: 750,  odds: [25, 35, 32, 8], min: 'episch',    cover: ['#6a9acb', '#2a4a78'], ink: '#eaf6ff', seal: '#bfe3ff', content: '5 Karten · 1 Mondstein sicher' },
+  { id: 'drache',  name: 'Drachen-Grimoire', price: 2000, odds: [10, 30, 40, 20], min: 'legendaer', cover: ['#a8323c', '#4a0f18'], ink: '#ffe9a8', seal: '#f2c14e', unlockStage: 5, content: '5 Karten · 1 Drachengold sicher' }
+];
 const compat = (card, cls) => !card.types || card.types.includes(WEAPONS[cls.weapon].type);
 const copyLimit = card => Math.min(MAX_COPIES, card.max);
 const cardOrder = id => CARDS.findIndex(c => c.id === id);
@@ -167,6 +182,12 @@ function loadSave() {
   if (!sv || typeof sv !== 'object') sv = {};
   sv.owned = sv.owned || {};
   for (const c of CARDS) if (sv.owned[c.id] === undefined) sv.owned[c.id] = STARTER_COUNT[c.rarity];
+  if (typeof sv.silver !== 'number') sv.silver = START_SILVER;
+  sv.maxStage = sv.maxStage || 1;
+  if (CHEAT) {
+    for (const c of CARDS) sv.owned[c.id] = Math.max(sv.owned[c.id], CHEAT_COUNT[c.rarity]);
+    sv.silver = Math.max(sv.silver, 5000); sv.maxStage = Math.max(sv.maxStage, 5);
+  }
   sv.decks = sv.decks || {};
   for (const cls of CLASSES) {
     let d = sv.decks[cls.id];
@@ -211,6 +232,49 @@ function resize() {
   fog.width = canvas.width;
   fog.height = canvas.height;
   scale = canvas.width / FRAME_W;
+  drawBackdrop(dpr);
+}
+// Hintergrund über das ganze Fenster: füllt den Platz neben dem festen Bild
+function drawBackdrop(dpr) {
+  const bg = document.getElementById('bg'), c = bg.getContext('2d');
+  const W = innerWidth, H = innerHeight;
+  bg.width = Math.round(W * dpr); bg.height = Math.round(H * dpr);
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  let seed = 12345; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  let g = c.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#0a1624'); g.addColorStop(0.5, '#10263a'); g.addColorStop(0.8, '#1a3a40'); g.addColorStop(1, '#08100c');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  for (let i = 0; i < W * H / 4500; i++) {
+    c.fillStyle = 'rgba(255,255,255,' + (0.25 + rnd() * 0.6) + ')';
+    const r = 0.5 + rnd() * 1.3; c.fillRect(rnd() * W, rnd() * H * 0.7, r, r);
+  }
+  const m = Math.min(W, H) * 0.11, mx = W * 0.86, my = H * 0.2;
+  g = c.createRadialGradient(mx, my, m * 0.4, mx, my, m * 4);
+  g.addColorStop(0, 'rgba(200,225,255,.35)'); g.addColorStop(1, 'rgba(200,225,255,0)');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  c.fillStyle = '#dce8f2'; c.beginPath(); c.arc(mx, my, m, 0, 7); c.fill();
+  c.fillStyle = 'rgba(120,140,160,.3)'; c.beginPath(); c.arc(mx - m * 0.3, my - m * 0.25, m * 0.2, 0, 7); c.fill();
+  // ferne Hügel
+  c.fillStyle = '#0c1a16'; c.beginPath(); c.moveTo(0, H);
+  for (let x = 0; x <= W; x += 20) c.lineTo(x, H * 0.72 + Math.sin(x * 0.004) * H * 0.04 + Math.sin(x * 0.011) * H * 0.015);
+  c.lineTo(W, H); c.closePath(); c.fill();
+  // Nadelwald in zwei Lagen
+  for (const [col, base, hMul] of [['#09140f', 0.8, 1], ['#060d0a', 0.9, 1.25]]) {
+    c.fillStyle = col;
+    for (let x = -20; x < W + 40; x += 26 + rnd() * 16) {
+      const h = (H * 0.08 + rnd() * H * 0.1) * hMul, y = H * base;
+      c.beginPath(); c.moveTo(x - h * 0.28, y + h * 0.9); c.lineTo(x, y - h * 0.7); c.lineTo(x + h * 0.28, y + h * 0.9); c.fill();
+    }
+    c.fillRect(0, H * base + H * 0.07, W, H);
+  }
+  // Irrlichter
+  for (let i = 0; i < 7; i++) {
+    const x = rnd() * W, y = H * (0.6 + rnd() * 0.3), col = rnd() < 0.7 ? '#8ee8ff' : '#e9c46a';
+    c.shadowColor = col; c.shadowBlur = 16; c.fillStyle = col; c.beginPath(); c.arc(x, y, 2.5 + rnd() * 2, 0, 7); c.fill(); c.shadowBlur = 0;
+  }
+  g = c.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.4, W / 2, H / 2, Math.max(W, H) * 0.75);
+  g.addColorStop(0, 'rgba(2,5,4,0)'); g.addColorStop(1, 'rgba(2,5,4,.7)');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
 }
 addEventListener('resize', resize);
 resize();
@@ -835,6 +899,10 @@ function spark(x, y, color) {
 
 function die() {
   state = 'dead';
+  G.earned = Math.round(G.dist + G.kills * 3);          // 1 Mondsilber pro Meter, 3 pro Gefallenem
+  SAVE.silver += G.earned;
+  SAVE.maxStage = Math.max(SAVE.maxStage || 1, G.stage);
+  persist();
   if (G.dist > best) {
     best = G.dist;
     try { localStorage.setItem('left-behind-best', String(best)); } catch (e) {}
@@ -1465,8 +1533,8 @@ function bookLayout() {
   const cls = CLASSES[bookClass];
   const L = { tabs: [], chips: [], items: [], rows: [] };
   CLASSES.forEach((c, i) => L.tabs.push({ i, x: 400 + i * 168, y: 18, w: 158, h: 42 }));
-  L.back = { x: 40, y: 18, w: 120, h: 42 };
-  L.chips = [{ id: 'usable', label: 'Nutzbar', x: 560, y: 104, w: 96, h: 32 }, { id: 'all', label: 'Alle', x: 664, y: 104, w: 66, h: 32 }];
+  L.back = { x: 40, y: 18, w: 120, h: 42 }; L.recycle = { x: 1060, y: 18, w: 180, h: 42 };
+  L.chips = [{ id: 'usable', label: 'Nutzbar', x: 650, y: 104, w: 96, h: 32 }, { id: 'all', label: 'Alle', x: 754, y: 104, w: 66, h: 32 }];
   const list = CARDS.filter(c => bookFilter === 'all' || compat(c, cls));
   L.pages = Math.max(1, Math.ceil(list.length / 10));
   bookPage = clamp(bookPage, 0, L.pages - 1);
@@ -1483,6 +1551,7 @@ const hitR = (r, x, y) => r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.
 function bookHit(x, y) {
   const L = bookLayout();
   if (hitR(L.back, x, y)) return { t: 'back' };
+  if (hitR(L.recycle, x, y)) return { t: 'recycle' };
   for (const t of L.tabs) if (hitR(t, x, y)) return { t: 'tab', i: t.i };
   for (const c of L.chips) if (hitR(c, x, y)) return { t: 'chip', id: c.id };
   if (hitR(L.prev, x, y)) return { t: 'prev' };
@@ -1498,6 +1567,7 @@ function bookClick(h, right) {
   if (!h) return;
   if (right) { if (h.t === 'card') removeFromDeck(cls, h.c.id); return; }
   if (h.t === 'back') state = 'menu';
+  else if (h.t === 'recycle') { recyclePage = 0; state = 'recycle'; }
   else if (h.t === 'tab') { bookClass = h.i; bookPage = 0; }
   else if (h.t === 'chip') { bookFilter = h.id; bookPage = 0; }
   else if (h.t === 'prev') bookPage--;
@@ -1530,7 +1600,7 @@ function drawBookScreen() {
     ctx.strokeStyle = act ? c.accent : '#4a5a4a'; ctx.lineWidth = 2; ctx.stroke();
     text(c.name, t.x + t.w / 2, t.y + 28, 17, act ? '#fff' : '#b8c4d0', 'center', F_TITLE);
   });
-  text('Gesammelt: ' + CARDS.length + ' Karten', 1240, 46, 16, '#c8d4de', 'right', F_TEXT);
+  btn(L.recycle, 'Recycling · ' + surplusList().reduce((a, x) => a + x.n, 0), false, null, hv('recycle'));
 
   // Sammlung
   ctx.font = '34px ' + F_TITLE; ctx.textAlign = 'left'; ctx.fillStyle = silverGrad(98, 132);
@@ -1541,9 +1611,17 @@ function drawBookScreen() {
     ctx.strokeStyle = act ? '#f2c14e' : '#2e3e32'; ctx.lineWidth = 1.5; ctx.stroke();
     text(c.label, c.x + c.w / 2, c.y + 22, 16, act ? '#f2c14e' : '#c8d4de', 'center', F_TEXT, '500');
   });
-  text('Streiter: ' + cls.role, 300, 128, 17, cls.accent, 'left', F_TEXT, 'italic');
+  text('Streiter: ' + cls.role + ' · Gesammelt ' + CARDS.filter(c => SAVE.owned[c.id] > 0).length + ' / ' + CARDS.length, 290, 128, 17, cls.accent, 'left', F_TEXT, 'italic');
   L.items.forEach(it => {
     const c = it.c, ok = compat(c, cls), o = SAVE.owned[c.id] || 0, k = inDeck(cls, c.id), R = RARITY[c.rarity];
+    if (o === 0) {
+      rr(it.x, it.y, it.w, it.h, 10); ctx.fillStyle = '#0c1510'; ctx.fill();
+      ctx.setLineDash([6, 5]); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+      text('?', it.x + it.w / 2, it.y + 110, 64, '#22332a', 'center', F_TITLE);
+      text('Unentdeckt', it.x + it.w / 2, it.y + 150, 15, '#5a6e60', 'center', F_TITLE);
+      text(R.label, it.x + it.w / 2, it.y + 172, 14, R.c, 'center', F_TEXT, 'italic');
+      return;
+    }
     ctx.globalAlpha = ok ? 1 : 0.32;
     drawCard(c, it.x, it.y, 0.664, bookHover && bookHover.t === 'card' && bookHover.c === c && ok);
     ctx.globalAlpha = 1;
@@ -1591,13 +1669,227 @@ function drawBookScreen() {
   }
 }
 
+// ---------- Bibliothek (Kartenpacks), Packöffnung, Recycling ----------
+let uiBtns = [], packOpen = null, recyclePage = 0;
+function uiHit(x, y, w, h, action) { uiBtns.push({ x, y, w, h, action }); }
+function uiClick() {
+  for (let i = uiBtns.length - 1; i >= 0; i--) {
+    const b = uiBtns[i];
+    if (mouse.fx >= b.x && mouse.fx <= b.x + b.w && mouse.fy >= b.y && mouse.fy <= b.y + b.h) { if (b.action) b.action(); return true; }
+  }
+  return false;
+}
+function uiButton(x, y, w, h, label, action, o) {
+  o = o || {};
+  const hov = !o.disabled && mouse.fx >= x && mouse.fx <= x + w && mouse.fy >= y && mouse.fy <= y + h;
+  if (!o.disabled) uiHit(x, y, w, h, action);
+  rr(x, y, w, h, h / 2);
+  if (o.primary && !o.disabled) {
+    const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, hov ? '#fbe08a' : '#f6d37a'); g.addColorStop(1, hov ? '#e8b84a' : '#d9a636');
+    ctx.fillStyle = g;
+  } else ctx.fillStyle = o.disabled ? '#0c1510' : (hov ? '#1e2c22' : '#101a14');
+  ctx.fill();
+  ctx.strokeStyle = o.disabled ? '#2e3e32' : (o.primary ? '#7a5a1a' : (hov ? '#f2c14e' : '#9a7a3a')); ctx.lineWidth = 2; ctx.stroke();
+  const size = o.size || 16;
+  text(label, x + w / 2, y + h / 2 + size * 0.36, size, o.disabled ? '#6f8274' : (o.primary ? '#1c140c' : '#e8dcbc'), 'center', F_TITLE);
+  return hov;
+}
+function drawSilver(rx, y) {
+  const label = Math.floor(SAVE.silver).toLocaleString('de-DE');
+  ctx.font = '19px ' + F_TITLE;
+  const tw = ctx.measureText(label).width, w = tw + 140, x = rx - w;
+  rr(x, y, w, 38, 19); ctx.fillStyle = 'rgba(10,17,13,.9)'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 1.5; ctx.stroke();
+  drawIcon('moon', x + 24, y + 19, 22, '#c8d0d8', 1.6);
+  text(label, x + 44, y + 26, 19, '#f0e6c8', 'left', F_TITLE);
+  text('Mondsilber', x + 52 + tw, y + 25, 15, '#b8c4d0', 'left', F_TEXT);
+}
+function screenBackdrop() {
+  let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
+  g.addColorStop(0, '#0c1a1a'); g.addColorStop(0.75, '#0a110d'); g.addColorStop(1, '#0a110d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  for (const s of stars) { ctx.fillStyle = 'rgba(255,255,255,' + (s[3] * 0.6) + ')'; ctx.fillRect(s[0], s[1], s[2], s[2]); }
+  g = ctx.createLinearGradient(0, 0, 0, 78); g.addColorStop(0, '#14201a'); g.addColorStop(1, '#0a110d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, 78); ctx.fillStyle = '#9a7a3a'; ctx.fillRect(0, 76, FRAME_W, 2);
+}
+function titleText(str, x, y, size, align) {
+  ctx.font = size + 'px ' + F_TITLE; ctx.textAlign = align || 'left';
+  ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 6;
+  ctx.fillStyle = silverGrad(y - size, y); ctx.fillText(str, x, y);
+  ctx.shadowBlur = 0;
+}
+function packUnlocked(p) { return !p.unlockStage || (SAVE.maxStage || 1) >= p.unlockStage; }
+
+function drawPackBook(x, y, p, locked) {
+  ctx.save(); ctx.translate(x, y);
+  if (locked) ctx.globalAlpha = 0.5;
+  ctx.shadowColor = 'rgba(0,0,0,.65)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 8;
+  const g = ctx.createLinearGradient(0, 0, 150, 210); g.addColorStop(0, p.cover[0]); g.addColorStop(1, p.cover[1]);
+  rr(0, 0, 150, 210, [4, 10, 10, 4]); ctx.fillStyle = g; ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  ctx.strokeStyle = '#0c0a06'; ctx.lineWidth = 2; ctx.stroke();
+  rr(0, 0, 20, 210, [4, 0, 0, 4]); ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fill();
+  ctx.strokeStyle = p.ink; ctx.globalAlpha *= 0.7; ctx.lineWidth = 2; ctx.strokeRect(30, 14, 108, 182); ctx.globalAlpha = locked ? 0.5 : 1;
+  wrap(p.name.replace('-', '- '), 96, '15px ' + F_TITLE).forEach((l, i) => text(l.replace('- ', '-'), 84, 40 + i * 18, 15, p.ink, 'center', F_TITLE));
+  drawIcon('crown', 84, 106, 60, p.ink, 1.1);
+  rr(146, 90, 12, 34, 3); ctx.fillStyle = '#9aa2a8'; ctx.fill(); ctx.strokeStyle = '#1c2226'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = p.seal; ctx.shadowColor = p.seal; ctx.shadowBlur = 12;
+  ctx.beginPath(); ctx.arc(84, 168, 17, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.restore();
+}
+function drawCardBack(x, y, k) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(k, k);
+  ctx.shadowColor = 'rgba(0,0,0,.65)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 8;
+  const fg = ctx.createLinearGradient(0, 0, 220, 320); fg.addColorStop(0, '#f2c14e'); fg.addColorStop(0.5, '#7a5a1a'); fg.addColorStop(1, '#f2c14e');
+  rr(0, 0, 220, 320, 12); ctx.fillStyle = fg; ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  const bg = ctx.createLinearGradient(0, 0, 0, 320); bg.addColorStop(0, '#1e3a2a'); bg.addColorStop(1, '#0e1f16');
+  rr(8, 8, 204, 304, 7); ctx.fillStyle = bg; ctx.fill(); ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.strokeStyle = 'rgba(242,193,78,.35)'; ctx.lineWidth = 1.5;
+  rr(20, 20, 180, 280, 4); ctx.stroke();
+  ctx.beginPath(); ctx.arc(110, 160, 62, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.arc(110, 160, 48, 0, 7); ctx.setLineDash([5, 6]); ctx.stroke(); ctx.setLineDash([]);
+  drawIcon('crown', 110, 160, 64, '#f2c14e', 1.2);
+  text('LEFT BEHIND', 110, 270, 15, '#c8b070', 'center', F_TITLE);
+  ctx.restore();
+}
+
+function buyPack(p) {
+  if (!packUnlocked(p) || SAVE.silver < p.price) return;
+  const roll = () => {
+    let r = Math.random() * 100, idx = 0;
+    for (; idx < 3; idx++) { r -= p.odds[idx]; if (r < 0) break; }
+    return idx;
+  };
+  const idxs = Array.from({ length: 5 }, roll);
+  if (p.min) {
+    const mi = RARITY_KEYS.indexOf(p.min);
+    if (!idxs.some(i => i >= mi)) idxs[idxs.length - 1] = mi;
+  }
+  idxs.sort((a, b) => a - b);
+  const seen = {};
+  const cards = idxs.map(i => {
+    const pool = CARDS.filter(c => c.rarity === RARITY_KEYS[i]);
+    const c = pool[Math.floor(Math.random() * pool.length)];
+    const isNew = (SAVE.owned[c.id] || 0) === 0 && !seen[c.id];
+    seen[c.id] = true;
+    return { c, isNew, t: 0 };
+  });
+  SAVE.silver -= p.price;
+  for (const it of cards) SAVE.owned[it.c.id] = (SAVE.owned[it.c.id] || 0) + 1;
+  persist();
+  packOpen = { pack: p, cards };
+  state = 'open';
+}
+
+function drawShopScreen() {
+  uiBtns = [];
+  screenBackdrop();
+  uiButton(40, 18, 120, 42, '‹ Menü', () => { state = 'menu'; });
+  uiButton(176, 18, 180, 42, 'Kartenbuch', () => { bookClass = lastClass; bookPage = 0; bookHover = null; state = 'book'; });
+  drawSilver(1240, 20);
+  titleText('Die Bibliothek', 40, 130, 42);
+  text('Gebundene Karten aus den Resten des Reiches. Jedes Buch birgt fünf Seiten.', 40, 158, 19, '#c8d4de', 'left', F_TEXT, 'italic');
+  const pw = 262, gap = 28, x0 = (FRAME_W - (4 * pw + 3 * gap)) / 2;
+  PACKS.forEach((p, i) => {
+    const x = x0 + i * (pw + gap), y = 190, unlocked = packUnlocked(p), afford = SAVE.silver >= p.price;
+    rr(x, y, pw, 440, 14);
+    const g = ctx.createLinearGradient(0, y, 0, y + 440); g.addColorStop(0, '#1a2a20'); g.addColorStop(1, '#101a14');
+    ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = unlocked ? p.seal : '#3a4a3e'; ctx.lineWidth = 2; ctx.stroke();
+    drawPackBook(x + 56, y + 20, p, !unlocked);
+    if (!unlocked) { rr(x + pw / 2 - 52, y + 98, 104, 32, 16); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.stroke(); text('Versiegelt', x + pw / 2, y + 120, 15, '#f2c14e', 'center', F_TITLE); }
+    text(p.name, x + pw / 2, y + 266, 19, '#f0e6c8', 'center', F_TITLE);
+    text(p.content, x + pw / 2, y + 292, 17, '#c8d4de', 'center', F_TEXT);
+    // Wahrscheinlichkeiten
+    let bx = x + 20; const bw = pw - 40;
+    ctx.fillStyle = '#050a07'; ctx.fillRect(bx - 1, y + 308, bw + 2, 12);
+    p.odds.forEach((v, k) => { ctx.fillStyle = RARITY[RARITY_KEYS[k]].c; ctx.fillRect(bx, y + 309, bw * v / 100, 10); bx += bw * v / 100; });
+    p.odds.forEach((v, k) => text(v + ' %', x + 20 + [0, bw / 3, bw * 2 / 3, bw][k], y + 340, 14, RARITY[RARITY_KEYS[k]].c, ['left', 'center', 'center', 'right'][k], F_TEXT, 'bold'));
+    if (!unlocked) text('Freischaltung: Stufe ' + p.unlockStage + ' erreichen', x + pw / 2, y + 376, 15, '#c8d4de', 'center', F_TEXT);
+    uiButton(x + 20, y + 388, pw - 40, 42, unlocked ? 'Öffnen · ' + p.price.toLocaleString('de-DE') : 'Gesperrt', () => buyPack(p), { primary: true, disabled: !unlocked || !afford });
+    if (unlocked && !afford) text('Zu wenig Mondsilber', x + pw / 2, y + 380, 14, '#ff9a9a', 'center', F_TEXT, 'italic');
+  });
+  text('1 Mondsilber pro Meter, 3 pro Gefallenem · Doppelte Karten tauschst du im Recycling-Menü', 640, 668, 16, '#b8c4d0', 'center', F_TEXT);
+  text('Wer weiter kommt, schaltet bessere Bücher frei (höchste Stufe: ' + (SAVE.maxStage || 1) + ')', 640, 692, 15, '#8a9aa0', 'center', F_TEXT, 'italic');
+}
+
+function drawOpenScreen() {
+  uiBtns = [];
+  const P = packOpen;
+  screenBackdrop();
+  titleText(P.pack.name, 640, 66, 38, 'center');
+  const now = performance.now(), k = 0.9, w = 220 * k, h = 320 * k, gap = 24, x0 = (FRAME_W - (5 * w + 4 * gap)) / 2, y = 150;
+  let done = true;
+  P.cards.forEach((it, i) => {
+    const x = x0 + i * (w + gap);
+    const f = it.t ? clamp((now - it.t) / 380, 0, 1) : 0;
+    if (!it.t || f < 1) done = false;
+    ctx.save();
+    ctx.translate(x + w / 2, y + h / 2); ctx.scale(Math.abs(Math.cos(f * Math.PI)), 1); ctx.translate(-w / 2, -h / 2);
+    if (f >= 0.5) drawCard(it.c, 0, 0, k, it.c.rarity !== 'gewoehnlich'); else drawCardBack(0, 0, k);
+    ctx.restore();
+    if (!it.t) uiHit(x, y, w, h, () => { it.t = performance.now(); });
+    if (f >= 1) {
+      if (it.isNew) { rr(x + 8, y - 10, 62, 26, 13); ctx.fillStyle = '#f2c14e'; ctx.fill(); ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.stroke(); text('NEU!', x + 39, y + 8, 15, '#1c140c', 'center', F_TITLE); }
+      text('Besitz: ×' + SAVE.owned[it.c.id], x + w / 2, y + h + 30, 16, '#c8d4de', 'center', F_TEXT);
+    }
+  });
+  if (!done) {
+    text('Klick auf eine Karte deckt sie auf', 640, 560, 18, '#c8d4de', 'center', F_TEXT, 'italic');
+    uiButton(540, 590, 200, 44, 'Alle aufdecken', () => { const t = performance.now(); P.cards.forEach((it, i) => { if (!it.t) it.t = t + i * 140; }); });
+  } else {
+    const best = P.cards.reduce((m, it) => Math.max(m, RARITY_KEYS.indexOf(it.c.rarity)), 0);
+    text(best >= 2 ? 'Ein prächtiger Fund!' : best === 1 ? 'Eine gute Ausbeute.' : 'Ein bescheidenes Bündel.', 640, 560, 20, RARITY[RARITY_KEYS[best]].c, 'center', F_TITLE);
+    const again = SAVE.silver >= P.pack.price;
+    uiButton(440, 590, 190, 44, 'Fertig', () => { state = 'shop'; packOpen = null; }, { primary: true });
+    uiButton(650, 590, 190, 44, 'Noch eins · ' + P.pack.price, () => buyPack(P.pack), { disabled: !again });
+  }
+  drawSilver(1240, 20);
+}
+
+function surplusList() {
+  return CARDS.filter(c => (SAVE.owned[c.id] || 0) > copyLimit(c)).map(c => ({ c, n: SAVE.owned[c.id] - copyLimit(c) }));
+}
+function recycleCard(c, n) {
+  n = Math.min(n, Math.max(0, (SAVE.owned[c.id] || 0) - copyLimit(c)));
+  if (n <= 0) return;
+  SAVE.owned[c.id] -= n; SAVE.silver += n * RECYCLE_VALUE[c.rarity]; persist();
+}
+function drawRecycleScreen() {
+  uiBtns = [];
+  screenBackdrop();
+  uiButton(40, 18, 120, 42, '‹ Buch', () => { state = 'book'; });
+  drawSilver(1240, 20);
+  titleText('Recycling', 40, 130, 42);
+  text('Karten über dem Limit von ' + MAX_COPIES + ' Kopien tauschst du selbst gegen Mondsilber.', 40, 158, 19, '#c8d4de', 'left', F_TEXT, 'italic');
+  const list = surplusList(), per = 8, pages = Math.max(1, Math.ceil(list.length / per));
+  recyclePage = clamp(recyclePage, 0, pages - 1);
+  if (!list.length) text('Keine Doppelten vorhanden.', 640, 360, 24, '#7a8a7a', 'center', F_TEXT, 'italic');
+  list.slice(recyclePage * per, recyclePage * per + per).forEach((it, i) => {
+    const y = 186 + i * 56, c = it.c, R = RARITY[c.rarity], v = RECYCLE_VALUE[c.rarity];
+    rr(120, y, 1040, 48, 24); ctx.fillStyle = '#0c1510'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = R.c; ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(152, y + 24, 9, 0, 7); ctx.fill(); ctx.stroke();
+    text(c.name, 176, y + 31, 18, '#f0e6c8', 'left', F_TITLE);
+    text(R.label, 520, y + 30, 16, R.c, 'left', F_TEXT, 'bold');
+    text('Doppelte: ×' + it.n + ' (Besitz ×' + SAVE.owned[c.id] + ')', 680, y + 30, 16, '#c8d4de', 'left', F_TEXT);
+    uiButton(900, y + 6, 120, 36, '+' + v, () => recycleCard(c, 1), { size: 15 });
+    if (it.n > 1) uiButton(1030, y + 6, 118, 36, 'Alle +' + v * it.n, () => recycleCard(c, it.n), { size: 14 });
+  });
+  const total = list.reduce((s, it) => s + it.n * RECYCLE_VALUE[it.c.rarity], 0);
+  uiButton(440, 650, 400, 46, 'Alle Doppelten recyceln · +' + total, () => list.forEach(it => recycleCard(it.c, it.n)), { primary: true, disabled: !list.length });
+  if (pages > 1) {
+    uiButton(300, 654, 44, 38, '‹', () => { recyclePage--; }, { size: 20 });
+    uiButton(936, 654, 44, 38, '›', () => { recyclePage++; }, { size: 20 });
+    text('Seite ' + (recyclePage + 1) + ' / ' + pages, 1040, 678, 16, '#c8d4de', 'left', F_TEXT);
+  }
+}
+
 // Menü
 const stars = Array.from({ length: 120 }, () => [Math.random() * FRAME_W, Math.random() * 420, Math.random() * 1.4 + 0.4, Math.random() * 0.6 + 0.3]);
 const pines = Array.from({ length: 40 }, (_, i) => [i * 34 - 10, 540 + Math.random() * 60, 70 + Math.random() * 70]);
 const menuButtons = [
   { label: 'Neuer Durchlauf', main: true, x: 80, y: 420, w: 330, h: 56, action: () => { selectHover = lastClass; state = 'select'; } },
   { label: 'Kartenbuch', x: 80, y: 490, w: 330, h: 56, action: () => { bookClass = lastClass; bookPage = 0; bookHover = null; state = 'book'; } },
-  { label: 'Bibliothek', note: 'bald', x: 80, y: 560, w: 330, h: 56 }
+  { label: 'Bibliothek', x: 80, y: 560, w: 330, h: 56, action: () => { state = 'shop'; } }
 ];
 function drawMenu() {
   let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
@@ -1633,6 +1925,7 @@ function drawMenu() {
   g = ctx.createRadialGradient(640, 324, 300, 640, 324, 760);
   g.addColorStop(0, 'rgba(2,5,4,0)'); g.addColorStop(1, 'rgba(2,5,4,.65)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  drawSilver(1240, 24);
   text('Weiteste Reise: ', 40, 48, 17, '#b8c4d0', 'left', F_TEXT);
   text(Math.floor(best) + ' m', 40 + 118, 48, 19, '#f2c14e', 'left', F_TITLE);
   text('DIE LETZTEN DER FALLENEN KRONE', 80, 124, 19, '#8ee8ff', 'left', F_TEXT, '500');
@@ -1654,7 +1947,7 @@ function drawMenu() {
     text(b.label, b.x + b.w / 2, b.y + 36, 19, b.main ? '#1c140c' : (b.action ? '#e8dcbc' : '#7a8a7a'), 'center', F_TITLE);
     if (b.note) text(b.note, b.x + b.w - 22, b.y + 34, 14, '#7a8a7a', 'right', F_TEXT, 'italic');
   });
-  text('Prototyp v0.4 · Streiter wählen, Kartenbuch bauen', 80, 690, 16, '#b8c4d0', 'left', F_TEXT);
+  text('Prototyp v0.5 · Packs öffnen, Kartenbuch bauen', 80, 690, 16, '#b8c4d0', 'left', F_TEXT);
   text('Klick oder Enter zum Starten', 440, 456, 17, '#f2c14e', 'left', F_TEXT, 'italic');
 }
 
@@ -1662,6 +1955,9 @@ function draw() {
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.fillStyle = '#0a110d'; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
   if (state === 'book') { drawBookScreen(); drawCursor(); return; }
+  if (state === 'shop') { drawShopScreen(); drawCursor(); return; }
+  if (state === 'open') { drawOpenScreen(); drawCursor(); return; }
+  if (state === 'recycle') { drawRecycleScreen(); drawCursor(); return; }
   if (state === 'menu' || !G && state !== 'select') { drawMenu(); drawCursor(); return; }
   if (state === 'select') { drawSelectScreen(); drawCursor(); return; }
 
@@ -1687,7 +1983,8 @@ function draw() {
     text('Gefallen', 640, 290, 56, '#ff7a8a', 'center', F_TITLE);
     text(G.cls.name + ' · ' + Math.floor(G.dist) + ' m · ' + G.kills + ' Gefallene · ' + G.cards.length + ' Karten', 640, 346, 24, '#f0e6c8', 'center', F_TEXT);
     text('Rekord: ' + Math.floor(best) + ' m', 640, 384, 19, '#b8c4d0', 'center', F_TEXT);
-    text('Klick oder Enter: neuen Streiter wählen', 640, 440, 20, '#f2c14e', 'center', F_TEXT, 'italic');
+    text('+ ' + G.earned + ' Mondsilber', 640, 420, 22, '#c8d0d8', 'center', F_TITLE);
+    text('Klick oder Enter: neuen Streiter wählen', 640, 470, 20, '#f2c14e', 'center', F_TEXT, 'italic');
     drawCursor();
   }
 }
@@ -1703,6 +2000,9 @@ addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
   if (state === 'menu' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
   if (state === 'dead' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
+  if (state === 'shop') { if (e.code === 'Escape') state = 'menu'; return; }
+  if (state === 'recycle') { if (e.code === 'Escape') state = 'book'; if (e.code === 'ArrowRight') recyclePage++; if (e.code === 'ArrowLeft') recyclePage--; return; }
+  if (state === 'open') { if (e.code === 'Escape' && packOpen && packOpen.cards.every(it => it.t)) { state = 'shop'; packOpen = null; } return; }
   if (state === 'book') {
     if (e.code === 'Escape') state = 'menu';
     if (/^Digit[1-3]$/.test(e.code)) { bookClass = Number(e.code.slice(5)) - 1; bookPage = 0; }
@@ -1749,6 +2049,7 @@ canvas.addEventListener('mousedown', e => {
     if (e.button === 2) mouse.rdown = true;
   }
   if (state === 'book') { bookClick(bookHit(mouse.fx, mouse.fy), e.button === 2); return; }
+  if (state === 'shop' || state === 'open' || state === 'recycle') { if (e.button === 0) uiClick(); return; }
   if (e.button !== 0) return;
   if (state === 'menu') { const b = menuButtons[menuHover]; if (b && b.action) b.action(); return; }
   if (state === 'select') {
@@ -1763,7 +2064,10 @@ canvas.addEventListener('mousedown', e => {
 });
 addEventListener('mouseup', e => { if (e.button === 0) mouse.down = false; if (e.button === 2) mouse.rdown = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
-canvas.addEventListener('wheel', e => { if (state === 'book') { bookPage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); } }, { passive: false });
+canvas.addEventListener('wheel', e => {
+  if (state === 'book') { bookPage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
+  if (state === 'recycle') { recyclePage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
+}, { passive: false });
 
 // ---------- Hauptschleife ----------
 let last = 0;
