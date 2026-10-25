@@ -64,21 +64,58 @@ function start() {
   state = 'play';
 }
 
-// Erzeugt Plattformen nach oben, solange bis y-Grenze erreicht ist
-let topGenY;
+// ---------- Erreichbarkeit ----------
+// Maximale Sprunghöhe aus v² = 2·g·h, mit Sicherheitsfaktor (Modifier können v später ändern)
+const SAFETY = 0.85;
+function jumpHeight(v = JUMP_V) { return (v * v) / (2 * GRAVITY); }
+function maxRise(v = JUMP_V) { return SAFETY * jumpHeight(v); }
+// Zeit bis die Figur beim Aufstieg die Höhe dy erreicht: dy = v·t - g·t²/2
+function timeToRise(dy, v = JUMP_V) {
+  const vUp = -v;
+  return (vUp - Math.sqrt(Math.max(vUp * vUp - 2 * GRAVITY * dy, 0))) / GRAVITY;
+}
+// Maximale horizontale Distanz, die in dieser Zeit überbrückbar ist
+function maxReachX(dy, v = JUMP_V) { return SAFETY * MOVE_SPEED * Math.max(timeToRise(dy, v), 0.25); }
+
+// Erzeugt Plattformen nach oben, solange bis y-Grenze erreicht ist.
+// Garantie: Zwischen zwei "Ankern" (normale, stabile Plattformen) liegt nie mehr
+// als maxRise() Höhe und nie mehr als maxReachX() Breite.
+function clampToReach(p, from, w) {
+  const dx = maxReachX(from.y - p.y);
+  const c = from.x + from.w / 2;
+  return Math.min(Math.max(p.x, c - dx - w / 2, 0), Math.min(W - w, c + dx - w / 2));
+}
+let topGenY, anchor;
 function genUntil(limitY) {
-  if (topGenY === undefined || state !== 'play') topGenY = H - 60;
+  if (topGenY === undefined || state !== 'play') {
+    topGenY = H - 60;
+    anchor = platforms[0];
+  }
   while (topGenY > limitY) {
     const difficulty = Math.min(score / 6000, 1);
-    topGenY -= 40 + Math.random() * (30 + difficulty * 50);
+    const reach = maxRise();
+    const gap = Math.min(40 + Math.random() * (30 + difficulty * 50), reach);
+    topGenY -= gap;
     const w = 70;
-    const x = Math.random() * (W - w);
+    let x = Math.random() * (W - w);
     const r = Math.random();
     let type = 'normal';
     if (r < 0.15 + difficulty * 0.1) type = 'moving';
     else if (r < 0.30 + difficulty * 0.2) type = 'breakable';
+
+    // Wäre diese Plattform vom Anker aus nicht mehr erreichbar? -> die davor wird stabil
+    if (anchor.y - topGenY > reach) {
+      const last = platforms[platforms.length - 1];
+      last.type = 'normal'; last.broken = false;
+      last.x = clampToReach(last, anchor, w);
+      anchor = last;
+    }
+    if (type === 'normal') x = clampToReach({ x, y: topGenY }, anchor, w);
     const p = { x, y: topGenY, w, type, dir: Math.random() < 0.5 ? -1 : 1, broken: false };
-    if (type === 'normal' && Math.random() < 0.08) p.spring = true;
+    if (type === 'normal') {
+      if (Math.random() < 0.08) p.spring = true;
+      anchor = p;
+    }
     platforms.push(p);
     if (type !== 'breakable' && Math.random() < 0.03 + difficulty * 0.04) {
       enemies.push({ x: x + 10, y: topGenY - 40, w: 36, h: 30, t: Math.random() * 6 });
