@@ -1,6 +1,6 @@
 // Cloudflare Worker: nimmt Feedback aus dem Spiel entgegen und legt es als GitHub-Issue an.
 // Der GitHub-Token liegt nur hier als Secret (GITHUB_TOKEN), nie im Spiel.
-const REPO = 'sventie/jump-up';
+const REPO = 'sventie/left-behind';
 const ALLOWED_ORIGINS = ['https://sventie.github.io'];   // Adresse des Spiels (GitHub Pages)
 const WINDOW_MS = 60000, MAX_PER_WINDOW = 3;
 const hits = new Map();
