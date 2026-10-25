@@ -151,6 +151,10 @@ const DECK_SIZE = 12, MAX_COPIES = 3;
 // Startsammlung: nur Eisen-Karten. Den Rest findest du in Kartenpacks der Bibliothek.
 const STARTER_COUNT = { gewoehnlich: 2, selten: 0, episch: 0, legendaer: 0 };
 const START_SILVER = 150;
+const MERCHANT_PRICE = { gewoehnlich: 40, selten: 100, episch: 260, legendaer: 600 };
+const MERCHANT_DISCOUNT = 0.7;        // 30 % Rabatt
+const MERCHANT_CHANCE = 0.22;         // pro Abschnitt, frühestens ab Abschnitt 2
+const MERCHANT_MIN_GAP = 5;           // mindestens so viele Abschnitte dazwischen
 const SAVE_KEY = 'left-behind-save-v2';
 // Test: index.html?cheat gibt alle Karten und viel Mondsilber
 const CHEAT = /[?&]cheat/.test(location.search);
@@ -363,6 +367,7 @@ function newGame(cls) {
     time: 0, camTop: 0, genTop: 0,
     obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
     kills: 0, dist: 0,
+    merchants: [], spent: 0, chunkSinceMerchant: MERCHANT_MIN_GAP,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
     stage: 1, stageStart: 0, nextPick: STAGE_BASE,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0,
@@ -447,8 +452,58 @@ function generate() {
       const s = freeSpot(14, 30, y0 + 40, y1 - 40);
       if (s) G.pickups.push({ x: s.x, y: s.y, heal: 30 });
     }
+    // Wanderhändler: zufällig, nicht zu oft
+    if (k >= 2 && G.chunkSinceMerchant >= MERCHANT_MIN_GAP && Math.random() < MERCHANT_CHANCE) {
+      for (let t = 0; t < 40; t++) {
+        const mx = rand(330, 630), my = rand(y0 + 80, y1 - 80);
+        if (G.obstacles.some(o => mx > o.x - 70 && mx < o.x + o.w + 70 && my > o.y - 70 && my < o.y + o.h + 70)) continue;
+        G.merchants.push({ x: mx, y: my, offers: null, quote: Math.floor(Math.random() * MERCHANT_QUOTES.length) });
+        G.chunkSinceMerchant = 0;
+        break;
+      }
+    } else G.chunkSinceMerchant++;
     G.genTop = y0;
   }
+}
+const MERCHANT_QUOTES = [
+  '„Setz dich ans Feuer, Verlorener. Heute sind die Preise so weich wie mein Gewissen.“',
+  '„Nur hier draußen, nur jetzt – und nur für dich, mein Freund.“',
+  '„Alles, was ich verkaufe, hat schon einmal jemanden gerettet. Meistens.“'
+];
+function runSilver() { return Math.max(0, Math.floor(G.dist) + G.kills * 3 - G.spent); }
+function makeMerchantOffers() {
+  const t = wtype();
+  const usable = CARDS.filter(c => !c.types || c.types.includes(t));
+  const take = (list, used) => { const l = list.filter(c => !used.includes(c)); return l[Math.floor(Math.random() * l.length)]; };
+  const used = [];
+  const a = take(usable.filter(c => c.rarity === 'gewoehnlich'), used); if (a) used.push(a);
+  const b = take(usable.filter(c => c.rarity === 'selten'), used) || take(usable.filter(c => c.rarity === 'gewoehnlich'), used); if (b) used.push(b);
+  const e = take(usable.filter(c => c.rarity === 'episch' || c.rarity === 'legendaer'), used) || take(usable, used);
+  const offers = [];
+  for (const c of [a, b]) if (c) offers.push({ c, price: Math.round(MERCHANT_PRICE[c.rarity] * MERCHANT_DISCOUNT), old: MERCHANT_PRICE[c.rarity], sold: false });
+  if (e) offers.push({ c: e, price: MERCHANT_PRICE[e.rarity], exclusive: true, sold: false });
+  return offers;
+}
+function nearMerchant() {
+  const p = G.player;
+  return G.merchants.find(m => Math.hypot(m.x - p.x, m.y - p.y) < 100);
+}
+let merchantNow = null;
+function openMerchant(m) {
+  if (!m.offers) m.offers = makeMerchantOffers();
+  merchantNow = m;
+  mouse.down = false; mouse.rdown = false;
+  state = 'merchant';
+}
+function buyOffer(o) {
+  const c = o.c, owned = G.cards.filter(x => x === c.id).length;
+  if (o.sold || runSilver() < o.price || owned >= c.max) return;
+  o.sold = true; G.spent += o.price;
+  const p = G.player, oldMag = S.magSize, oldHp = S.maxHp;
+  G.cards.push(c.id); recomputeStats();
+  if (S.magSize > oldMag) p.mag += S.magSize - oldMag;
+  if (S.maxHp > oldHp) p.hp += S.maxHp - oldHp;
+  say(c.name + ': ' + c.stat);
 }
 
 // ---------- Kollision ----------
@@ -648,6 +703,7 @@ function update(dt) {
   const bottom = G.camTop + VIEW_H + 250;
   G.obstacles = G.obstacles.filter(o => o.y < bottom);
   G.enemies = G.enemies.filter(e => e.hp > 0 && e.y < bottom);
+  G.merchants = G.merchants.filter(m => m.y < bottom);
   G.pickups = G.pickups.filter(k => !k.taken && k.y < bottom);
   G.parts = G.parts.filter(q => q.life > 0);
   G.arcs = G.arcs.filter(a => a.life > 0);
@@ -899,7 +955,7 @@ function spark(x, y, color) {
 
 function die() {
   state = 'dead';
-  G.earned = Math.round(G.dist + G.kills * 3);          // 1 Mondsilber pro Meter, 3 pro Gefallenem
+  G.earned = Math.max(0, Math.round(G.dist + G.kills * 3) - G.spent);   // 1 Mondsilber pro Meter, 3 pro Gefallenem, abzüglich Händler
   SAVE.silver += G.earned;
   SAVE.maxStage = Math.max(SAVE.maxStage || 1, G.stage);
   persist();
@@ -1052,12 +1108,29 @@ function drawWorld() {
     if (o.y > top + VIEW_H || o.y + o.h < top) continue;
     drawObstacle(o);
   }
+  for (const m of G.merchants) drawMerchantWorld(m);
   // Heiltränke
   for (const k of G.pickups) {
     ctx.fillStyle = 'rgba(255,120,150,.25)'; ctx.beginPath(); ctx.arc(k.x, k.y, 20, 0, 7); ctx.fill();
     rr(k.x - 8, k.y - 11, 16, 22, 6); ctx.fillStyle = '#d33a5a'; ctx.fill();
     ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.stroke();
   }
+}
+function drawMerchantWorld(m) {
+  const f = 0.85 + Math.sin(performance.now() / 160 + m.x) * 0.1;
+  let g = ctx.createRadialGradient(m.x, m.y, 4, m.x, m.y, 110);
+  g.addColorStop(0, 'rgba(255,200,110,' + 0.32 * f + ')'); g.addColorStop(1, 'rgba(255,200,110,0)');
+  ctx.fillStyle = g; ctx.fillRect(m.x - 110, m.y - 110, 220, 220);
+  ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(m.x - 26, m.y - 6, 70, 36);
+  rr(m.x - 30, m.y - 12, 70, 36, 5); ctx.fillStyle = '#6a4a2a'; ctx.fill(); ctx.strokeStyle = '#2a1a0c'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.fillStyle = '#a8323c'; ctx.fillRect(m.x - 26, m.y - 8, 62, 12);
+  ctx.strokeStyle = '#2a1a0c'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(m.x - 14, m.y + 4); ctx.lineTo(m.x - 14, m.y + 20); ctx.moveTo(m.x + 14, m.y + 4); ctx.lineTo(m.x + 14, m.y + 20); ctx.stroke();
+  ctx.fillStyle = '#ffd978'; ctx.shadowColor = '#ffb040'; ctx.shadowBlur = 18; ctx.beginPath(); ctx.arc(m.x + 48, m.y - 8, 6, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#6a4a2a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(m.x + 48, m.y - 2); ctx.lineTo(m.x + 48, m.y + 22); ctx.stroke();
+  ctx.fillStyle = '#e0c298'; ctx.strokeStyle = '#2a1a0c'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(m.x - 4, m.y - 26, 11, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#3a5a8a'; ctx.beginPath(); ctx.arc(m.x - 4, m.y - 27, 14, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#4a6ea6'; ctx.beginPath(); ctx.arc(m.x - 4, m.y - 27, 7, 0, 7); ctx.fill();
 }
 function drawObstacle(o) {
   if (o.kind === 'wall') {
@@ -1339,7 +1412,7 @@ function drawRails() {
   const rx = FIELD_X + VIEW_W - 26;
   text((G.cls.name + ' · ' + w.name).toUpperCase(), rx, 664, 12, '#b8c4d0', 'right', F_TITLE);
   if (w.type === 'ranged') {
-    text(p.reloadT > 0 ? 'spannen …' : 'R spannen · ' + (w.reloadTime * S.reloadMul).toFixed(1) + ' s', rx - 100, 690, 14, '#b8c4d0', 'right', F_TEXT);
+    text(p.reloadT > 0 ? 'spannen …' : 'R spannen · ' + (w.reloadTime * S.reloadMul).toFixed(1) + ' s', rx - 130, 690, 14, '#b8c4d0', 'right', F_TEXT);
     ctx.font = '42px ' + F_TITLE; ctx.textAlign = 'right';
     ctx.fillStyle = p.mag === 0 ? '#ff7a8a' : silverGrad(672, 706);
     ctx.fillText(String(p.mag), rx - 62, 704);
@@ -1397,6 +1470,14 @@ function drawFieldHUD() {
   ctx.fillText(Math.floor(G.dist) + ' m', 22, 52);
   ctx.shadowBlur = 0;
   text(G.kills + ' Gefallene', 24, 74, 17, '#c8d4de', 'left', F_TEXT);
+  drawIcon('moon', 32, 96, 20, '#c8d0d8', 1.6);
+  text(String(runSilver()), 50, 103, 19, '#f0e6c8', 'left', F_TITLE);
+  const nm = state === 'play' ? nearMerchant() : null;
+  if (nm) {
+    const sx = nm.x, sy = nm.y - G.camTop - 58;
+    rr(sx - 62, sy - 18, 124, 30, 15); ctx.fillStyle = 'rgba(10,17,13,.92)'; ctx.fill(); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.stroke();
+    text('E · Handeln', sx, sy + 3, 16, '#f2c14e', 'center', F_TITLE);
+  }
   if (G.msgT > 0) {
     ctx.globalAlpha = Math.min(1, G.msgT * 2);
     text(G.msg, VIEW_W / 2, 56, 20, '#f2c14e', 'center', F_TITLE);
@@ -1883,6 +1964,66 @@ function drawRecycleScreen() {
   }
 }
 
+function drawMerchantScreen() {
+  uiBtns = [];
+  overlay(0.82);
+  const m = merchantNow, X = 100, Y = 70, W = 1080, H = 580;
+  rr(X, Y, W, H, 16);
+  let g = ctx.createLinearGradient(0, Y, 0, Y + H); g.addColorStop(0, '#1a2a20'); g.addColorStop(1, '#101a14');
+  ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.save(); rr(X + 2, Y + 2, 310, H - 4, [14, 0, 0, 14]); ctx.clip();
+  g = ctx.createLinearGradient(0, Y, 0, Y + H); g.addColorStop(0, '#1a2638'); g.addColorStop(1, '#0c1510');
+  ctx.fillStyle = g; ctx.fillRect(X, Y, 312, H); ctx.restore();
+  ctx.fillStyle = '#5a4a1a'; ctx.fillRect(X + 312, Y + 6, 2, H - 12);
+  const cx = X + 156, cy = Y + 150;
+  g = ctx.createRadialGradient(cx + 50, cy - 90, 4, cx + 50, cy - 90, 60); g.addColorStop(0, 'rgba(255,217,120,.5)'); g.addColorStop(1, 'rgba(255,217,120,0)');
+  ctx.fillStyle = g; ctx.fillRect(cx - 20, cy - 160, 160, 160);
+  ctx.fillStyle = '#ffd978'; ctx.beginPath(); ctx.arc(cx + 50, cy - 90, 8, 0, 7); ctx.fill();
+  ctx.fillStyle = '#6a4a2a'; ctx.strokeStyle = '#2a1a0c'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(cx - 100, cy + 70); ctx.lineTo(cx - 70, cy + 10); ctx.lineTo(cx + 70, cy + 10); ctx.lineTo(cx + 100, cy + 70); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#a8323c'; ctx.beginPath(); ctx.moveTo(cx - 76, cy + 12); ctx.lineTo(cx - 56, cy - 18); ctx.lineTo(cx + 56, cy - 18); ctx.lineTo(cx + 76, cy + 12); ctx.closePath(); ctx.fill(); ctx.stroke();
+  for (const dx of [-60, 60]) { ctx.fillStyle = '#4a3220'; ctx.beginPath(); ctx.arc(cx + dx, cy + 74, 22, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#9a7a3a'; ctx.beginPath(); ctx.arc(cx + dx, cy + 74, 6, 0, 7); ctx.fill(); }
+  ctx.fillStyle = '#e0c298'; ctx.beginPath(); ctx.arc(cx, cy - 46, 22, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#3a5a8a'; ctx.beginPath(); ctx.arc(cx, cy - 52, 26, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#c8d0d8'; ctx.beginPath(); ctx.moveTo(cx - 14, cy - 36); ctx.quadraticCurveTo(cx, cy - 12, cx + 14, cy - 36); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#1c140c'; ctx.beginPath(); ctx.arc(cx - 8, cy - 48, 2.5, 0, 7); ctx.arc(cx + 8, cy - 48, 2.5, 0, 7); ctx.fill();
+  text('Bromm der Wanderer', X + 156, Y + 306, 22, '#f0e6c8', 'center', F_TITLE);
+  text('FAHRENDER HÄNDLER', X + 156, Y + 330, 14, '#b8c4d0', 'center', F_TEXT, '500');
+  rr(X + 20, Y + 348, 272, 180, 10); ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+  wrap(MERCHANT_QUOTES[m.quote], 242, 'italic 19px ' + F_TEXT).slice(0, 6).forEach((l, i) => text(l, X + 156, Y + 380 + i * 24, 19, '#d8e0d0', 'center', F_TEXT, 'italic'));
+  text('RAST BEI ' + Math.floor(G.dist) + ' M', X + 350, Y + 50, 16, '#8ee8ff', 'left', F_TEXT, '500');
+  titleText('Ein Lagerfeuer im Wald', X + 350, Y + 100, 36);
+  drawSilverRun(X + W - 24, Y + 28);
+  const cw = 176, ch = 256, gap = 26, ox = X + 350 + (W - 350 - 24 - (3 * cw + 2 * gap)) / 2;
+  m.offers.forEach((o, i) => {
+    const x = ox + i * (cw + gap), y = Y + 140;
+    ctx.globalAlpha = o.sold ? 0.35 : 1;
+    drawCard(o.c, x, y, 0.8, false);
+    ctx.globalAlpha = 1;
+    if (o.sold) { rr(x + 20, y + 100, cw - 40, 40, 8); ctx.fillStyle = 'rgba(10,17,13,.92)'; ctx.fill(); text('Verkauft', x + cw / 2, y + 128, 20, '#f2c14e', 'center', F_TITLE); }
+    if (o.old) { ctx.save(); ctx.translate(x + cw - 6, y - 4); ctx.rotate(0.1); rr(-34, -14, 56, 26, 4); ctx.fillStyle = '#f2c14e'; ctx.fill(); text('−30 %', -6, 5, 15, '#1c140c', 'center', F_TITLE); ctx.restore(); }
+    if (o.exclusive) { rr(x - 6, y - 14, 140, 22, 4); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 1; ctx.stroke(); text('NUR BEIM HÄNDLER', x + 64, y + 2, 12, '#f2c14e', 'center', F_TEXT, 'bold'); }
+    const owned = G.cards.filter(x2 => x2 === o.c.id).length, maxed = owned >= o.c.max;
+    const afford = runSilver() >= o.price;
+    const label = o.sold ? 'Gekauft' : maxed ? 'Schon max.' : String(o.price);
+    uiButton(x, y + ch + 16, cw, 44, label, () => buyOffer(o), { primary: true, disabled: o.sold || maxed || !afford });
+    if (o.old && !o.sold && !maxed) text('statt ' + o.old, x + cw / 2, y + ch + 78, 14, '#8a9aa0', 'center', F_TEXT, 'italic');
+    else if (!o.sold && !maxed && !afford) text('zu wenig Mondsilber', x + cw / 2, y + ch + 78, 14, '#ff9a9a', 'center', F_TEXT, 'italic');
+    if (o.old && !o.sold && !maxed && !afford) text('zu wenig Mondsilber', x + cw / 2, y + ch + 96, 14, '#ff9a9a', 'center', F_TEXT, 'italic');
+  });
+  uiButton(X + W - 200, Y + H - 62, 170, 44, 'Weiterziehen', () => { state = 'play'; merchantNow = null; });
+  text('Bezahlt wird mit dem Mondsilber, das du in diesem Lauf verdient hast.', X + 350, Y + H - 30, 15, '#8a9aa0', 'left', F_TEXT, 'italic');
+}
+function drawSilverRun(rx, y) {
+  const label = String(runSilver());
+  ctx.font = '18px ' + F_TITLE;
+  const tw = ctx.measureText(label).width, w = tw + 126, x = rx - w;
+  rr(x, y - 6, w, 34, 17); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 1.5; ctx.stroke();
+  drawIcon('moon', x + 22, y + 11, 20, '#c8d0d8', 1.6);
+  text(label, x + 40, y + 18, 18, '#f0e6c8', 'left', F_TITLE);
+  text('im Lauf', x + 48 + tw, y + 17, 14, '#b8c4d0', 'left', F_TEXT);
+}
+
 // Menü
 const stars = Array.from({ length: 120 }, () => [Math.random() * FRAME_W, Math.random() * 420, Math.random() * 1.4 + 0.4, Math.random() * 0.6 + 0.3]);
 const pines = Array.from({ length: 40 }, (_, i) => [i * 34 - 10, 540 + Math.random() * 60, 70 + Math.random() * 70]);
@@ -1937,7 +2078,7 @@ function drawMenu() {
   ctx.shadowBlur = 0;
   text('Das Königreich fiel in einer Nacht.', 80, 282, 22, '#c8d4de', 'left', F_TEXT, 'italic');
   text('Du bist, was von ihm übrig blieb.', 80, 312, 22, '#c8d4de', 'left', F_TEXT, 'italic');
-  text('WASD bewegen · Maus zielen · Linksklick angreifen · Rechtsklick Spezial', 80, 372, 17, '#b8c4d0', 'left', F_TEXT);
+  text('WASD bewegen · Maus zielen · Linksklick angreifen · Rechtsklick Spezial · E Händler', 80, 372, 17, '#b8c4d0', 'left', F_TEXT);
   menuButtons.forEach((b, i) => {
     const hover = menuHover === i && b.action;
     notched(b.x, b.y, b.w, b.h, 12); ctx.fillStyle = b.main ? '#f2c14e' : (hover ? '#f2c14e' : '#9a7a3a'); ctx.fill();
@@ -1947,7 +2088,7 @@ function drawMenu() {
     text(b.label, b.x + b.w / 2, b.y + 36, 19, b.main ? '#1c140c' : (b.action ? '#e8dcbc' : '#7a8a7a'), 'center', F_TITLE);
     if (b.note) text(b.note, b.x + b.w - 22, b.y + 34, 14, '#7a8a7a', 'right', F_TEXT, 'italic');
   });
-  text('Prototyp v0.5 · Packs öffnen, Kartenbuch bauen', 80, 690, 16, '#b8c4d0', 'left', F_TEXT);
+  text('Prototyp v0.6 · Händler am Wegesrand', 80, 690, 16, '#b8c4d0', 'left', F_TEXT);
   text('Klick oder Enter zum Starten', 440, 456, 17, '#f2c14e', 'left', F_TEXT, 'italic');
 }
 
@@ -1978,6 +2119,7 @@ function draw() {
   if (state === 'play') drawCrosshair();
   if (state === 'pause') { overlay(0.7); text('Pause', 640, 340, 48, '#f0e6c8', 'center', F_TITLE); text('Esc / P zum Fortsetzen', 640, 384, 19, '#b8c4d0', 'center', F_TEXT); }
   if (state === 'pick') { drawPickScreen(); drawCursor(); }
+  if (state === 'merchant') { drawMerchantScreen(); drawCursor(); }
   if (state === 'dead') {
     overlay(0.78);
     text('Gefallen', 640, 290, 56, '#ff7a8a', 'center', F_TITLE);
@@ -2018,7 +2160,9 @@ addEventListener('keydown', e => {
     if (e.code === 'Escape') state = 'menu';
     return;
   }
+  if (state === 'merchant') { if (e.code === 'Escape' || e.code === 'KeyE') { state = 'play'; merchantNow = null; } return; }
   if (state === 'play') {
+    if (e.code === 'KeyE') { const nm = nearMerchant(); if (nm) { openMerchant(nm); return; } }
     if (e.code === 'KeyR') startReload();
     if (e.code === 'Space') tryDash();
   }
@@ -2049,7 +2193,7 @@ canvas.addEventListener('mousedown', e => {
     if (e.button === 2) mouse.rdown = true;
   }
   if (state === 'book') { bookClick(bookHit(mouse.fx, mouse.fy), e.button === 2); return; }
-  if (state === 'shop' || state === 'open' || state === 'recycle') { if (e.button === 0) uiClick(); return; }
+  if (state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant') { if (e.button === 0) uiClick(); return; }
   if (e.button !== 0) return;
   if (state === 'menu') { const b = menuButtons[menuHover]; if (b && b.action) b.action(); return; }
   if (state === 'select') {
