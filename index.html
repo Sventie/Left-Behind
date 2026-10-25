@@ -16,8 +16,8 @@
 <script>
 // =====================================================================
 //  Left Behind – Topdown-Prototyp (Reine Fantasy)
-//  WASD bewegen · Maus zielen/schießen · R spannen (nachladen)
-//  Leertaste: Fähigkeit (wenn freigeschaltet) · Esc/P: Pause
+//  WASD bewegen · Maus zielen · Linksklick angreifen · Rechtsklick Spezial
+//  R spannen (Waldläufer) · Leertaste Fähigkeit · Esc/P Pause
 //  Alle Werte zum Ausprobieren stehen im Block "Balancing".
 // =====================================================================
 
@@ -30,13 +30,19 @@ const PX_PER_M = 40;
 const CHUNK_H = VIEW_H;
 
 // ---------- Balancing ----------
-const BASE = {                          // Basiswerte, Karten verändern sie
+const BASE = {                          // Basiswerte, Klasse und Karten verändern sie
   maxHp: 100,
   moveSpeed: 140,                       // px/s, bewusst langsam
   spreadMul: 1.0,                       // <1 = treffsicherer
-  reloadMul: 1.0,                       // <1 = schneller nachladen
-  magSize: 12,
+  reloadMul: 1.0,                       // <1 = schneller nachladen/spannen
+  magSize: 12,                          // Bolzen im Magazin (Fernkampf)
+  manaMax: 100,                         // Mana (Magie)
+  manaRegenMul: 1.0,
   dmgMul: 1.0,
+  reachMul: 1.0,                        // Reichweite (Nahkampf)
+  arcAdd: 0,                            // Grad zusätzlicher Schwungbogen
+  block: 0.8,                           // Anteil, den der Schild abfängt
+  splashMul: 1.0,                       // Flächenradius (Magie)
   fov: 100,                             // Grad, Sichtkegel
   rangeMul: 1.0,                        // Sichtweite
   pierce: 0,                            // durchschlagene Gegner
@@ -44,19 +50,37 @@ const BASE = {                          // Basiswerte, Karten verändern sie
   dash: false,                          // Windstoß freigeschaltet
   extraChoices: 0                       // zusätzliche Karte in der Wahl
 };
-const WEAPON = {
-  name: 'Repetierarmbrust',
-  damage: 20,
-  interval: 0.20,                       // s zwischen Schüssen
-  reloadTime: 1.5,                      // s
-  spread: 1.5,                          // Grad Grundstreuung (stehend)
-  bloomPerShot: 1.8,
-  bloomMax: 9,
-  bloomRecover: 9,                      // Grad/s
-  moveSpread: 4,                        // Grad Zusatz bei voller Bewegung
-  speed: 900,
-  range: 760
+const WEAPONS = {
+  schwert:  { type: 'melee',  name: 'Langschwert',      damage: 38, interval: 0.55, reach: 62, arc: 110, swing: 0.18 },
+  armbrust: { type: 'ranged', name: 'Repetierarmbrust', damage: 20, interval: 0.20, reloadTime: 1.5, spread: 1.5, bloomPerShot: 1.8, bloomMax: 9, bloomRecover: 9, moveSpread: 4, speed: 900, range: 760 },
+  stab:     { type: 'spell',  name: 'Zauberstab',       damage: 30, interval: 0.45, cost: 14, regen: 16, regenDelay: 0.7, spread: 1.2, bloomPerShot: 1.4, bloomMax: 6, bloomRecover: 8, moveSpread: 3, speed: 640, range: 720, splash: 46 }
 };
+const CLASSES = [
+  {
+    id: 'ritter', name: 'Ritter', role: 'Nahkämpfer', weapon: 'schwert', accent: '#d2dae2', accent2: '#6a747e',
+    blurb: 'Schwert und Schild. Wer ihn aufhalten will, muss durch ihn hindurch.',
+    weaponLine: 'Langschwert: Hieb im Bogen, lenkt Geschosse ab',
+    special: 'Rechtsklick: Schild hochreißen',
+    base: { maxHp: 140, moveSpeed: 125, fov: 90 },
+    rating: { Leben: 5, Tempo: 2, Reichweite: 1, Wucht: 4 }
+  },
+  {
+    id: 'waldlaeufer', name: 'Waldläufer', role: 'Fernkämpfer', weapon: 'armbrust', accent: '#4fd08a', accent2: '#1f6a44',
+    blurb: 'Distanz, Geduld und ein sicherer Schuss aus dem Dickicht.',
+    weaponLine: 'Repetierarmbrust: 12 Bolzen, Spannen dauert 1,5 s',
+    special: 'Rechtsklick: Fokus (ruhiger zielen, langsamer)',
+    base: { maxHp: 100, moveSpeed: 140, fov: 100 },
+    rating: { Leben: 3, Tempo: 3, Reichweite: 4, Wucht: 3 }
+  },
+  {
+    id: 'magier', name: 'Magier', role: 'Zauberwirker', weapon: 'stab', accent: '#a89cff', accent2: '#4a3a9a',
+    blurb: 'Zerbrechlich, aber mit Feuer in den Händen.',
+    weaponLine: 'Zauberstab: Arkanes Geschoss mit Flächenschaden, kostet Mana',
+    special: 'Rechtsklick: Meditieren (Mana lädt schneller)',
+    base: { maxHp: 80, moveSpeed: 135, fov: 100 },
+    rating: { Leben: 2, Tempo: 3, Reichweite: 3, Wucht: 5 }
+  }
+];
 const VISION = { range: 640, near: 85 };
 const DASH = { dist: 160, time: 0.2, cooldown: 12 };
 const STAGE_BASE = 80;                  // Meter bis zur ersten Kartenwahl
@@ -73,19 +97,33 @@ const RARITY = {
   episch:      { label: 'Mondstein',   c: '#bfe3ff', c2: '#4f7fb0', ink: '#24508a', weight: 10 },
   legendaer:   { label: 'Drachengold', c: '#f2c14e', c2: '#9a6a14', ink: '#7a4a06', weight: 2 }
 };
+// types: für welche Waffenarten die Karte angeboten wird (leer = alle)
 const CARDS = [
-  { id: 'stiefel',  name: 'Wanderstiefel',        kind: 'Segen',  rarity: 'gewoehnlich', icon: 'boot',    max: 3, stat: '+10 % Lauftempo',     text: 'Leder und Moos tragen dich schneller.',            flavor: '„Die Straße kennt keine Müdigkeit.“', apply: S => { S.moveSpeed *= 1.10; } },
-  { id: 'schild',   name: 'Eichenschild',         kind: 'Segen',  rarity: 'gewoehnlich', icon: 'shield',  max: 3, stat: '+30 Leben',           text: 'Altes Eichenholz schützt deine Brust.',            flavor: '„Es hat Schlimmeres gesehen.“',        apply: S => { S.maxHp += 30; } },
-  { id: 'hand',     name: 'Ruhige Hand',          kind: 'Segen',  rarity: 'gewoehnlich', icon: 'target',  max: 3, stat: '−15 % Streuung',      text: 'Ein tiefer Atemzug, ein sicherer Schuss.',         flavor: '„Erst atmen, dann schießen.“',         apply: S => { S.spreadMul *= 0.85; } },
-  { id: 'spanner',  name: 'Schnellspanner',       kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 2, stat: '−25 % Spannzeit',     text: 'Die Sehne spannt sich wie von selbst.',            flavor: '„Klick, und weiter.“',                 apply: S => { S.reloadMul *= 0.75; } },
-  { id: 'koecher',  name: 'Tiefer Köcher',        kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 3, stat: '+4 Bolzen im Magazin', text: 'Mehr Platz, mehr Schüsse bis zum Spannen.',       flavor: '„Man kann nie zu viele haben.“',       apply: S => { S.magSize += 4; } },
-  { id: 'bolzen',   name: 'Scharfe Bolzen',       kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 3, stat: '+15 % Schaden',       text: 'Frisch geschliffene Spitzen schlagen tiefer ein.', flavor: '„Der Schmied sparte nicht.“',          apply: S => { S.dmgMul *= 1.15; } },
-  { id: 'irrlicht', name: 'Irrlicht',             kind: 'Zauber', rarity: 'selten',      icon: 'wisp',    max: 2, stat: 'Sichtweite +25 %',    text: 'Ein Irrlicht leuchtet den Weg weiter aus.',        flavor: '„Folge dem Licht. Nicht dem anderen.“', apply: S => { S.rangeMul *= 1.25; } },
-  { id: 'wind',     name: 'Windstoß',             kind: 'Zauber', rarity: 'selten',      icon: 'wind',    max: 1, stat: 'Sprint (Leertaste)',  text: 'Ein Stoß treibt dich 4 m nach vorn. 12 s Abklingzeit.', flavor: '„Der Wald hält den Atem an.“',     apply: S => { S.dash = true; } },
-  { id: 'spitze',   name: 'Spitze Bolzen',        kind: 'Segen',  rarity: 'selten',      icon: 'quiver',  max: 2, stat: 'Durchschlag +1',      text: 'Der Bolzen durchbohrt einen Gegner und fliegt weiter.', flavor: '„Zwei auf einen Streich.“',      apply: S => { S.pierce += 1; } },
-  { id: 'falke',    name: 'Falkenauge',           kind: 'Zauber', rarity: 'episch',      icon: 'eye',     max: 2, stat: 'Sichtkegel +25°',     text: 'Du siehst weiter zur Seite, ohne den Kopf zu drehen.', flavor: '„Nichts entgeht dem Jäger.“',    apply: S => { S.fov += 25; } },
-  { id: 'blitz',    name: 'Kettenblitz',          kind: 'Zauber', rarity: 'episch',      icon: 'bolt',    max: 2, stat: 'Kettenblitz-Treffer', text: 'Treffer springen auf 2 weitere Gegner über.',      flavor: '„Der Himmel schuldet dir etwas.“',     apply: S => { S.chain += 2; } },
-  { id: 'krone',    name: 'Krone der Verlorenen', kind: 'Zauber', rarity: 'legendaer',   icon: 'crown',   max: 1, stat: '4 statt 3 Karten',    text: 'Wähle nach jeder Stufe aus vier Karten.',          flavor: '„Wer sie trägt, wird nicht vergessen.“', apply: S => { S.extraChoices += 1; } }
+  // für alle
+  { id: 'stiefel',  name: 'Wanderstiefel',        kind: 'Segen',  rarity: 'gewoehnlich', icon: 'boot',    max: 3, stat: '+10 % Lauftempo',      text: 'Leder und Moos tragen dich schneller.',            flavor: '„Die Straße kennt keine Müdigkeit.“', apply: S => { S.moveSpeed *= 1.10; } },
+  { id: 'schild',   name: 'Eichenschild',         kind: 'Segen',  rarity: 'gewoehnlich', icon: 'shield',  max: 3, stat: '+30 Leben',            text: 'Altes Eichenholz schützt deine Brust.',            flavor: '„Es hat Schlimmeres gesehen.“',        apply: S => { S.maxHp += 30; } },
+  { id: 'irrlicht', name: 'Irrlicht',             kind: 'Zauber', rarity: 'selten',      icon: 'wisp',    max: 2, stat: 'Sichtweite +25 %',     text: 'Ein Irrlicht leuchtet den Weg weiter aus.',        flavor: '„Folge dem Licht. Nicht dem anderen.“', apply: S => { S.rangeMul *= 1.25; } },
+  { id: 'wind',     name: 'Windstoß',             kind: 'Zauber', rarity: 'selten',      icon: 'wind',    max: 1, stat: 'Sprint (Leertaste)',   text: 'Ein Stoß treibt dich 4 m nach vorn. 12 s Abklingzeit.', flavor: '„Der Wald hält den Atem an.“',    apply: S => { S.dash = true; } },
+  { id: 'falke',    name: 'Falkenauge',           kind: 'Zauber', rarity: 'episch',      icon: 'eye',     max: 2, stat: 'Sichtkegel +25°',      text: 'Du siehst weiter zur Seite, ohne den Kopf zu drehen.', flavor: '„Nichts entgeht dem Jäger.“',    apply: S => { S.fov += 25; } },
+  { id: 'blitz',    name: 'Kettenblitz',          kind: 'Zauber', rarity: 'episch',      icon: 'bolt',    max: 2, stat: 'Kettenblitz-Treffer',  text: 'Treffer springen auf 2 weitere Gegner über.',      flavor: '„Der Himmel schuldet dir etwas.“',     apply: S => { S.chain += 2; } },
+  { id: 'krone',    name: 'Krone der Verlorenen', kind: 'Zauber', rarity: 'legendaer',   icon: 'crown',   max: 1, stat: '4 statt 3 Karten',     text: 'Wähle nach jeder Stufe aus vier Karten.',          flavor: '„Wer sie trägt, wird nicht vergessen.“', apply: S => { S.extraChoices += 1; } },
+  // Fernkampf
+  { id: 'hand',     name: 'Ruhige Hand',          kind: 'Segen',  rarity: 'gewoehnlich', icon: 'target',  max: 3, types: ['ranged', 'spell'], stat: '−15 % Streuung', text: 'Ein tiefer Atemzug, ein sicherer Schuss.',        flavor: '„Erst atmen, dann schießen.“',         apply: S => { S.spreadMul *= 0.85; } },
+  { id: 'spanner',  name: 'Schnellspanner',       kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 2, types: ['ranged'], stat: '−25 % Spannzeit',    text: 'Die Sehne spannt sich wie von selbst.',           flavor: '„Klick, und weiter.“',                 apply: S => { S.reloadMul *= 0.75; } },
+  { id: 'koecher',  name: 'Tiefer Köcher',        kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 3, types: ['ranged'], stat: '+4 Bolzen im Magazin', text: 'Mehr Platz, mehr Schüsse bis zum Spannen.',      flavor: '„Man kann nie zu viele haben.“',       apply: S => { S.magSize += 4; } },
+  { id: 'bolzen',   name: 'Scharfe Bolzen',       kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 3, types: ['ranged'], stat: '+15 % Schaden',      text: 'Frisch geschliffene Spitzen schlagen tiefer ein.', flavor: '„Der Schmied sparte nicht.“',          apply: S => { S.dmgMul *= 1.15; } },
+  { id: 'spitze',   name: 'Spitze Bolzen',        kind: 'Segen',  rarity: 'selten',      icon: 'quiver',  max: 2, types: ['ranged'], stat: 'Durchschlag +1',     text: 'Der Bolzen durchbohrt einen Gegner und fliegt weiter.', flavor: '„Zwei auf einen Streich.“',     apply: S => { S.pierce += 1; } },
+  // Nahkampf
+  { id: 'klinge',   name: 'Geschärfte Klinge',    kind: 'Segen',  rarity: 'gewoehnlich', icon: 'sword',   max: 3, types: ['melee'], stat: '+15 % Schaden',       text: 'Ein Wetzstein, eine ruhige Nacht, eine bessere Schneide.', flavor: '„Scharf genug zum Rasieren.“', apply: S => { S.dmgMul *= 1.15; } },
+  { id: 'lang',     name: 'Langes Eisen',         kind: 'Segen',  rarity: 'gewoehnlich', icon: 'sword',   max: 2, types: ['melee'], stat: '+20 % Reichweite',    text: 'Eine längere Klinge hält den Feind auf Abstand.', flavor: '„Ein Zoll kann ein Leben sein.“',      apply: S => { S.reachMul *= 1.2; } },
+  { id: 'breit',    name: 'Breiter Hieb',         kind: 'Segen',  rarity: 'selten',      icon: 'arc',     max: 2, types: ['melee'], stat: '+30° Schwungbogen',   text: 'Dein Hieb erfasst mehr Gegner auf einmal.',      flavor: '„Wer zu nah steht, steht falsch.“',    apply: S => { S.arcAdd += 30; } },
+  { id: 'wall',     name: 'Schildwall',           kind: 'Segen',  rarity: 'selten',      icon: 'shield',  max: 2, types: ['melee'], stat: 'Schild fängt +10 % mehr ab', text: 'Dein Schild hält fast alles von vorn auf.', flavor: '„Sie kommen nicht vorbei.“',           apply: S => { S.block = Math.min(0.97, S.block + 0.1); } },
+  // Magie
+  { id: 'macht',    name: 'Zauberkraft',          kind: 'Segen',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+15 % Schaden',       text: 'Die Magie fließt stärker durch den Stab.',       flavor: '„Mehr Glut, weniger Zweifel.“',        apply: S => { S.dmgMul *= 1.15; } },
+  { id: 'quell',    name: 'Manaquell',            kind: 'Segen',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+25 % Manaregeneration', text: 'Eine verborgene Quelle füllt dich schneller auf.', flavor: '„Das Wasser ist kalt und klar.“',    apply: S => { S.manaRegenMul *= 1.25; } },
+  { id: 'brunnen',  name: 'Tiefer Brunnen',       kind: 'Segen',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+25 Mana',            text: 'Mehr Reserve für den nächsten Zauber.',          flavor: '„Man schöpft, bis der Eimer reißt.“',  apply: S => { S.manaMax += 25; } },
+  { id: 'funke',    name: 'Zauberfunke',          kind: 'Zauber', rarity: 'selten',      icon: 'blast',   max: 2, types: ['spell'], stat: '+30 % Flächenradius', text: 'Die Explosion reißt einen größeren Kreis auf.',  flavor: '„Nichts bleibt heil.“',                apply: S => { S.splashMul *= 1.3; } },
+  { id: 'durch',    name: 'Durchdringender Funke', kind: 'Zauber', rarity: 'selten',     icon: 'blast',   max: 2, types: ['spell'], stat: 'Durchschlag +1',      text: 'Der Zauber explodiert und fliegt weiter.',       flavor: '„Er hört nicht auf.“',                 apply: S => { S.pierce += 1; } }
 ];
 const CARD_BY_ID = Object.fromEntries(CARDS.map(c => [c.id, c]));
 const ICONS = {
@@ -97,7 +135,10 @@ const ICONS = {
   wisp:   'M12 21.5c-4 0-6.5-2.8-6.5-6.2 0-3.6 3-5.6 4.5-9.3 1.5 1.6 2.5 3 2.5 4.6 1.2-.8 2-2.2 2-3.8 2.4 2.4 4 5.2 4 8.5 0 3.6-2.6 6.2-6.5 6.2zM14 16A2 2 0 1 1 10 16 2 2 0 0 1 14 16z',
   wind:   'M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h7',
   bolt:   'M13 2L4.5 13.5H11L10 22l9-12h-6.5z',
-  crown:  'M3 18l1.5-10 4.5 4 3-7 3 7 4.5-4L21 18zM3 21h18'
+  crown:  'M3 18l1.5-10 4.5 4 3-7 3 7 4.5-4L21 18zM3 21h18',
+  sword:  'M12 2l2.5 3v9.5h-5V5zM7 14.5h10M12 14.5V21M10 21h4',
+  arc:    'M3 17c0-7 4-12 9-12s9 5 9 12M12 5v8M7 8l2.5 4M17 8l-2.5 4',
+  blast:  'M12 4v3M12 17v3M4 12h3M17 12h3M6.3 6.3l2.1 2.1M15.6 15.6l2.1 2.1M6.3 17.7l2.1-2.1M15.6 8.4l2.1-2.1M14.5 12A2.5 2.5 0 1 1 9.5 12 2.5 2.5 0 0 1 14.5 12z'
 };
 const ICON_PATHS = {};
 for (const k in ICONS) ICON_PATHS[k] = new Path2D(ICONS[k]);
@@ -180,36 +221,46 @@ function rayDist(ox, oy, dx, dy, maxD, segs) {
 }
 
 // ---------- Spielzustand ----------
-let state = 'menu';                      // menu | play | pick | pause | dead
+let state = 'menu';                      // menu | select | play | pick | pause | dead
 let G = null;                            // aktuelles Spiel
-let S = Object.assign({}, BASE);         // aktuelle Werte inkl. Karten
+let S = Object.assign({}, BASE);         // aktuelle Werte inkl. Klasse und Karten
 let best = Number(localStorage.getItem('left-behind-best') || 0);
+let lastClass = Math.max(0, CLASSES.findIndex(c => c.id === (localStorage.getItem('left-behind-class') || '')));
 const keys = {};
-const mouse = { x: VIEW_W / 2, y: VIEW_H / 2, fx: 0, fy: 0, down: false };
-let menuHover = -1, pickHover = -1;
+const mouse = { x: VIEW_W / 2, y: VIEW_H / 2, fx: 0, fy: 0, down: false, rdown: false };
+let menuHover = -1, pickHover = -1, selectHover = -1;
+
+const W = () => WEAPONS[G.cls.weapon];
+const wtype = () => W().type;
+const isBlocking = () => state === 'play' && wtype() === 'melee' && mouse.rdown;
+const isFocusing = () => state === 'play' && wtype() === 'ranged' && mouse.rdown;
+const isMeditating = () => state === 'play' && wtype() === 'spell' && mouse.rdown;
 
 function recomputeStats() {
-  S = Object.assign({}, BASE);
+  S = Object.assign({}, BASE, G.cls.base);
   for (const id of G.cards) CARD_BY_ID[id].apply(S);
 }
 function stageLength(stage) { return STAGE_BASE + (stage - 1) * STAGE_GROWTH; }
 
-function newGame() {
+function newGame(cls) {
   G = {
+    cls,
     time: 0, camTop: 0, genTop: 0,
-    obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], pickups: [],
+    obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
     kills: 0, dist: 0,
     cards: [], offers: [],
     stage: 1, stageStart: 0, nextPick: STAGE_BASE,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0,
     player: {
-      x: WORLD_W / 2, y: -60, r: 14, hp: BASE.maxHp, angle: -Math.PI / 2,
-      mag: BASE.magSize, cooldown: 0, reloadT: 0, bloom: 0, speed: 0,
-      dashT: 0, dashCd: 0, dashX: 0, dashY: -1
+      x: WORLD_W / 2, y: -60, r: 14, hp: 1, angle: -Math.PI / 2,
+      mag: 0, mana: 0, manaDelay: 0, cooldown: 0, reloadT: 0, bloom: 0, speed: 0,
+      dashT: 0, dashCd: 0, dashX: 0, dashY: -1, swingT: 0
     }
   };
   recomputeStats();
-  G.camTop = G.player.y - VIEW_H * 0.78;
+  const p = G.player;
+  p.hp = S.maxHp; p.mag = S.magSize; p.mana = S.manaMax;
+  G.camTop = p.y - VIEW_H * 0.78;
   generate();
 }
 
@@ -316,33 +367,78 @@ function hasLOS(x1, y1, x2, y2) {
   return true;
 }
 
-// ---------- Schießen ----------
+// ---------- Angriffe ----------
 function currentSpread() {
-  const p = G.player;
+  const p = G.player, w = W();
+  if (w.type === 'melee') return 0;
   const mv = Math.min(1, p.speed / S.moveSpeed);
-  return (WEAPON.spread + p.bloom + WEAPON.moveSpread * mv) * S.spreadMul;   // Grad
+  return (w.spread + p.bloom + w.moveSpread * mv) * S.spreadMul * (isFocusing() ? 0.5 : 1);   // Grad
 }
-function addBullet(x, y, angle, speed, dmg, from, range, pierce) {
-  G.bullets.push({ x, y, px: x, py: y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, dmg, from, life: range / speed, pierce: pierce || 0, ignore: [] });
+function addBullet(x, y, angle, speed, dmg, from, range, pierce, extra) {
+  G.bullets.push(Object.assign({ x, y, px: x, py: y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, dmg, from, life: range / speed, pierce: pierce || 0, ignore: [] }, extra || {}));
 }
 function startReload() {
   const p = G.player;
-  if (p.reloadT > 0 || p.mag >= S.magSize) return;
-  p.reloadT = WEAPON.reloadTime * S.reloadMul;
+  if (wtype() !== 'ranged' || p.reloadT > 0 || p.mag >= S.magSize) return;
+  p.reloadT = W().reloadTime * S.reloadMul;
 }
-function playerShoot() {
+function alertNear(radius) {
   const p = G.player;
-  const a = p.angle + (Math.random() + Math.random() - 1) * currentSpread() * deg;
-  addBullet(p.x, p.y, a, WEAPON.speed, WEAPON.damage * S.dmgMul, 'player', WEAPON.range, S.pierce);
-  p.mag--;
-  p.cooldown = WEAPON.interval;
-  p.bloom = Math.min(WEAPON.bloomMax, p.bloom + WEAPON.bloomPerShot);
-  for (let i = 0; i < 3; i++) G.parts.push({ x: p.x + Math.cos(p.angle) * 20, y: p.y + Math.sin(p.angle) * 20, vx: Math.cos(a) * rand(60, 200) + rand(-40, 40), vy: Math.sin(a) * rand(60, 200) + rand(-40, 40), life: 0.1, color: '#ffe9a8' });
-  // Lärm: Gegner in Hörweite werden aufmerksam
   for (const e of G.enemies) {
-    if (e.state === 'idle' && Math.hypot(e.x - p.x, e.y - p.y) < 420) alertEnemy(e);
+    if (e.state === 'idle' && Math.hypot(e.x - p.x, e.y - p.y) < radius) alertEnemy(e);
   }
-  if (p.mag <= 0) startReload();
+}
+function playerAttack() {
+  const p = G.player, w = W();
+  if (w.type === 'ranged') {
+    const a = p.angle + (Math.random() + Math.random() - 1) * currentSpread() * deg;
+    addBullet(p.x, p.y, a, w.speed, w.damage * S.dmgMul, 'player', w.range, S.pierce);
+    p.mag--;
+    p.cooldown = w.interval;
+    p.bloom = Math.min(w.bloomMax, p.bloom + w.bloomPerShot);
+    muzzle(a, '#ffe9a8');
+    alertNear(420);
+    if (p.mag <= 0) startReload();
+  } else if (w.type === 'spell') {
+    if (p.mana < w.cost) return;
+    p.mana -= w.cost; p.manaDelay = w.regenDelay;
+    const a = p.angle + (Math.random() + Math.random() - 1) * currentSpread() * deg;
+    addBullet(p.x, p.y, a, w.speed, w.damage * S.dmgMul, 'player', w.range, S.pierce, { spell: true, splash: w.splash * S.splashMul });
+    p.cooldown = w.interval;
+    p.bloom = Math.min(w.bloomMax, p.bloom + w.bloomPerShot);
+    muzzle(a, '#c9c0ff');
+    alertNear(380);
+  } else {
+    meleeSwing();
+  }
+}
+function muzzle(a, color) {
+  const p = G.player;
+  for (let i = 0; i < 3; i++) G.parts.push({ x: p.x + Math.cos(p.angle) * 20, y: p.y + Math.sin(p.angle) * 20, vx: Math.cos(a) * rand(60, 200) + rand(-40, 40), vy: Math.sin(a) * rand(60, 200) + rand(-40, 40), life: 0.1, color });
+}
+function meleeSwing() {
+  const p = G.player, w = W();
+  p.cooldown = w.interval; p.swingT = w.swing;
+  const reach = w.reach * S.reachMul, arc = (w.arc + S.arcAdd) * deg;
+  for (const e of G.enemies) {
+    if (e.hp <= 0) continue;
+    const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy);
+    if (d > reach + e.r) continue;
+    if (Math.abs(normAngle(Math.atan2(dy, dx) - p.angle)) > arc / 2 + Math.atan2(e.r, Math.max(d, 1))) continue;
+    if (!hasLOS(p.x, p.y, e.x, e.y)) continue;
+    damageEnemy(e, w.damage * S.dmgMul);
+    if (S.chain > 0) chainLightning(e, w.damage * S.dmgMul * 0.5);
+    // Rückstoß
+    if (d > 0) moveCircle(e, dx / d * 16, dy / d * 16);
+    spark(e.x, e.y, '#e8e8e8');
+  }
+  // Geschosse im Schwungbogen abwehren
+  for (const b of G.bullets) {
+    if (b.from !== 'enemy') continue;
+    const dx = b.x - p.x, dy = b.y - p.y, d = Math.hypot(dx, dy);
+    if (d < reach + 16 && Math.abs(normAngle(Math.atan2(dy, dx) - p.angle)) < arc / 2) { b.life = 0; spark(b.x, b.y, '#fff3c8'); }
+  }
+  alertNear(170);
 }
 function alertEnemy(e) {
   e.state = 'alert'; e.reaction = 0.6; e.lastX = G.player.x; e.lastY = G.player.y; e.lostT = 0;
@@ -361,7 +457,7 @@ function tryDash() {
 // ---------- Update ----------
 function update(dt) {
   if (state !== 'play') return;
-  const p = G.player;
+  const p = G.player, w = W();
   G.time += dt;
 
   // Bewegung (WASD) oder Windstoß
@@ -374,23 +470,30 @@ function update(dt) {
     moved = moveCircle(p, p.dashX * v * dt, p.dashY * v * dt);
   } else {
     const len = Math.hypot(mx, my) || 1;
-    const sp = S.moveSpeed * (p.reloadT > 0 ? 0.9 : 1);
+    let sp = S.moveSpeed * (p.reloadT > 0 ? 0.9 : 1);
+    if (isBlocking()) sp *= 0.55; else if (isFocusing()) sp *= 0.65; else if (isMeditating()) sp *= 0.5;
     moved = moveCircle(p, mx / len * sp * dt, my / len * sp * dt);
   }
   p.speed = Math.min(moved / dt, S.moveSpeed * 1.3);
   p.dashCd = Math.max(0, p.dashCd - dt);
+  p.swingT = Math.max(0, p.swingT - dt);
   p.y = clamp(p.y, G.camTop + p.r, G.camTop + VIEW_H - p.r);   // nicht aus dem Bild zurück
 
   p.angle = Math.atan2(mouse.y + G.camTop - p.y, mouse.x - p.x);
 
   // Waffe
   p.cooldown = Math.max(0, p.cooldown - dt);
-  p.bloom = Math.max(0, p.bloom - WEAPON.bloomRecover * dt);
+  p.bloom = Math.max(0, p.bloom - (w.bloomRecover || 0) * dt);
+  if (w.type === 'spell') {
+    p.manaDelay = Math.max(0, p.manaDelay - dt);
+    if (p.manaDelay <= 0) p.mana = Math.min(S.manaMax, p.mana + w.regen * S.manaRegenMul * (isMeditating() ? 3 : 1) * dt);
+    else p.mana = Math.min(S.manaMax, p.mana);
+  }
   if (p.reloadT > 0) {
     p.reloadT -= dt;
     if (p.reloadT <= 0) { p.reloadT = 0; p.mag = S.magSize; }
-  } else if (mouse.down && p.cooldown <= 0 && p.mag > 0) {
-    playerShoot();
+  } else if (mouse.down && p.cooldown <= 0 && !isBlocking() && !isMeditating()) {
+    if (w.type !== 'ranged' || p.mag > 0) playerAttack();
   }
 
   // Kamera: nur nach oben, ab oberem Drittel
@@ -399,7 +502,7 @@ function update(dt) {
   generate();
 
   updateEnemies(dt);
-  spawnReinforcements(dt);
+  spawnReinforcements();
   updateBullets(dt);
 
   for (const k of G.pickups) {
@@ -411,6 +514,7 @@ function update(dt) {
 
   for (const q of G.parts) { q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; }
   for (const a of G.arcs) a.life -= dt;
+  for (const r of G.rings) r.life -= dt;
   G.hurtT = Math.max(0, G.hurtT - dt);
   G.msgT = Math.max(0, G.msgT - dt);
 
@@ -420,6 +524,7 @@ function update(dt) {
   G.pickups = G.pickups.filter(k => !k.taken && k.y < bottom);
   G.parts = G.parts.filter(q => q.life > 0);
   G.arcs = G.arcs.filter(a => a.life > 0);
+  G.rings = G.rings.filter(r => r.life > 0);
 
   if (p.hp <= 0) { die(); return; }
   if (G.dist >= G.nextPick) openPick();
@@ -429,9 +534,9 @@ function say(t) { G.msg = t; G.msgT = 2.2; }
 
 // ---------- Kartenwahl ----------
 function rollOffers() {
-  const n = 3 + S.extraChoices;
+  const n = 3 + S.extraChoices, t = wtype();
   const count = id => G.cards.filter(c => c === id).length;
-  const pool = CARDS.filter(c => count(c.id) < c.max);
+  const pool = CARDS.filter(c => count(c.id) < c.max && (!c.types || c.types.includes(t)));
   const out = [];
   while (out.length < n && pool.length) {
     const total = pool.reduce((s, c) => s + RARITY[c.rarity].weight, 0);
@@ -445,7 +550,7 @@ function openPick() {
   G.offers = rollOffers();
   if (!G.offers.length) { advanceStage(); return; }
   pickHover = -1;
-  mouse.down = false;
+  mouse.down = false; mouse.rdown = false;
   state = 'pick';
 }
 function advanceStage() {
@@ -463,7 +568,7 @@ function choosePick(i) {
   if (S.maxHp > oldHp) p.hp += S.maxHp - oldHp;
   advanceStage();
   say(card.name + ': ' + card.stat);
-  mouse.down = false;
+  mouse.down = false; mouse.rdown = false;
   state = 'play';
 }
 function pickLayout() {
@@ -473,6 +578,21 @@ function pickLayout() {
   const total = n * w + (n - 1) * gap;
   const x0 = (FRAME_W - total) / 2, y = 168;
   return G.offers.map((c, i) => ({ c, x: x0 + i * (w + gap), y, w, h, k }));
+}
+
+// ---------- Charakterwahl ----------
+const SEL = { w: 300, h: 470, gap: 40, y: 150 };
+function selectLayout() {
+  const total = CLASSES.length * SEL.w + (CLASSES.length - 1) * SEL.gap;
+  const x0 = (FRAME_W - total) / 2;
+  return CLASSES.map((c, i) => ({ c, i, x: x0 + i * (SEL.w + SEL.gap), y: SEL.y, w: SEL.w, h: SEL.h }));
+}
+function startRun(i) {
+  lastClass = i;
+  try { localStorage.setItem('left-behind-class', CLASSES[i].id); } catch (e) {}
+  newGame(CLASSES[i]);
+  mouse.down = false; mouse.rdown = false;
+  state = 'play';
 }
 
 function updateEnemies(dt) {
@@ -515,7 +635,7 @@ function updateEnemies(dt) {
     } else {
       if (td > 6) { dirx = tx / td; diry = ty / td; speed = T.chase; }
       e.melee = Math.max(0, e.melee - dt);
-      if (dist < e.r + p.r + 4 && e.melee <= 0) { hurtPlayer(12); e.melee = 0.7; }
+      if (dist < e.r + p.r + 4 && e.melee <= 0) { hurtPlayer(12, Math.atan2(e.y - p.y, e.x - p.x)); e.melee = 0.7; }
     }
 
     if (e.steerT > 0) {
@@ -563,8 +683,15 @@ function spawnReinforcements() {
   }
 }
 
-function hurtPlayer(d) {
-  G.player.hp -= d;
+// srcAngle: Richtung vom Spieler zur Quelle; wird mit dem Schild abgefangen
+function hurtPlayer(d, srcAngle) {
+  const p = G.player;
+  if (isBlocking() && srcAngle !== undefined && Math.abs(normAngle(srcAngle - p.angle)) < 80 * deg) {
+    d *= (1 - S.block);
+    spark(p.x + Math.cos(p.angle) * 18, p.y + Math.sin(p.angle) * 18, '#fff3c8');
+    if (d < 1) return;
+  }
+  p.hp -= d;
   G.hurtT = 0.35;
 }
 
@@ -593,20 +720,34 @@ function updateBullets(dt) {
     if (tObs === Infinity && tHit === Infinity) continue;
     if (tHit < tObs) {
       const hx = b.px + (b.x - b.px) * tHit, hy = b.py + (b.y - b.py) * tHit;
-      if (target === p) hurtPlayer(b.dmg);
-      else {
+      if (target === p) { hurtPlayer(b.dmg, Math.atan2(-b.vy, -b.vx)); spark(hx, hy, '#d33'); }
+      else if (b.spell) {
+        explode(hx, hy, b.dmg, b.splash, target);
+        if (b.pierce > 0) { b.pierce--; b.ignore.push(target); continue; }
+      } else {
         damageEnemy(target, b.dmg);
         if (S.chain > 0) chainLightning(target, b.dmg * 0.5);
-        if (b.pierce > 0) { b.pierce--; b.ignore.push(target); spark(hx, hy, '#e8e8e8'); continue; }
+        spark(hx, hy, '#e8e8e8');
+        if (b.pierce > 0) { b.pierce--; b.ignore.push(target); continue; }
       }
-      spark(hx, hy, target === p ? '#d33' : '#e8e8e8');
     } else {
       const hx = b.px + (b.x - b.px) * tObs, hy = b.py + (b.y - b.py) * tObs;
-      spark(hx, hy, '#bbb');
+      if (b.spell) explode(hx, hy, b.dmg, b.splash, null); else spark(hx, hy, '#bbb');
     }
     b.life = 0;
   }
   G.bullets = G.bullets.filter(b => b.life > 0);
+}
+function explode(x, y, dmg, R, target) {
+  G.rings.push({ x, y, r: R, life: 0.28, max: 0.28 });
+  for (let i = 0; i < 10; i++) G.parts.push({ x, y, vx: rand(-140, 140), vy: rand(-140, 140), life: 0.3, color: '#c9c0ff' });
+  for (const e of G.enemies) {
+    if (e.hp <= 0) continue;
+    if (Math.hypot(e.x - x, e.y - y) <= R + e.r) {
+      damageEnemy(e, dmg * (e === target ? 1 : 0.7));
+      if (e === target && S.chain > 0) chainLightning(e, dmg * 0.5);
+    }
+  }
 }
 function damageEnemy(e, dmg) {
   if (e.hp <= 0) return;
@@ -812,7 +953,6 @@ function drawObstacle(o) {
 }
 function drawEntities() {
   const p = G.player;
-  // Gegner nur im Sichtfeld
   for (const e of G.enemies) {
     if (e.hp <= 0 || !visible(e)) continue;
     if (e.type === 'grunt') drawSkeleton(e); else drawGhoul(e);
@@ -823,9 +963,24 @@ function drawEntities() {
   // Geschosse
   for (const b of G.bullets) {
     if (b.from === 'enemy' && !pointVisible(b.x, b.y)) continue;
+    if (b.spell) {
+      ctx.shadowColor = '#a89cff'; ctx.shadowBlur = 16;
+      ctx.fillStyle = '#e8e2ff'; ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, 7); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(168,156,255,.7)'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(b.x - b.vx * 0.04, b.y - b.vy * 0.04); ctx.lineTo(b.x, b.y); ctx.stroke();
+      continue;
+    }
     ctx.strokeStyle = b.from === 'player' ? '#fff3c8' : '#ff7a7a';
     ctx.lineWidth = 2.5; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(b.x - b.vx * 0.016, b.y - b.vy * 0.016); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  for (const r of G.rings) {
+    const f = 1 - r.life / r.max;
+    ctx.strokeStyle = 'rgba(200,190,255,' + (1 - f) + ')'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.4 + 0.6 * f), 0, 7); ctx.stroke();
+    ctx.fillStyle = 'rgba(168,156,255,' + (0.25 * (1 - f)) + ')';
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r * (0.4 + 0.6 * f), 0, 7); ctx.fill();
   }
   // Kettenblitze
   for (const a of G.arcs) {
@@ -837,11 +992,14 @@ function drawEntities() {
   }
   for (const q of G.parts) { ctx.fillStyle = q.color; ctx.globalAlpha = Math.min(1, q.life * 5); ctx.fillRect(q.x - 1.5, q.y - 1.5, 3, 3); }
   ctx.globalAlpha = 1;
-  drawPlayer(p);
+  drawFigure(G.cls.id, p.x, p.y, p.angle, 1, {
+    dash: p.dashT > 0,
+    swing: p.swingT > 0 ? 1 - p.swingT / WEAPONS.schwert.swing : -1,
+    block: isBlocking(), focus: isFocusing(), med: isMeditating()
+  });
 }
 function drawSkeleton(e) {
   ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.angle);
-  // Bogen
   ctx.strokeStyle = '#6a4a2a'; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.arc(12, 0, 16, -1.1, 1.1); ctx.stroke();
   ctx.strokeStyle = '#d8d0b8'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(12 + 16 * Math.cos(-1.1), 16 * Math.sin(-1.1)); ctx.lineTo(12 + 16 * Math.cos(1.1), 16 * Math.sin(1.1)); ctx.stroke();
   ctx.restore();
@@ -867,21 +1025,68 @@ function drawGhoul(e) {
   ctx.fillStyle = '#f2c14e'; ctx.beginPath(); ctx.arc(e.x, e.y, 5, 0, 7); ctx.fill();
   ctx.fillStyle = '#1c1a14'; ctx.beginPath(); ctx.arc(e.x + Math.cos(e.angle) * 1.5, e.y + Math.sin(e.angle) * 1.5, 2, 0, 7); ctx.fill();
 }
-function drawPlayer(p) {
-  ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.angle);
-  // Armbrust
-  ctx.strokeStyle = '#5a3a1c'; ctx.lineWidth = 4; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(28, 0); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(18, -11); ctx.lineTo(18, 11); ctx.stroke();
-  ctx.strokeStyle = '#d8d0b8'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(18, -11); ctx.lineTo(8, 0); ctx.lineTo(18, 11); ctx.stroke();
-  // Körper und Kapuze
-  ctx.fillStyle = p.dashT > 0 ? '#6fe0a0' : '#2f5a3a';
-  ctx.beginPath(); ctx.arc(0, 0, p.r + 2, 0, 7); ctx.fill();
-  ctx.strokeStyle = '#0c2414'; ctx.lineWidth = 2.5; ctx.stroke();
-  ctx.fillStyle = '#244a2e';
-  ctx.beginPath(); ctx.moveTo(-10, -9); ctx.lineTo(-10, 9); ctx.lineTo(2, 0); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#e0c298'; ctx.beginPath(); ctx.arc(2, 0, 6, 0, 7); ctx.fill();
-  ctx.strokeStyle = '#0c2414'; ctx.lineWidth = 1.5; ctx.stroke();
+
+// Spielfigur von oben; id bestimmt die Klasse, Blickrichtung = angle
+function drawFigure(id, x, y, angle, s, o) {
+  o = o || {};
+  ctx.save(); ctx.translate(x, y); ctx.rotate(angle); ctx.scale(s, s);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (id === 'ritter') {
+    // Schwert (Schwung oder Ruheposition)
+    const w = WEAPONS.schwert, arc = (w.arc + (G && G.cls ? S.arcAdd : 0)) * deg, reach = w.reach * (G && G.cls ? S.reachMul : 1);
+    if (o.swing >= 0) {
+      const a = -arc / 2 + o.swing * arc;
+      ctx.strokeStyle = 'rgba(230,240,255,.35)'; ctx.lineWidth = 10;
+      ctx.beginPath(); ctx.arc(0, 0, reach * 0.78, -arc / 2, a); ctx.stroke();
+      ctx.save(); ctx.rotate(a);
+      ctx.strokeStyle = '#e8eef4'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(reach, 0); ctx.stroke();
+      ctx.strokeStyle = '#8a6a2a'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(8, -6); ctx.lineTo(8, 6); ctx.stroke();
+      ctx.restore();
+    } else {
+      ctx.strokeStyle = '#e8eef4'; ctx.lineWidth = 4.5; ctx.beginPath(); ctx.moveTo(8, 11); ctx.lineTo(34, 8); ctx.stroke();
+      ctx.strokeStyle = '#8a6a2a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(8, 6); ctx.lineTo(8, 16); ctx.stroke();
+    }
+    // Schild
+    ctx.fillStyle = '#7a3a3a'; ctx.strokeStyle = '#d2dae2'; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    if (o.block) ctx.ellipse(20, 0, 7, 19, 0, 0, 7); else ctx.ellipse(2, -15, 9, 6, 0.5, 0, 7);
+    ctx.fill(); ctx.stroke();
+    if (o.block) { ctx.fillStyle = '#d2dae2'; ctx.beginPath(); ctx.arc(20, 0, 3, 0, 7); ctx.fill(); }
+    // Körper, Helm
+    ctx.fillStyle = o.dash ? '#6fe0a0' : '#8a929a'; ctx.strokeStyle = '#2a3036'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(0, 0, 17, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#b8c0c8'; ctx.beginPath(); ctx.arc(1, 0, 10, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#2a3036'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(6, -6); ctx.lineTo(6, 6); ctx.stroke();
+    ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.ellipse(-8, 0, 7, 3.5, 0, 0, 7); ctx.fill();
+  } else if (id === 'magier') {
+    // Stab mit Kristall
+    ctx.strokeStyle = '#6a4a2a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(2, 11); ctx.lineTo(34, 11); ctx.stroke();
+    const glow = o.med ? 14 : 10;
+    ctx.shadowColor = '#a89cff'; ctx.shadowBlur = glow * 1.5;
+    ctx.fillStyle = '#e8e2ff'; ctx.beginPath(); ctx.arc(36, 11, o.med ? 6.5 : 5, 0, 7); ctx.fill();
+    ctx.shadowBlur = 0;
+    // Körper, Hut
+    ctx.fillStyle = o.dash ? '#6fe0a0' : '#3a2f7a'; ctx.strokeStyle = '#150f3a'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(0, 0, 16, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#4a3a9a'; ctx.beginPath(); ctx.arc(-1, 0, 19, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#5e4cb4'; ctx.beginPath(); ctx.arc(-3, 0, 11, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#f2c14e'; ctx.beginPath(); ctx.arc(-3, 0, 3, 0, 7); ctx.fill();
+    if (o.med) { ctx.strokeStyle = 'rgba(168,156,255,.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 26, 0, 7); ctx.stroke(); }
+  } else {
+    // Waldläufer: Armbrust
+    ctx.strokeStyle = '#5a3a1c'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(28, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(18, -11); ctx.lineTo(18, 11); ctx.stroke();
+    ctx.strokeStyle = '#d8d0b8'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(18, -11); ctx.lineTo(8, 0); ctx.lineTo(18, 11); ctx.stroke();
+    ctx.fillStyle = o.dash ? '#6fe0a0' : '#2f5a3a';
+    ctx.beginPath(); ctx.arc(0, 0, 16, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#0c2414'; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.fillStyle = '#244a2e';
+    ctx.beginPath(); ctx.moveTo(-10, -9); ctx.lineTo(-10, 9); ctx.lineTo(2, 0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#e0c298'; ctx.beginPath(); ctx.arc(2, 0, 6, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#0c2414'; ctx.lineWidth = 1.5; ctx.stroke();
+    if (o.focus) { ctx.strokeStyle = 'rgba(79,208,138,.55)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 24, 0, 7); ctx.stroke(); }
+  }
   ctx.restore();
 }
 
@@ -918,26 +1123,23 @@ function drawCard(c, x, y, k, hover) {
   pg.addColorStop(0, '#ece1c2'); pg.addColorStop(1, '#d8c89b');
   rr(6, 6, 208, 308, 7); ctx.fillStyle = pg; ctx.fill();
   ctx.strokeStyle = '#3a2a18'; ctx.lineWidth = 2; ctx.stroke();
-  // Name
-  text(c.name, 110, 30, 15, '#2a1f14', 'center', F_TITLE);
+  text(c.name, 110, 30, c.name.length > 20 ? 12.5 : 15, '#2a1f14', 'center', F_TITLE);
   ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(18, 40); ctx.lineTo(202, 40); ctx.stroke();
-  // Bogenfenster
   const ag = ctx.createRadialGradient(110, 130, 4, 110, 130, 100);
   ag.addColorStop(0, R.c + '66'); ag.addColorStop(0.75, '#0c1210'); ag.addColorStop(1, '#0c1210');
   rr(15, 48, 190, 120, [60, 60, 6, 6]); ctx.fillStyle = ag; ctx.fill();
   ctx.strokeStyle = R.c; ctx.lineWidth = 3; ctx.stroke();
   drawIcon(c.icon, 110, 108, 72, R.c, 1.2);
-  // Typband
   rr(40, 156, 140, 20, 3); ctx.fillStyle = R.c; ctx.fill(); ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 1; ctx.stroke();
   text(c.kind.toUpperCase(), 110, 171, 12, '#1c140c', 'center', F_TEXT, 'bold');
-  // Wirkung
-  text(c.stat, 110, 199, 14, R.ink, 'center', F_TITLE);
+  const sl = wrap(c.stat, 190, '14px ' + F_TITLE);
+  sl.slice(0, 2).forEach((l, i) => text(l, 110, 198 + i * 15, 14, R.ink, 'center', F_TITLE));
+  const off = sl.length > 1 ? 15 : 0;
   const lines = wrap(c.text, 186, '500 15px ' + F_TEXT);
-  lines.slice(0, 4).forEach((l, i) => text(l, 110, 220 + i * 16, 15, '#2a1f14', 'center', F_TEXT, '500'));
+  lines.slice(0, 4).forEach((l, i) => text(l, 110, 220 + off + i * 16, 15, '#2a1f14', 'center', F_TEXT, '500'));
   const fl = wrap(c.flavor, 186, 'italic 13px ' + F_TEXT);
   fl.slice(0, 2).forEach((l, i) => text(l, 110, 282 - (Math.min(fl.length, 2) - 1) * 14 + i * 14, 13, '#5a4630', 'center', F_TEXT, 'italic'));
-  // Fuß
   ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.beginPath(); ctx.moveTo(18, 292); ctx.lineTo(202, 292); ctx.stroke();
   ctx.fillStyle = R.c; ctx.beginPath(); ctx.arc(24, 304, 6, 0, 7); ctx.fill(); ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 2; ctx.stroke();
   text(R.label.toUpperCase(), 36, 308, 12, R.ink, 'left', F_TEXT, 'bold');
@@ -946,7 +1148,7 @@ function drawCard(c, x, y, k, hover) {
 
 // ---------- Zeichnen: Oberfläche ----------
 function drawRails() {
-  const p = G.player;
+  const p = G.player, w = W();
   // Linke Leiste: Fortschritt im Level
   let g = ctx.createLinearGradient(0, 0, 120, 0); g.addColorStop(0, '#0a110d'); g.addColorStop(1, '#14201a');
   ctx.fillStyle = g; ctx.fillRect(0, 0, 120, FRAME_H);
@@ -982,26 +1184,41 @@ function drawRails() {
   const hg = ctx.createLinearGradient(0, 680, 0, 690); hg.addColorStop(0, '#e0606a'); hg.addColorStop(1, '#a8323c');
   rr(FIELD_X + 32, 680, Math.max(0, 272 * p.hp / S.maxHp), 8, 4); ctx.fillStyle = hg; ctx.fill();
   // Fähigkeit
-  const ax = FIELD_X + 360;
-  rr(ax, 653, 250, 54, 27); ctx.fillStyle = '#0a110d'; ctx.fill();
+  const ax = FIELD_X + 340;
+  rr(ax, 653, 240, 54, 27); ctx.fillStyle = '#0a110d'; ctx.fill();
   ctx.strokeStyle = S.dash ? '#4fd08a' : '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
   if (S.dash) {
     rr(ax + 14, 669, 72, 22, 5); ctx.fillStyle = '#e8dcbc'; ctx.fill();
     text('Leertaste', ax + 50, 685, 14, '#1c140c', 'center', F_TEXT, 'bold');
-    text('Windstoß', ax + 98, 685, 14, '#f0e6c8', 'left', F_TITLE);
+    text('Windstoß', ax + 96, 685, 14, '#f0e6c8', 'left', F_TITLE);
     const cd = 1 - p.dashCd / DASH.cooldown;
-    rr(ax + 176, 676, 60, 8, 4); ctx.fillStyle = '#1e2c22'; ctx.fill();
-    rr(ax + 176, 676, 60 * cd, 8, 4); ctx.fillStyle = cd >= 1 ? '#4fd08a' : '#2e8a5a'; ctx.fill();
+    rr(ax + 172, 676, 54, 8, 4); ctx.fillStyle = '#1e2c22'; ctx.fill();
+    rr(ax + 172, 676, 54 * cd, 8, 4); ctx.fillStyle = cd >= 1 ? '#4fd08a' : '#2e8a5a'; ctx.fill();
   } else {
-    text('Keine Fähigkeit', ax + 125, 686, 15, '#6f8274', 'center', F_TEXT, 'italic');
+    text('Keine Fähigkeit', ax + 120, 686, 15, '#6f8274', 'center', F_TEXT, 'italic');
   }
-  // Waffe
-  text(WEAPON.name.toUpperCase(), FIELD_X + VIEW_W - 130, 666, 12, '#b8c4d0', 'right', F_TITLE);
-  text(p.reloadT > 0 ? 'spannen …' : 'R spannen · ' + (WEAPON.reloadTime * S.reloadMul).toFixed(1) + ' s', FIELD_X + VIEW_W - 130, 690, 14, '#b8c4d0', 'right', F_TEXT);
-  ctx.font = '42px ' + F_TITLE; ctx.textAlign = 'right';
-  ctx.fillStyle = p.mag === 0 ? '#ff7a8a' : silverGrad(672, 706);
-  ctx.fillText(String(p.mag), FIELD_X + VIEW_W - 62, 704);
-  text('/ ' + S.magSize, FIELD_X + VIEW_W - 26, 704, 19, '#b8c4d0', 'right', F_TITLE);
+  // Waffe / Ressource
+  const rx = FIELD_X + VIEW_W - 26;
+  text((G.cls.name + ' · ' + w.name).toUpperCase(), rx, 664, 12, '#b8c4d0', 'right', F_TITLE);
+  if (w.type === 'ranged') {
+    text(p.reloadT > 0 ? 'spannen …' : 'R spannen · ' + (w.reloadTime * S.reloadMul).toFixed(1) + ' s', rx - 100, 690, 14, '#b8c4d0', 'right', F_TEXT);
+    ctx.font = '42px ' + F_TITLE; ctx.textAlign = 'right';
+    ctx.fillStyle = p.mag === 0 ? '#ff7a8a' : silverGrad(672, 706);
+    ctx.fillText(String(p.mag), rx - 62, 704);
+    text('/ ' + S.magSize, rx, 704, 19, '#b8c4d0', 'right', F_TITLE);
+  } else if (w.type === 'spell') {
+    const mp = p.mana / S.manaMax;
+    text(isMeditating() ? 'Meditation …' : 'Rechtsklick: Meditieren', rx - 120, 700, 14, '#b8c4d0', 'right', F_TEXT);
+    text('MANA ' + Math.floor(p.mana) + ' / ' + S.manaMax, rx, 686, 14, '#e8e2ff', 'right', F_TITLE);
+    rr(rx - 110, 692, 110, 12, 6); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#6a5ac0'; ctx.lineWidth = 2; ctx.stroke();
+    rr(rx - 107, 695, 104 * mp, 6, 3); ctx.fillStyle = p.mana < w.cost ? '#7a6aa0' : '#a89cff'; ctx.fill();
+  } else {
+    const cdp = 1 - p.cooldown / w.interval;
+    text(isBlocking() ? 'Schild oben' : 'Rechtsklick: Schild', rx - 120, 700, 14, '#b8c4d0', 'right', F_TEXT);
+    text('BLOCK ' + Math.round(S.block * 100) + ' %', rx, 686, 14, '#e8eef4', 'right', F_TITLE);
+    rr(rx - 110, 692, 110, 12, 6); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#8a929a'; ctx.lineWidth = 2; ctx.stroke();
+    rr(rx - 107, 695, 104 * clamp(cdp, 0, 1), 6, 3); ctx.fillStyle = cdp >= 1 ? '#d2dae2' : '#6a747e'; ctx.fill();
+  }
 
   // Rechte Leiste: aktive Karten
   g = ctx.createLinearGradient(1080, 0, 1280, 0); g.addColorStop(0, '#14201a'); g.addColorStop(1, '#0a110d');
@@ -1034,7 +1251,6 @@ function drawRails() {
 }
 
 function drawFieldHUD() {
-  const p = G.player;
   ctx.fillStyle = silverGrad(10, 54);
   ctx.font = '44px ' + F_TITLE; ctx.textAlign = 'left';
   ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 6;
@@ -1054,11 +1270,16 @@ function drawFieldHUD() {
 }
 
 function drawCrosshair() {
-  const p = G.player;
-  const dist = Math.hypot(mouse.x - p.x, mouse.y + G.camTop - p.y);
-  const gap = clamp(Math.tan(currentSpread() * deg) * dist, 5, 70);
+  const p = G.player, w = W();
   const x = mouse.fx, y = mouse.fy;
   ctx.strokeStyle = '#fff3c8'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+  if (w.type === 'melee') {
+    ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.stroke();
+    ctx.fillStyle = '#fff3c8'; ctx.fillRect(x - 1, y - 1, 2, 2);
+    return;
+  }
+  const dist = Math.hypot(mouse.x - p.x, mouse.y + G.camTop - p.y);
+  const gap = clamp(Math.tan(currentSpread() * deg) * dist, 5, 70);
   ctx.beginPath();
   ctx.moveTo(x - gap - 8, y); ctx.lineTo(x - gap, y);
   ctx.moveTo(x + gap, y); ctx.lineTo(x + gap + 8, y);
@@ -1067,7 +1288,7 @@ function drawCrosshair() {
   ctx.stroke();
   ctx.fillStyle = '#fff3c8'; ctx.fillRect(x - 1, y - 1, 2, 2);
   if (p.reloadT > 0) {
-    const f = 1 - p.reloadT / (WEAPON.reloadTime * S.reloadMul);
+    const f = 1 - p.reloadT / (w.reloadTime * S.reloadMul);
     ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(x, y, gap + 16, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2); ctx.stroke();
   }
@@ -1079,7 +1300,7 @@ function overlay(alpha) {
 function drawPickScreen() {
   overlay(0.82);
   ctx.beginPath(); ctx.arc(640, 400, 330, 0, 7); ctx.strokeStyle = 'rgba(142,232,255,.3)'; ctx.setLineDash([8, 8]); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
-  text('STUFE ' + (G.stage - 0) + ' ÜBERSTANDEN · ' + Math.floor(G.dist) + ' M', 640, 62, 19, '#8ee8ff', 'center', F_TEXT, '500');
+  text('STUFE ' + G.stage + ' ÜBERSTANDEN · ' + Math.floor(G.dist) + ' M', 640, 62, 19, '#8ee8ff', 'center', F_TEXT, '500');
   ctx.font = '50px ' + F_TITLE; ctx.textAlign = 'center';
   ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 8;
   ctx.fillStyle = silverGrad(80, 130); ctx.fillText('Wähle einen Segen', 640, 118);
@@ -1095,11 +1316,81 @@ function drawPickScreen() {
   text('1 · 2 · 3' + (lay.length > 3 ? ' · 4' : '') + ' oder Klick  ·  Die Karte wirkt bis zum Ende des Durchlaufs  ·  Die Zeit steht still', 640, 660, 17, '#c8d4de', 'center', F_TEXT);
 }
 
+// Charakterwahl
+function drawSelectScreen() {
+  let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
+  g.addColorStop(0, '#0c1a2a'); g.addColorStop(0.5, '#12283a'); g.addColorStop(1, '#0a110d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  for (const s of stars) { ctx.fillStyle = 'rgba(255,255,255,' + s[3] + ')'; ctx.fillRect(s[0], s[1], s[2], s[2]); }
+  g = ctx.createRadialGradient(640, 420, 100, 640, 420, 700);
+  g.addColorStop(0, 'rgba(60,110,120,.25)'); g.addColorStop(1, 'rgba(2,5,4,.7)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+
+  text('DIE LETZTEN DER FALLENEN KRONE', 640, 54, 18, '#8ee8ff', 'center', F_TEXT, '500');
+  ctx.font = '48px ' + F_TITLE; ctx.textAlign = 'center';
+  ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 8;
+  ctx.fillStyle = silverGrad(70, 120); ctx.fillText('Wähle deinen Streiter', 640, 108);
+  ctx.shadowBlur = 0;
+
+  selectLayout().forEach(L => {
+    const c = L.c, hover = selectHover === L.i;
+    const lift = hover ? -10 : 0;
+    ctx.save(); ctx.translate(L.x, L.y + lift);
+    ctx.shadowColor = hover ? c.accent : 'rgba(0,0,0,.65)'; ctx.shadowBlur = hover ? 36 : 18; ctx.shadowOffsetY = hover ? 0 : 8;
+    const fg = ctx.createLinearGradient(0, 0, L.w, L.h);
+    fg.addColorStop(0, c.accent); fg.addColorStop(0.5, c.accent2); fg.addColorStop(1, c.accent);
+    rr(0, 0, L.w, L.h, 14); ctx.fillStyle = fg; ctx.fill();
+    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+    const pg = ctx.createLinearGradient(0, 0, 0, L.h);
+    pg.addColorStop(0, '#ece1c2'); pg.addColorStop(1, '#d8c89b');
+    rr(6, 6, L.w - 12, L.h - 12, 9); ctx.fillStyle = pg; ctx.fill();
+    ctx.strokeStyle = '#3a2a18'; ctx.lineWidth = 2; ctx.stroke();
+    // Name
+    text(c.name, L.w / 2, 44, 26, '#2a1f14', 'center', F_TITLE);
+    ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(24, 56); ctx.lineTo(L.w - 24, 56); ctx.stroke();
+    // Bogenfenster mit Figur
+    const ag = ctx.createRadialGradient(L.w / 2, 150, 6, L.w / 2, 150, 140);
+    ag.addColorStop(0, c.accent + '55'); ag.addColorStop(0.7, '#0c1210'); ag.addColorStop(1, '#0c1210');
+    rr(22, 66, L.w - 44, 150, [76, 76, 8, 8]); ctx.fillStyle = ag; ctx.fill();
+    ctx.strokeStyle = c.accent; ctx.lineWidth = 3; ctx.stroke();
+    ctx.save(); ctx.beginPath(); rr(22, 66, L.w - 44, 150, [76, 76, 8, 8]); ctx.clip();
+    drawFigure(c.id, L.w / 2 - 14, 162, -Math.PI / 2 + (hover ? 0.12 : 0), 2.3, { swing: -1 });
+    ctx.restore();
+    // Rolle
+    rr(L.w / 2 - 70, 204, 140, 22, 4); ctx.fillStyle = c.accent; ctx.fill(); ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 1; ctx.stroke();
+    text(c.role.toUpperCase(), L.w / 2, 220, 13, '#1c140c', 'center', F_TEXT, 'bold');
+    // Beschreibung
+    const bl = wrap(c.blurb, L.w - 56, 'italic 17px ' + F_TEXT);
+    bl.slice(0, 3).forEach((l, i) => text(l, L.w / 2, 252 + i * 19, 17, '#4a3a28', 'center', F_TEXT, 'italic'));
+    // Werte
+    let yy = 322;
+    for (const [label, val] of Object.entries(c.rating)) {
+      text(label.toUpperCase(), 28, yy + 4, 12, '#3a2a18', 'left', F_TEXT, 'bold');
+      for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = i < val ? c.accent2 : 'rgba(58,42,24,.2)';
+        rr(116 + i * 34, yy - 6, 28, 12, 3); ctx.fill();
+        if (i < val) { ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 1; ctx.stroke(); }
+      }
+      yy += 22;
+    }
+    // Waffe und Spezial
+    ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.beginPath(); ctx.moveTo(24, 408); ctx.lineTo(L.w - 24, 408); ctx.stroke();
+    wrap(c.weaponLine, L.w - 48, '500 15px ' + F_TEXT).slice(0, 2).forEach((l, i) => text(l, L.w / 2, 427 + i * 16, 15, '#2a1f14', 'center', F_TEXT, '500'));
+    text(c.special, L.w / 2, 458, 14, '#6a3a1a', 'center', F_TEXT, 'bold');
+    ctx.restore();
+    text(String(L.i + 1), L.x + L.w / 2, L.y + L.h + 34, 18, hover ? '#f2c14e' : '#b8c4d0', 'center', F_TITLE);
+  });
+  // Zurück
+  rr(40, 36, 120, 40, 20); ctx.fillStyle = selectHover === -2 ? '#1e2c22' : '#101a14'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
+  text('‹ Zurück', 100, 62, 17, '#e8dcbc', 'center', F_TITLE);
+  text('1 · 2 · 3 oder Klick  ·  Weitere Streiter folgen später', 640, 692, 17, '#c8d4de', 'center', F_TEXT);
+}
+
 // Menü
 const stars = Array.from({ length: 120 }, () => [Math.random() * FRAME_W, Math.random() * 420, Math.random() * 1.4 + 0.4, Math.random() * 0.6 + 0.3]);
 const pines = Array.from({ length: 40 }, (_, i) => [i * 34 - 10, 540 + Math.random() * 60, 70 + Math.random() * 70]);
 const menuButtons = [
-  { label: 'Neuer Durchlauf', main: true, x: 80, y: 420, w: 330, h: 56, action: () => beginGame() },
+  { label: 'Neuer Durchlauf', main: true, x: 80, y: 420, w: 330, h: 56, action: () => { selectHover = lastClass; state = 'select'; } },
   { label: 'Kartenbuch', note: 'bald', x: 80, y: 490, w: 330, h: 56 },
   { label: 'Bibliothek', note: 'bald', x: 80, y: 560, w: 330, h: 56 }
 ];
@@ -1108,7 +1399,6 @@ function drawMenu() {
   g.addColorStop(0, '#0c1a2a'); g.addColorStop(0.45, '#12283a'); g.addColorStop(0.75, '#1c3a40'); g.addColorStop(1, '#0a110d');
   ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
   for (const s of stars) { ctx.fillStyle = 'rgba(255,255,255,' + s[3] + ')'; ctx.fillRect(s[0], s[1], s[2], s[2]); }
-  // Mond
   const mg = ctx.createRadialGradient(990, 165, 10, 990, 165, 240);
   mg.addColorStop(0, 'rgba(200,225,255,.5)'); mg.addColorStop(1, 'rgba(200,225,255,0)');
   ctx.fillStyle = mg; ctx.fillRect(740, -80, 500, 500);
@@ -1116,7 +1406,6 @@ function drawMenu() {
   mg2.addColorStop(0, '#fff'); mg2.addColorStop(0.6, '#dce8f2'); mg2.addColorStop(1, '#aab8c6');
   ctx.fillStyle = mg2; ctx.beginPath(); ctx.arc(995, 165, 95, 0, 7); ctx.fill();
   ctx.fillStyle = 'rgba(120,140,160,.28)'; ctx.beginPath(); ctx.arc(947, 128, 17, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(1025, 195, 25, 0, 7); ctx.fill();
-  // Hügel und Ruine
   ctx.fillStyle = '#0d1a14';
   ctx.beginPath(); ctx.moveTo(560, 720); ctx.bezierCurveTo(640, 470, 760, 440, 860, 450); ctx.bezierCurveTo(960, 460, 1060, 500, 1280, 520); ctx.lineTo(1280, 720); ctx.closePath(); ctx.fill();
   ctx.fillStyle = '#0a120d';
@@ -1125,7 +1414,6 @@ function drawMenu() {
   for (let x = 880; x < 998; x += 24) ctx.fillRect(x, 292, 14, 28);
   ctx.beginPath(); ctx.moveTo(912, 320); ctx.lineTo(936, 250); ctx.lineTo(960, 320); ctx.fill();
   ctx.fillStyle = 'rgba(233,196,106,.85)'; ctx.fillRect(926, 350, 8, 16); ctx.fillRect(740, 400, 8, 14);
-  // Nadelwald
   for (const layer of [0, 1]) {
     ctx.fillStyle = layer ? '#07100b' : '#0a130e';
     for (const [x, y, h] of pines) {
@@ -1134,17 +1422,14 @@ function drawMenu() {
     }
   }
   ctx.fillRect(0, 700, FRAME_W, 20);
-  // Irrlichter
   for (const [x, y, c] of [[470, 520, '#8ee8ff'], [560, 600, '#8ee8ff'], [1120, 560, '#e9c46a']]) {
     ctx.shadowColor = c; ctx.shadowBlur = 18; ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
   }
   g = ctx.createRadialGradient(640, 324, 300, 640, 324, 760);
   g.addColorStop(0, 'rgba(2,5,4,0)'); g.addColorStop(1, 'rgba(2,5,4,.65)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
-  // Kopfzeile
   text('Weiteste Reise: ', 40, 48, 17, '#b8c4d0', 'left', F_TEXT);
   text(Math.floor(best) + ' m', 40 + 118, 48, 19, '#f2c14e', 'left', F_TITLE);
-  // Titel
   text('DIE LETZTEN DER FALLENEN KRONE', 80, 124, 19, '#8ee8ff', 'left', F_TEXT, '500');
   ctx.font = '100px ' + F_TITLE; ctx.textAlign = 'left';
   ctx.shadowColor = 'rgba(0,0,0,.9)'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 5;
@@ -1154,8 +1439,7 @@ function drawMenu() {
   ctx.shadowBlur = 0;
   text('Das Königreich fiel in einer Nacht.', 80, 282, 22, '#c8d4de', 'left', F_TEXT, 'italic');
   text('Du bist, was von ihm übrig blieb.', 80, 312, 22, '#c8d4de', 'left', F_TEXT, 'italic');
-  // Steuerung
-  text('WASD bewegen · Maus zielen & schießen · R spannen', 80, 372, 17, '#b8c4d0', 'left', F_TEXT);
+  text('WASD bewegen · Maus zielen · Linksklick angreifen · Rechtsklick Spezial', 80, 372, 17, '#b8c4d0', 'left', F_TEXT);
   menuButtons.forEach((b, i) => {
     const hover = menuHover === i && b.action;
     notched(b.x, b.y, b.w, b.h, 12); ctx.fillStyle = b.main ? '#f2c14e' : (hover ? '#f2c14e' : '#9a7a3a'); ctx.fill();
@@ -1165,26 +1449,24 @@ function drawMenu() {
     text(b.label, b.x + b.w / 2, b.y + 36, 19, b.main ? '#1c140c' : (b.action ? '#e8dcbc' : '#7a8a7a'), 'center', F_TITLE);
     if (b.note) text(b.note, b.x + b.w - 22, b.y + 34, 14, '#7a8a7a', 'right', F_TEXT, 'italic');
   });
-  text('Prototyp v0.2 · Karten wählst du im Lauf', 80, 690, 16, '#b8c4d0', 'left', F_TEXT);
+  text('Prototyp v0.3 · Streiter wählen, Karten im Lauf', 80, 690, 16, '#b8c4d0', 'left', F_TEXT);
   text('Klick oder Enter zum Starten', 440, 456, 17, '#f2c14e', 'left', F_TEXT, 'italic');
 }
 
 function draw() {
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.fillStyle = '#0a110d'; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
-  if (state === 'menu' || !G) { drawMenu(); drawCursor(); return; }
+  if (state === 'menu' || !G && state !== 'select') { drawMenu(); drawCursor(); return; }
+  if (state === 'select') { drawSelectScreen(); drawCursor(); return; }
 
-  // Spielfeld
   ctx.save();
   ctx.beginPath(); ctx.rect(FIELD_X, 0, VIEW_W, VIEW_H); ctx.clip();
   ctx.translate(FIELD_X, -G.camTop);
   drawWorld();
   drawEntities();
   ctx.restore();
-  // Sichtnebel
   drawFogInto();
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(fog, 0, 0); ctx.restore();
-  // Feld-HUD
   ctx.save(); ctx.translate(FIELD_X, 0);
   ctx.beginPath(); ctx.rect(0, 0, VIEW_W, VIEW_H); ctx.clip();
   drawFieldHUD();
@@ -1197,9 +1479,9 @@ function draw() {
   if (state === 'dead') {
     overlay(0.78);
     text('Gefallen', 640, 290, 56, '#ff7a8a', 'center', F_TITLE);
-    text(Math.floor(G.dist) + ' m · ' + G.kills + ' Gefallene · ' + G.cards.length + ' Karten', 640, 346, 24, '#f0e6c8', 'center', F_TEXT);
+    text(G.cls.name + ' · ' + Math.floor(G.dist) + ' m · ' + G.kills + ' Gefallene · ' + G.cards.length + ' Karten', 640, 346, 24, '#f0e6c8', 'center', F_TEXT);
     text('Rekord: ' + Math.floor(best) + ' m', 640, 384, 19, '#b8c4d0', 'center', F_TEXT);
-    text('Klick oder Enter für einen neuen Durchlauf', 640, 440, 20, '#f2c14e', 'center', F_TEXT, 'italic');
+    text('Klick oder Enter: neuen Streiter wählen', 640, 440, 20, '#f2c14e', 'center', F_TEXT, 'italic');
     drawCursor();
   }
 }
@@ -1209,11 +1491,20 @@ function drawCursor() {
 }
 
 // ---------- Eingabe ----------
-function beginGame() { newGame(); state = 'play'; }
+function toSelect() { selectHover = lastClass; state = 'select'; }
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
-  if ((state === 'menu' || state === 'dead') && (e.code === 'Enter' || e.code === 'Space')) { beginGame(); return; }
+  if (state === 'menu' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
+  if (state === 'dead' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
+  if (state === 'select') {
+    if (/^Digit[1-9]$/.test(e.code)) { const i = Number(e.code.slice(5)) - 1; if (CLASSES[i]) startRun(i); return; }
+    if (e.code === 'Enter' || e.code === 'Space') { startRun(selectHover >= 0 ? selectHover : lastClass); return; }
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') selectHover = (Math.max(selectHover, 0) + CLASSES.length - 1) % CLASSES.length;
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') selectHover = (Math.max(selectHover, 0) + 1) % CLASSES.length;
+    if (e.code === 'Escape') state = 'menu';
+    return;
+  }
   if (state === 'play') {
     if (e.code === 'KeyR') startReload();
     if (e.code === 'Space') tryDash();
@@ -1222,7 +1513,7 @@ addEventListener('keydown', e => {
   if ((e.code === 'Escape' || e.code === 'KeyP') && (state === 'play' || state === 'pause')) state = state === 'play' ? 'pause' : 'play';
 });
 addEventListener('keyup', e => keys[e.code] = false);
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouse.down = false; if (state === 'play') state = 'pause'; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouse.down = false; mouse.rdown = false; if (state === 'play') state = 'pause'; });
 function setMouse(e) {
   const r = canvas.getBoundingClientRect();
   mouse.fx = (e.clientX - r.left) / r.width * FRAME_W;
@@ -1231,18 +1522,31 @@ function setMouse(e) {
   mouse.y = mouse.fy;
   if (state === 'menu') menuHover = menuButtons.findIndex(b => mouse.fx >= b.x && mouse.fx <= b.x + b.w && mouse.fy >= b.y && mouse.fy <= b.y + b.h);
   if (state === 'pick') pickHover = pickLayout().findIndex(L => mouse.fx >= L.x && mouse.fx <= L.x + L.w && mouse.fy >= L.y && mouse.fy <= L.y + L.h);
+  if (state === 'select') {
+    const hit = selectLayout().find(L => mouse.fx >= L.x && mouse.fx <= L.x + L.w && mouse.fy >= L.y && mouse.fy <= L.y + L.h);
+    selectHover = hit ? hit.i : (mouse.fx >= 40 && mouse.fx <= 160 && mouse.fy >= 36 && mouse.fy <= 76 ? -2 : selectHover === -2 ? -1 : selectHover);
+    if (hit) selectHover = hit.i;
+  }
 }
 canvas.addEventListener('mousemove', setMouse);
 canvas.addEventListener('mousedown', e => {
   setMouse(e);
+  if (state === 'play' || state === 'pause') {
+    if (e.button === 2) mouse.rdown = true;
+  }
   if (e.button !== 0) return;
   if (state === 'menu') { const b = menuButtons[menuHover]; if (b && b.action) b.action(); return; }
-  if (state === 'dead') { beginGame(); return; }
+  if (state === 'select') {
+    if (selectHover === -2) { state = 'menu'; return; }
+    if (selectHover >= 0) startRun(selectHover);
+    return;
+  }
+  if (state === 'dead') { toSelect(); return; }
   if (state === 'pause') { state = 'play'; return; }
   if (state === 'pick') { if (pickHover >= 0) choosePick(pickHover); return; }
   mouse.down = true;
 });
-addEventListener('mouseup', () => mouse.down = false);
+addEventListener('mouseup', e => { if (e.button === 0) mouse.down = false; if (e.button === 2) mouse.rdown = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 // ---------- Hauptschleife ----------
