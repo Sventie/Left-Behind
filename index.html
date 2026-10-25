@@ -2902,7 +2902,7 @@ applySettings();
 
 // ---------- Rangliste ----------
 const SCORES_URL = FEEDBACK_ENDPOINT ? FEEDBACK_ENDPOINT + '/scores' : '';
-const board = { list: null, err: false, at: 0, loading: false };
+const board = { list: null, err: false, at: -1e9, loading: false };
 let scoreSt = { run: null };
 const runScore = () => Math.floor(G.dist) + G.kills * 3 + (G.won ? 500 : 0);
 const savedName = () => { try { return localStorage.getItem(NAME_KEY) || ''; } catch (e) { return ''; } };
@@ -2959,7 +2959,7 @@ function drawDeadScreen() {
 }
 function drawBoard() {
   if (!SCORES_URL) return;
-  if (!board.loading && performance.now() - board.at > 30000) loadBoard();
+  if (!board.loading && performance.now() - board.at > (board.err ? 8000 : 30000)) loadBoard();
   const x = 890, y = 272, w = 350, h = 392;
   rr(x, y, w, h, 14); ctx.fillStyle = 'rgba(10,17,13,.86)'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
   text('Rangliste', x + 20, y + 36, 22, '#f2c14e', 'left', F_TITLE);
