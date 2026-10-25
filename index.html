@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>Jump Up</title>
+<title>Left Behind</title>
 <style>
   html, body { margin: 0; height: 100%; background: #0b0c0f; overflow: hidden; }
   body { display: flex; align-items: center; justify-content: center; }
@@ -14,7 +14,7 @@
 <canvas id="game"></canvas>
 <script>
 // =====================================================================
-//  Jump Up – Topdown-Prototyp
+//  Left Behind – Topdown-Prototyp
 //  WASD bewegen, Maus zielen/schießen, R nachladen, Esc/P Pause
 //  Alle Werte zum Ausprobieren stehen im Block "Balancing".
 // =====================================================================
@@ -687,7 +687,7 @@ function overlay(lines) {
 function draw() {
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.clearRect(0, 0, VIEW_W, VIEW_H);
-  if (!G) { overlay([['JUMP UP', 56], ['Klicken zum Starten', 20, '#bbb']]); return; }
+  if (!G) { overlay([['LEFT BEHIND', 56], ['Klicken zum Starten', 20, '#bbb']]); return; }
   ctx.save();
   ctx.translate(0, -G.camTop);
   drawWorld();
@@ -707,7 +707,7 @@ function draw() {
     ['Klick oder Enter für neuen Versuch', 18, '#ffd37a']
   ]);
   if (state === 'menu') overlay([
-    ['JUMP UP', 56],
+    ['LEFT BEHIND', 56],
     ['WASD bewegen · Maus zielen & schießen', 18, '#ddd'],
     ['R nachladen (dauert 1,5 s) · Esc/P Pause', 18, '#ddd'],
     ['Du kommst nur nach oben weiter, nie zurück.', 18, '#ddd'],
