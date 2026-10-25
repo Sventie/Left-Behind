@@ -15,6 +15,7 @@
 <body>
 <canvas id="bg"></canvas>
 <canvas id="game"></canvas>
+<script src="audio/config.js"></script>
 <script>
 // =====================================================================
 //  Left Behind – Topdown-Prototyp (Reine Fantasy)
@@ -140,6 +141,7 @@ const ICONS = {
   crown:  'M3 18l1.5-10 4.5 4 3-7 3 7 4.5-4L21 18zM3 21h18',
   sword:  'M12 2l2.5 3v9.5h-5V5zM7 14.5h10M12 14.5V21M10 21h4',
   arc:    'M3 17c0-7 4-12 9-12s9 5 9 12M12 5v8M7 8l2.5 4M17 8l-2.5 4',
+  flask:  'M9 2h6M10 2v6l-5 10a2.5 2.5 0 0 0 2.2 3.5h9.6A2.5 2.5 0 0 0 19 18l-5-10V2M7.5 15h9',
   moon:   'M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z',
   blast:  'M12 4v3M12 17v3M4 12h3M17 12h3M6.3 6.3l2.1 2.1M15.6 15.6l2.1 2.1M6.3 17.7l2.1-2.1M15.6 8.4l2.1-2.1M14.5 12A2.5 2.5 0 1 1 9.5 12 2.5 2.5 0 0 1 14.5 12z'
 };
@@ -217,6 +219,187 @@ function removeFromDeck(cls, id) {
   if (i >= 0) { d.splice(i, 1); persist(); }
 }
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+
+// ---------- Audio: eingebaute Synthesizer-Klänge, durch eigene Dateien ersetzbar ----------
+// Eigene Dateien: siehe audio/README.md und audio/config.js
+const SFX_IDS = ['ui_click', 'card_pick', 'card_flip', 'rare_reveal', 'pack_buy', 'coin', 'buff_drink', 'merchant_open', 'stage_up',
+  'shoot_crossbow', 'reload_start', 'reload_done', 'empty_click', 'shoot_spell', 'spell_explode', 'sword_swing', 'sword_hit', 'block',
+  'hit_enemy', 'enemy_die', 'enemy_shoot', 'player_hurt', 'player_die', 'dash', 'pickup_heal', 'horde_horn'];
+const audioPrefs = (() => {
+  try { return Object.assign({ music: true, sfx: true }, JSON.parse(localStorage.getItem('left-behind-audio'))); } catch (e) { return { music: true, sfx: true }; }
+})();
+const customAudio = {};
+for (const f of (window.CUSTOM_AUDIO || [])) {
+  const id = f.replace(/\.[^.]+$/, '');
+  const a = new Audio('audio/' + f); a.preload = 'auto';
+  a.addEventListener('error', () => { delete customAudio[id]; });
+  customAudio[id] = a;
+}
+let AC = null, sfxBus = null, musicBus = null, noiseBuf = null, gestureDone = false;
+const MUSIC_VOL = 0.5, SFX_VOL = 0.7;
+function audioInit() {
+  gestureDone = true;
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    const m = AC.createGain(); m.gain.value = 0.9; m.connect(AC.destination);
+    sfxBus = AC.createGain(); sfxBus.connect(m);
+    musicBus = AC.createGain(); musicBus.connect(m);
+    noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    applyAudioPrefs();
+  } catch (e) { AC = null; }
+}
+function applyAudioPrefs() {
+  if (AC) { sfxBus.gain.value = audioPrefs.sfx ? SFX_VOL : 0; musicBus.gain.value = audioPrefs.music ? MUSIC_VOL : 0; }
+  if (MUSIC.el) MUSIC.el.volume = audioPrefs.music ? MUSIC_VOL : 0;
+  try { localStorage.setItem('left-behind-audio', JSON.stringify(audioPrefs)); } catch (e) {}
+}
+function tone(dest, t, f, dur, type, vol, f2) {
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(vol, 0.0002), t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.05);
+}
+function noise(dest, t, dur, vol, ftype, f1, f2) {
+  const src = AC.createBufferSource(), fl = AC.createBiquadFilter(), g = AC.createGain();
+  src.buffer = noiseBuf; src.loop = true;
+  fl.type = ftype; fl.frequency.setValueAtTime(f1, t); if (f2 && f2 !== f1) fl.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(vol, 0.0002), t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(fl); fl.connect(g); g.connect(dest); src.start(t, Math.random()); src.stop(t + dur + 0.05);
+}
+function pad(dest, t, f, dur, vol) {
+  for (const [type, det] of [['sine', 0], ['triangle', 4]]) {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.value = f; o.detune.value = det;
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + 1.0); g.gain.setValueAtTime(vol, t + Math.max(1.0, dur - 0.2)); g.gain.linearRampToValueAtTime(0.0001, t + dur + 1.4);
+    o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 1.5);
+  }
+}
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+const T = (f, t, d, ty, v, f2) => tone(sfxBus, t, f, d, ty, v, f2);
+const N = (t, d, v, ty, f1, f2) => noise(sfxBus, t, d, v, ty, f1, f2);
+const SFX_SYNTH = {
+  ui_click: (t, v) => T(900, t, .05, 'square', .12 * v, 600),
+  card_pick: (t, v) => { T(523, t, .25, 'triangle', .25 * v); T(784, t + .08, .35, 'triangle', .25 * v); T(1568, t + .12, .4, 'sine', .1 * v); },
+  card_flip: (t, v) => N(t, .12, .18 * v, 'bandpass', 2200, 800),
+  rare_reveal: (t, v) => { [523, 659, 784, 1047].forEach((f, i) => T(f, t + i * .07, .7, 'sine', .16 * v)); N(t, .5, .06 * v, 'highpass', 6000, 6000); },
+  pack_buy: (t, v) => { T(110, t, .2, 'sine', .35 * v, 50); N(t, .15, .12 * v, 'lowpass', 800, 300); },
+  coin: (t, v) => { T(1568, t, .14, 'square', .08 * v); T(2093, t + .07, .3, 'square', .08 * v); },
+  buff_drink: (t, v) => { T(300, t, .08, 'sine', .2 * v, 500); T(380, t + .1, .08, 'sine', .2 * v, 600); T(460, t + .2, .1, 'sine', .2 * v, 700); },
+  merchant_open: (t, v) => [262, 330, 392, 523].forEach((f, i) => T(f, t + i * .06, .9, 'triangle', .14 * v)),
+  stage_up: (t, v) => [392, 523, 659, 784].forEach((f, i) => T(f, t + i * .09, .5, 'triangle', .18 * v)),
+  shoot_crossbow: (t, v) => { N(t, .09, .3 * v, 'bandpass', 1800, 600); T(160, t, .1, 'sine', .3 * v, 60); },
+  reload_start: (t, v) => { N(t, .05, .15 * v, 'highpass', 3000, 3000); T(220, t, .05, 'square', .06 * v); },
+  reload_done: (t, v) => { T(300, t, .04, 'square', .12 * v); T(520, t + .07, .05, 'square', .12 * v); N(t, .04, .15 * v, 'highpass', 4000, 4000); },
+  empty_click: (t, v) => T(120, t, .04, 'square', .12 * v),
+  shoot_spell: (t, v) => { T(500, t, .22, 'sine', .22 * v, 1300); T(1000, t, .2, 'triangle', .1 * v, 1800); },
+  spell_explode: (t, v) => { N(t, .4, .35 * v, 'lowpass', 900, 150); T(110, t, .35, 'sine', .35 * v, 40); },
+  sword_swing: (t, v) => N(t, .18, .22 * v, 'bandpass', 500, 2500),
+  sword_hit: (t, v) => { N(t, .07, .3 * v, 'bandpass', 1500, 900); T(220, t, .1, 'triangle', .25 * v, 100); },
+  block: (t, v) => { T(1300, t, .15, 'square', .1 * v); T(1900, t, .12, 'square', .07 * v); N(t, .06, .2 * v, 'highpass', 3000, 3000); },
+  hit_enemy: (t, v) => { N(t, .05, .18 * v, 'bandpass', 1200, 700); T(330, t, .05, 'triangle', .12 * v, 200); },
+  enemy_die: (t, v) => { T(320, t, .3, 'sawtooth', .14 * v, 50); N(t, .2, .12 * v, 'lowpass', 1200, 200); },
+  enemy_shoot: (t, v) => { T(680, t, .07, 'square', .08 * v, 420); N(t, .04, .06 * v, 'highpass', 3000, 3000); },
+  player_hurt: (t, v) => { T(190, t, .2, 'sawtooth', .25 * v, 80); N(t, .12, .15 * v, 'lowpass', 700, 300); },
+  player_die: (t, v) => { T(440, t, 1.1, 'sawtooth', .2 * v, 45); T(220, t, 1.2, 'sine', .25 * v, 30); N(t, .6, .12 * v, 'lowpass', 900, 100); },
+  dash: (t, v) => N(t, .24, .28 * v, 'bandpass', 600, 3500),
+  pickup_heal: (t, v) => [523, 659, 784].forEach((f, i) => T(f, t + i * .06, .3, 'sine', .18 * v)),
+  horde_horn: (t, v) => { T(110, t, 1.0, 'sawtooth', .18 * v, 90); T(165, t, 1.0, 'sawtooth', .1 * v, 135); }
+};
+const SFX_GAP = { hit_enemy: 0.05, enemy_shoot: 0.07, player_hurt: 0.15, sword_hit: 0.05, empty_click: 0.35, ui_click: 0.04, enemy_die: 0.08 };
+const lastSfx = {};
+function sfx(id, vol) {
+  vol = vol === undefined ? 1 : vol;
+  if (!audioPrefs.sfx || vol <= 0.02) return;
+  const now = performance.now() / 1000;
+  if (now - (lastSfx[id] || 0) < (SFX_GAP[id] || 0.02)) return;
+  lastSfx[id] = now;
+  const c = customAudio[id];
+  if (c) { try { const a = c.cloneNode(); a.volume = clamp(vol * 0.8, 0, 1); a.play().catch(() => {}); } catch (e) {} return; }
+  if (!AC) return;
+  try { const f = SFX_SYNTH[id]; if (f) f(AC.currentTime + 0.001, vol); } catch (e) {}
+}
+
+// Musik: drei Stücke (Menü, Lauf, Händler) als laufender Synthesizer
+const MUSIC = { name: null, track: null, el: null, intensity: 0 };
+const PROG_MENU = [[45, 52, 57, 60], [41, 48, 53, 57], [48, 55, 60, 64], [43, 50, 55, 59]];
+const PROG_MERCH = [[48, 55, 60, 64], [45, 52, 57, 60], [41, 48, 53, 57], [43, 50, 55, 59]];
+const RUN_ROOTS = [45, 41, 43, 40];
+const MUSIC_DEFS = {
+  menu: { bpm: 60, step(tr, i, t) {
+    const ch = PROG_MENU[Math.floor(i / 16) % 4], s = i % 16, beat = tr.stepDur * 4;
+    if (s === 0) ch.forEach((n, k) => pad(tr.out, t, mtof(n), beat * 4, k === 0 ? 0.06 : 0.04));
+    if (s % 2 === 0) tone(tr.out, t, mtof(ch[[0, 2, 1, 3, 2, 1, 3, 2][(s / 2) % 8]] + 12), beat * 0.9, 'triangle', 0.05);
+    if (s === 8) tone(tr.out, t, mtof(ch[2] + 24), beat * 2, 'sine', 0.04);
+  } },
+  run: { bpm: 88, step(tr, i, t) {
+    const bar = Math.floor(i / 16) % 4, s = i % 16, root = RUN_ROOTS[bar], k = MUSIC.intensity;
+    if (s === 0) { pad(tr.out, t, mtof(root), tr.stepDur * 16, 0.05); pad(tr.out, t, mtof(root + 7), tr.stepDur * 16, 0.03); }
+    if (s === 0 || s === 8) tone(tr.out, t, 95, 0.18, 'sine', 0.3, 40);
+    if (s === 0 || s === 6 || s === 10 || s === 12) tone(tr.out, t, mtof(root), 0.3, 'sawtooth', 0.045);
+    if (s % 2 === 1) noise(tr.out, t, 0.04, 0.025 + 0.05 * k, 'highpass', 7000, 7000);
+    if (k > 0.35 && s % 2 === 0) tone(tr.out, t, mtof(root + 24 + [0, 3, 7, 10][(s / 2) % 4]), 0.12, 'triangle', 0.05 * k);
+    if (k > 0.6 && (s === 4 || s === 12)) noise(tr.out, t, 0.12, 0.09, 'bandpass', 1800, 1200);
+  } },
+  merchant: { bpm: 72, step(tr, i, t) {
+    const ch = PROG_MERCH[Math.floor(i / 16) % 4], s = i % 16;
+    if (s === 0) ch.forEach(n => pad(tr.out, t, mtof(n), tr.stepDur * 16, 0.03));
+    if ([0, 3, 6, 8, 11, 14].includes(s)) {
+      const n = ch[(s * 7 + i) % 4] + 12, f = mtof(n);
+      tone(tr.out, t, f, 0.9, 'triangle', 0.09); tone(tr.out, t, f * 2, 0.25, 'sine', 0.03);
+    }
+  } }
+};
+function musicFor(st) {
+  if (!gestureDone) return;
+  const want = ['menu', 'select', 'book', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
+  if (MUSIC.name === want) return;
+  stopMusic(); MUSIC.name = want;
+  if (!want) return;
+  const el = customAudio['music_' + want];
+  if (el) { el.loop = true; el.currentTime = 0; el.volume = 0; el.play().catch(() => {}); MUSIC.el = el; fadeEl(el, audioPrefs.music ? MUSIC_VOL : 0, 1200); return; }
+  if (!AC) return;
+  const def = MUSIC_DEFS[want], tr = { def, stepDur: 60 / def.bpm / 4, step: 0, next: AC.currentTime + 0.1, out: AC.createGain() };
+  tr.out.gain.setValueAtTime(0.0001, AC.currentTime); tr.out.gain.linearRampToValueAtTime(1, AC.currentTime + 1.5);
+  tr.out.connect(musicBus);
+  tr.timer = setInterval(() => {
+    if (tr.next < AC.currentTime - 0.5) tr.next = AC.currentTime;
+    while (tr.next < AC.currentTime + 0.25) { try { def.step(tr, tr.step, tr.next); } catch (e) {} tr.next += tr.stepDur; tr.step++; }
+  }, 50);
+  MUSIC.track = tr;
+}
+function stopMusic() {
+  const tr = MUSIC.track;
+  if (tr) {
+    clearInterval(tr.timer);
+    try { tr.out.gain.cancelScheduledValues(AC.currentTime); tr.out.gain.setValueAtTime(Math.max(tr.out.gain.value, 0.0001), AC.currentTime); tr.out.gain.linearRampToValueAtTime(0, AC.currentTime + 1.2); } catch (e) {}
+    setTimeout(() => { try { tr.out.disconnect(); } catch (e) {} }, 1600);
+    MUSIC.track = null;
+  }
+  if (MUSIC.el) { const el = MUSIC.el; fadeEl(el, 0, 800, true); MUSIC.el = null; }
+}
+function fadeEl(el, to, ms, pauseAfter) {
+  const from = el.volume, t0 = performance.now();
+  const id = setInterval(() => {
+    const f = Math.min(1, (performance.now() - t0) / ms);
+    el.volume = clamp(from + (to - from) * f, 0, 1);
+    if (f >= 1) { clearInterval(id); if (pauseAfter) el.pause(); }
+  }, 40);
+}
+function updateMusicIntensity(dt) {
+  let target = 0;
+  if (G && state === 'play') {
+    const p = G.player;
+    target = clamp(G.enemies.filter(e => e.state === 'alert' && Math.hypot(e.x - p.x, e.y - p.y) < 650).length / 4, 0, 1);
+  }
+  MUSIC.intensity += (target - MUSIC.intensity) * Math.min(1, dt * 0.8);
+}
+function flipSfx(it, delayMs) {
+  setTimeout(() => { sfx('card_flip'); if (RARITY_KEYS.indexOf(it.c.rarity) >= 2) setTimeout(() => sfx('rare_reveal'), 380); }, delayMs || 0);
+}
 
 // ---------- Setup ----------
 const canvas = document.getElementById('game');
@@ -358,6 +541,7 @@ const isMeditating = () => state === 'play' && wtype() === 'spell' && mouse.rdow
 function recomputeStats() {
   S = Object.assign({}, BASE, G.cls.base);
   for (const id of G.cards) CARD_BY_ID[id].apply(S);
+  for (const id of G.buffs || []) BUFF_BY_ID[id].apply(S);
 }
 function stageLength(stage) { return STAGE_BASE + (stage - 1) * STAGE_GROWTH; }
 
@@ -367,7 +551,7 @@ function newGame(cls) {
     time: 0, camTop: 0, genTop: 0,
     obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
     kills: 0, dist: 0,
-    merchants: [], spent: 0, chunkSinceMerchant: MERCHANT_MIN_GAP,
+    merchants: [], buffs: [], spent: 0, chunkSinceMerchant: MERCHANT_MIN_GAP,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
     stage: 1, stageStart: 0, nextPick: STAGE_BASE,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0,
@@ -471,18 +655,69 @@ const MERCHANT_QUOTES = [
   '„Alles, was ich verkaufe, hat schon einmal jemanden gerettet. Meistens.“'
 ];
 function runSilver() { return Math.max(0, Math.floor(G.dist) + G.kills * 3 - G.spent); }
+// Tränke: gelten nur für den laufenden Durchlauf
+const BUFFS = [
+  { id: 'heiltrank',   name: 'Heiltrank',            kind: 'Trank', rarity: 'gewoehnlich', icon: 'flask', stat: '+40 Leben sofort',     text: 'Ein bitterer Schluck, der Wunden schließt.',         flavor: '„Schmeckt nach Eisen und Hoffnung.“',  apply: S => {}, instant: p => { p.hp = Math.min(S.maxHp, p.hp + 40); } },
+  { id: 'kraft',       name: 'Kräftigungstrank',     kind: 'Trank', rarity: 'gewoehnlich', icon: 'flask', stat: '+15 % Schaden',        text: 'Deine Schläge und Schüsse treffen härter.',          flavor: '„Wirkt, bis der Rausch vergeht.“',     apply: S => { S.dmgMul *= 1.15; } },
+  { id: 'eilsalbe',    name: 'Eilschritt-Salbe',     kind: 'Trank', rarity: 'gewoehnlich', icon: 'flask', stat: '+12 % Lauftempo',      text: 'Warm, würzig und erstaunlich schnell.',              flavor: '„Die Füße vergessen die Müdigkeit.“',  apply: S => { S.moveSpeed *= 1.12; } },
+  { id: 'ruhetrank',   name: 'Ruhetrank',            kind: 'Trank', rarity: 'gewoehnlich', icon: 'flask', types: ['ranged', 'spell'], stat: '−15 % Streuung', text: 'Die Hände werden still, der Blick klar.', flavor: '„Zittern ist etwas für Lebende.“',     apply: S => { S.spreadMul *= 0.85; } },
+  { id: 'spannoel',    name: 'Schnellspann-Öl',      kind: 'Trank', rarity: 'gewoehnlich', icon: 'flask', types: ['ranged'], stat: '−20 % Spannzeit', text: 'Ein Tropfen auf die Winde, und sie läuft.',      flavor: '„Geschmiert wie ein Aal.“',            apply: S => { S.reloadMul *= 0.8; } },
+  { id: 'manatrank',   name: 'Manatrunk',            kind: 'Trank', rarity: 'gewoehnlich', icon: 'flask', types: ['spell'], stat: '+30 Mana · sofort voll', text: 'Kaltes Licht in einer Flasche.',            flavor: '„Nicht schütteln.“',                   apply: S => { S.manaMax += 30; }, instant: p => { p.mana = S.manaMax; } },
+  { id: 'klingenoel',  name: 'Klingenöl',            kind: 'Trank', rarity: 'gewoehnlich', icon: 'flask', types: ['melee'], stat: '+15 % Reichweite', text: 'Dein Schwert scheint länger zu werden.',         flavor: '„Es hängt mit dem Glanz zusammen.“',   apply: S => { S.reachMul *= 1.15; } },
+  { id: 'falkensalbe', name: 'Falkensalbe',          kind: 'Trank', rarity: 'selten',      icon: 'flask', stat: 'Sichtkegel +20°',      text: 'Du siehst mehr, ohne dich zu drehen.',               flavor: '„Brennt in den Augen. Lohnt sich.“',   apply: S => { S.fov += 20; } },
+  { id: 'staerkung',   name: 'Stärkungssegen',       kind: 'Trank', rarity: 'selten',      icon: 'flask', stat: '+30 Leben',            text: 'Ein warmes Gefühl und ein breiterer Rücken.',        flavor: '„Der Segen eines Fremden.“',           apply: S => { S.maxHp += 30; } },
+  { id: 'nachtsicht',  name: 'Nachtsicht-Tropfen',   kind: 'Trank', rarity: 'selten',      icon: 'flask', stat: 'Sichtweite +25 %',     text: 'Der Wald wird heller, als er ist.',                  flavor: '„Nicht länger als eine Nacht benutzen.“', apply: S => { S.rangeMul *= 1.25; } },
+  { id: 'schildoel',   name: 'Schildöl',             kind: 'Trank', rarity: 'selten',      icon: 'flask', types: ['melee'], stat: 'Schild fängt +10 % mehr ab', text: 'Hölzer und Eisen halten länger.',       flavor: '„Gut geschmiert hält länger.“',        apply: S => { S.block = Math.min(0.97, S.block + 0.1); } },
+  { id: 'zauberoel',   name: 'Zauberöl',             kind: 'Trank', rarity: 'selten',      icon: 'flask', types: ['spell'], stat: '+25 % Flächenradius', text: 'Der Funke breitet sich weiter aus.',            flavor: '„Brennt auch auf Wasser.“',            apply: S => { S.splashMul *= 1.25; } },
+  { id: 'drachenblut', name: 'Drachenblut',          kind: 'Trank', rarity: 'episch',      icon: 'flask', stat: '+35 % Schaden',        text: 'Heiß, dick und unerhört kräftig.',                   flavor: '„Der Drache hat nichts gemerkt.“',     apply: S => { S.dmgMul *= 1.35; } },
+  { id: 'windtrank',   name: 'Windtrank',            kind: 'Trank', rarity: 'episch',      icon: 'flask', stat: '+25 % Lauftempo',      text: 'Der Wind trägt deine Schritte.',                     flavor: '„Aus einem Sturm in Flaschen.“',       apply: S => { S.moveSpeed *= 1.25; } },
+  { id: 'mondelixier', name: 'Mondlicht-Elixier',    kind: 'Trank', rarity: 'episch',      icon: 'flask', stat: 'Sichtweite +40 %, Kegel +15°', text: 'Flüssiges Mondlicht hellt die Nacht auf.', flavor: '„Man sieht jeden Stein, jeden Feind.“', apply: S => { S.rangeMul *= 1.4; S.fov += 15; } },
+  { id: 'verlorene',   name: 'Elixier der Verlorenen', kind: 'Trank', rarity: 'legendaer', icon: 'flask', stat: '+25 % Schaden, +20 % Tempo, +50 Leben', text: 'Alles, was dem Reich einst gehörte, in einem Schluck.', flavor: '„Es wartete auf dich.“', apply: S => { S.dmgMul *= 1.25; S.moveSpeed *= 1.2; S.maxHp += 50; } }
+];
+const BUFF_BY_ID = Object.fromEntries(BUFFS.map(b => [b.id, b]));
+const itemOf = id => CARD_BY_ID[id] || BUFF_BY_ID[id];
+
+// Händler werden mit der Entfernung besser: Wahrscheinlichkeiten wie bei den Packs
+const MERCHANT_ODDS_EARLY = [72, 22, 5, 1], MERCHANT_ODDS_LATE = [15, 30, 35, 20], MERCHANT_SCALE_M = 700;
+function merchantOdds() {
+  const t = clamp(G.dist / MERCHANT_SCALE_M, 0, 1);
+  return MERCHANT_ODDS_EARLY.map((v, i) => v + (MERCHANT_ODDS_LATE[i] - v) * t);
+}
+function rollRarityKey(odds) {
+  let r = Math.random() * odds.reduce((a, b) => a + b, 0), i = 0;
+  for (; i < 3; i++) { r -= odds[i]; if (r < 0) break; }
+  return RARITY_KEYS[i];
+}
+function pickByRarity(list, key, used) {
+  for (let i = RARITY_KEYS.indexOf(key); i >= 0; i--) {
+    const l = list.filter(x => x.rarity === RARITY_KEYS[i] && !used.includes(x));
+    if (l.length) return l[Math.floor(Math.random() * l.length)];
+  }
+  const rest = list.filter(x => !used.includes(x));
+  return rest[Math.floor(Math.random() * rest.length)];
+}
 function makeMerchantOffers() {
-  const t = wtype();
-  const usable = CARDS.filter(c => !c.types || c.types.includes(t));
-  const take = (list, used) => { const l = list.filter(c => !used.includes(c)); return l[Math.floor(Math.random() * l.length)]; };
-  const used = [];
-  const a = take(usable.filter(c => c.rarity === 'gewoehnlich'), used); if (a) used.push(a);
-  const b = take(usable.filter(c => c.rarity === 'selten'), used) || take(usable.filter(c => c.rarity === 'gewoehnlich'), used); if (b) used.push(b);
-  const e = take(usable.filter(c => c.rarity === 'episch' || c.rarity === 'legendaer'), used) || take(usable, used);
-  const offers = [];
-  for (const c of [a, b]) if (c) offers.push({ c, price: Math.round(MERCHANT_PRICE[c.rarity] * MERCHANT_DISCOUNT), old: MERCHANT_PRICE[c.rarity], sold: false });
-  if (e) offers.push({ c: e, price: MERCHANT_PRICE[e.rarity], exclusive: true, sold: false });
-  return offers;
+  const t = wtype(), odds = merchantOdds();
+  const cardPool = CARDS.filter(c => !c.types || c.types.includes(t));
+  const buffPool = BUFFS.filter(b => !b.types || b.types.includes(t));
+  const mk = (pool, kind) => {
+    const used = [], out = [];
+    for (let i = 0; i < 3; i++) {
+      const it = pickByRarity(pool, rollRarityKey(odds), used);
+      if (!it) break;
+      used.push(it);
+      out.push({ kind, item: it, price: Math.round(MERCHANT_PRICE[it.rarity] * (kind === 'buff' ? 0.6 : 1)), sold: false });
+    }
+    if (out.length) { const d = out[Math.floor(Math.random() * out.length)]; d.old = d.price; d.price = Math.round(d.price * MERCHANT_DISCOUNT); }
+    return out;
+  };
+  return mk(cardPool, 'card').concat(mk(buffPool, 'buff'));
+}
+// Bezahlt wird mit dem gesamten Mondsilber: erst der Verdienst dieses Laufs, dann der Vorrat
+function totalSilver() { return SAVE.silver + runSilver(); }
+function spendSilver(price) {
+  const fromRun = Math.min(price, runSilver());
+  G.spent += fromRun; SAVE.silver -= price - fromRun; persist();
 }
 function nearMerchant() {
   const p = G.player;
@@ -493,17 +728,25 @@ function openMerchant(m) {
   if (!m.offers) m.offers = makeMerchantOffers();
   merchantNow = m;
   mouse.down = false; mouse.rdown = false;
+  sfx('merchant_open');
   state = 'merchant';
 }
 function buyOffer(o) {
-  const c = o.c, owned = G.cards.filter(x => x === c.id).length;
-  if (o.sold || runSilver() < o.price || owned >= c.max) return;
-  o.sold = true; G.spent += o.price;
-  const p = G.player, oldMag = S.magSize, oldHp = S.maxHp;
-  G.cards.push(c.id); recomputeStats();
-  if (S.magSize > oldMag) p.mag += S.magSize - oldMag;
-  if (S.maxHp > oldHp) p.hp += S.maxHp - oldHp;
-  say(c.name + ': ' + c.stat);
+  if (o.sold || totalSilver() < o.price) return;
+  spendSilver(o.price); o.sold = true;
+  sfx('coin');
+  if (o.kind === 'card') {
+    SAVE.owned[o.item.id] = (SAVE.owned[o.item.id] || 0) + 1; persist();
+    say(o.item.name + ' liegt jetzt in deiner Sammlung');
+  } else {
+    const p = G.player, oldMag = S.magSize, oldHp = S.maxHp;
+    G.buffs.push(o.item.id); recomputeStats();
+    if (S.magSize > oldMag) p.mag += S.magSize - oldMag;
+    if (S.maxHp > oldHp) p.hp += S.maxHp - oldHp;
+    if (o.item.instant) o.item.instant(p);
+    sfx('buff_drink');
+    say(o.item.name + ': ' + o.item.stat);
+  }
 }
 
 // ---------- Kollision ----------
@@ -563,6 +806,7 @@ function startReload() {
   const p = G.player;
   if (wtype() !== 'ranged' || p.reloadT > 0 || p.mag >= S.magSize) return;
   p.reloadT = W().reloadTime * S.reloadMul;
+  sfx('reload_start');
 }
 function alertNear(radius) {
   const p = G.player;
@@ -579,6 +823,7 @@ function playerAttack() {
     p.cooldown = w.interval;
     p.bloom = Math.min(w.bloomMax, p.bloom + w.bloomPerShot);
     muzzle(a, '#ffe9a8');
+    sfx('shoot_crossbow');
     alertNear(420);
     if (p.mag <= 0) startReload();
   } else if (w.type === 'spell') {
@@ -589,6 +834,7 @@ function playerAttack() {
     p.cooldown = w.interval;
     p.bloom = Math.min(w.bloomMax, p.bloom + w.bloomPerShot);
     muzzle(a, '#c9c0ff');
+    sfx('shoot_spell');
     alertNear(380);
   } else {
     meleeSwing();
@@ -601,6 +847,7 @@ function muzzle(a, color) {
 function meleeSwing() {
   const p = G.player, w = W();
   p.cooldown = w.interval; p.swingT = w.swing;
+  sfx('sword_swing');
   const reach = w.reach * S.reachMul, arc = (w.arc + S.arcAdd) * deg;
   for (const e of G.enemies) {
     if (e.hp <= 0) continue;
@@ -613,12 +860,13 @@ function meleeSwing() {
     // Rückstoß
     if (d > 0) moveCircle(e, dx / d * 16, dy / d * 16);
     spark(e.x, e.y, '#e8e8e8');
+    sfx('sword_hit');
   }
   // Geschosse im Schwungbogen abwehren
   for (const b of G.bullets) {
     if (b.from !== 'enemy') continue;
     const dx = b.x - p.x, dy = b.y - p.y, d = Math.hypot(dx, dy);
-    if (d < reach + 16 && Math.abs(normAngle(Math.atan2(dy, dx) - p.angle)) < arc / 2) { b.life = 0; spark(b.x, b.y, '#fff3c8'); }
+    if (d < reach + 16 && Math.abs(normAngle(Math.atan2(dy, dx) - p.angle)) < arc / 2) { b.life = 0; spark(b.x, b.y, '#fff3c8'); sfx('block'); }
   }
   alertNear(170);
 }
@@ -633,6 +881,7 @@ function tryDash() {
   const l = Math.hypot(mx, my);
   p.dashX = mx / l; p.dashY = my / l;
   p.dashT = DASH.time; p.dashCd = DASH.cooldown;
+  sfx('dash');
   for (let i = 0; i < 10; i++) G.parts.push({ x: p.x, y: p.y, vx: rand(-60, 60) - p.dashX * 100, vy: rand(-60, 60) - p.dashY * 100, life: 0.35, color: '#9af0c0' });
 }
 
@@ -673,9 +922,11 @@ function update(dt) {
   }
   if (p.reloadT > 0) {
     p.reloadT -= dt;
-    if (p.reloadT <= 0) { p.reloadT = 0; p.mag = S.magSize; }
+    if (p.reloadT <= 0) { p.reloadT = 0; p.mag = S.magSize; sfx('reload_done'); }
   } else if (mouse.down && p.cooldown <= 0 && !isBlocking() && !isMeditating()) {
-    if (w.type !== 'ranged' || p.mag > 0) playerAttack();
+    if (w.type === 'ranged' && p.mag <= 0) sfx('empty_click');
+    else if (w.type === 'spell' && p.mana < w.cost) sfx('empty_click');
+    else playerAttack();
   }
 
   // Kamera: nur nach oben, ab oberem Drittel
@@ -690,7 +941,7 @@ function update(dt) {
   for (const k of G.pickups) {
     if (!k.taken && Math.hypot(k.x - p.x, k.y - p.y) < p.r + 12) {
       k.taken = true; p.hp = Math.min(S.maxHp, p.hp + k.heal);
-      say('+' + k.heal + ' Leben');
+      say('+' + k.heal + ' Leben'); sfx('pickup_heal');
     }
   }
 
@@ -734,6 +985,7 @@ function openPick() {
   if (!G.offers.length) { advanceStage(); return; }
   pickHover = -1;
   mouse.down = false; mouse.rdown = false;
+  sfx('stage_up');
   state = 'pick';
 }
 function advanceStage() {
@@ -752,6 +1004,7 @@ function choosePick(i) {
   if (S.maxHp > oldHp) p.hp += S.maxHp - oldHp;
   advanceStage();
   say(card.name + ': ' + card.stat);
+  sfx('card_pick');
   mouse.down = false; mouse.rdown = false;
   state = 'play';
 }
@@ -812,6 +1065,7 @@ function updateEnemies(dt) {
         if (e.reaction <= 0 && e.cooldown <= 0) {
           const a = e.angle + (Math.random() + Math.random() - 1) * 6 * deg;
           addBullet(e.x, e.y, a, 430, 8, 'enemy', 760, 0);
+          sfx('enemy_shoot', clamp(1 - dist / 800, 0.15, 1));
           e.burst++;
           if (e.burst >= 3) { e.burst = 0; e.cooldown = rand(1.3, 2.2); } else e.cooldown = 0.17;
         }
@@ -858,7 +1112,7 @@ function spawnReinforcements() {
   if (G.time >= G.nextWave) {
     const n = Math.min(2 + Math.floor(G.dist / 120), 5);
     for (let i = 0; i < n; i++) spawnEnemy(Math.random() < 0.35 ? 'rusher' : 'grunt');
-    say('Eine Horde bricht aus dem Wald!');
+    say('Eine Horde bricht aus dem Wald!'); sfx('horde_horn');
     G.nextWave = G.time + rand(22, 40);
   }
   if (G.time >= G.nextSingle) {
@@ -872,11 +1126,13 @@ function hurtPlayer(d, srcAngle) {
   const p = G.player;
   if (isBlocking() && srcAngle !== undefined && Math.abs(normAngle(srcAngle - p.angle)) < 80 * deg) {
     d *= (1 - S.block);
+    sfx('block');
     spark(p.x + Math.cos(p.angle) * 18, p.y + Math.sin(p.angle) * 18, '#fff3c8');
     if (d < 1) return;
   }
   p.hp -= d;
   G.hurtT = 0.35;
+  sfx('player_hurt');
 }
 
 function updateBullets(dt) {
@@ -923,6 +1179,7 @@ function updateBullets(dt) {
   G.bullets = G.bullets.filter(b => b.life > 0);
 }
 function explode(x, y, dmg, R, target) {
+  sfx('spell_explode');
   G.rings.push({ x, y, r: R, life: 0.28, max: 0.28 });
   for (let i = 0; i < 10; i++) G.parts.push({ x, y, vx: rand(-140, 140), vy: rand(-140, 140), life: 0.3, color: '#c9c0ff' });
   for (const e of G.enemies) {
@@ -936,6 +1193,7 @@ function explode(x, y, dmg, R, target) {
 function damageEnemy(e, dmg) {
   if (e.hp <= 0) return;
   e.hp -= dmg; e.hit = 0.12;
+  sfx(e.hp > 0 ? 'hit_enemy' : 'enemy_die', clamp(1 - Math.hypot(e.x - G.player.x, e.y - G.player.y) / 900, 0.3, 1));
   if (e.state === 'idle') alertEnemy(e);
   if (e.hp <= 0) G.kills++;
 }
@@ -955,6 +1213,7 @@ function spark(x, y, color) {
 
 function die() {
   state = 'dead';
+  sfx('player_die');
   G.earned = Math.max(0, Math.round(G.dist + G.kills * 3) - G.spent);   // 1 Mondsilber pro Meter, 3 pro Gefallenem, abzüglich Händler
   SAVE.silver += G.earned;
   SAVE.maxStage = Math.max(SAVE.maxStage || 1, G.stage);
@@ -1436,12 +1695,12 @@ function drawRails() {
   ctx.fillStyle = g; ctx.fillRect(1080, 0, 200, FRAME_H);
   ctx.fillStyle = '#9a7a3a'; ctx.fillRect(1080, 0, 3, FRAME_H);
   text('AKTIVE KARTEN', 1094, 34, 12, '#b8c4d0', 'left', F_TITLE);
-  text(String(G.cards.length), 1270, 34, 13, '#f0e6c8', 'right', F_TITLE);
+  text(String(G.cards.length + G.buffs.length), 1270, 34, 13, '#f0e6c8', 'right', F_TITLE);
   const groups = [];
-  for (const id of G.cards) { const gr = groups.find(x => x.id === id); if (gr) gr.n++; else groups.push({ id, n: 1 }); }
+  for (const id of G.cards.concat(G.buffs)) { const gr = groups.find(x => x.id === id); if (gr) gr.n++; else groups.push({ id, n: 1 }); }
   const chipH = 56, chipGap = 7, maxChips = 9;
   groups.slice(0, maxChips).forEach((gr, i) => {
-    const c = CARD_BY_ID[gr.id], R = RARITY[c.rarity], y = 50 + i * (chipH + chipGap);
+    const c = itemOf(gr.id), R = RARITY[c.rarity], y = 50 + i * (chipH + chipGap);
     rr(1092, y, 176, chipH, 6); ctx.fillStyle = '#16231b'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 2; ctx.stroke();
     rr(1100, y + 8, 40, 40, [20, 20, 4, 4]); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 1; ctx.stroke();
     drawIcon(c.icon, 1120, y + 28, 26, R.c, 1.4);
@@ -1646,6 +1905,7 @@ function bookHit(x, y) {
 function bookClick(h, right) {
   const cls = CLASSES[bookClass];
   if (!h) return;
+  sfx('ui_click');
   if (right) { if (h.t === 'card') removeFromDeck(cls, h.c.id); return; }
   if (h.t === 'back') state = 'menu';
   else if (h.t === 'recycle') { recyclePage = 0; state = 'recycle'; }
@@ -1756,7 +2016,7 @@ function uiHit(x, y, w, h, action) { uiBtns.push({ x, y, w, h, action }); }
 function uiClick() {
   for (let i = uiBtns.length - 1; i >= 0; i--) {
     const b = uiBtns[i];
-    if (mouse.fx >= b.x && mouse.fx <= b.x + b.w && mouse.fy >= b.y && mouse.fy <= b.y + b.h) { if (b.action) b.action(); return true; }
+    if (mouse.fx >= b.x && mouse.fx <= b.x + b.w && mouse.fy >= b.y && mouse.fy <= b.y + b.h) { sfx('ui_click'); if (b.action) b.action(); return true; }
   }
   return false;
 }
@@ -1858,6 +2118,7 @@ function buyPack(p) {
   SAVE.silver -= p.price;
   for (const it of cards) SAVE.owned[it.c.id] = (SAVE.owned[it.c.id] || 0) + 1;
   persist();
+  sfx('pack_buy');
   packOpen = { pack: p, cards };
   state = 'open';
 }
@@ -1908,7 +2169,7 @@ function drawOpenScreen() {
     ctx.translate(x + w / 2, y + h / 2); ctx.scale(Math.abs(Math.cos(f * Math.PI)), 1); ctx.translate(-w / 2, -h / 2);
     if (f >= 0.5) drawCard(it.c, 0, 0, k, it.c.rarity !== 'gewoehnlich'); else drawCardBack(0, 0, k);
     ctx.restore();
-    if (!it.t) uiHit(x, y, w, h, () => { it.t = performance.now(); });
+    if (!it.t) uiHit(x, y, w, h, () => { it.t = performance.now(); flipSfx(it, 0); });
     if (f >= 1) {
       if (it.isNew) { rr(x + 8, y - 10, 62, 26, 13); ctx.fillStyle = '#f2c14e'; ctx.fill(); ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.stroke(); text('NEU!', x + 39, y + 8, 15, '#1c140c', 'center', F_TITLE); }
       text('Besitz: ×' + SAVE.owned[it.c.id], x + w / 2, y + h + 30, 16, '#c8d4de', 'center', F_TEXT);
@@ -1916,7 +2177,7 @@ function drawOpenScreen() {
   });
   if (!done) {
     text('Klick auf eine Karte deckt sie auf', 640, 560, 18, '#c8d4de', 'center', F_TEXT, 'italic');
-    uiButton(540, 590, 200, 44, 'Alle aufdecken', () => { const t = performance.now(); P.cards.forEach((it, i) => { if (!it.t) it.t = t + i * 140; }); });
+    uiButton(540, 590, 200, 44, 'Alle aufdecken', () => { const t = performance.now(); P.cards.forEach((it, i) => { if (!it.t) { it.t = t + i * 140; flipSfx(it, i * 140); } }); });
   } else {
     const best = P.cards.reduce((m, it) => Math.max(m, RARITY_KEYS.indexOf(it.c.rarity)), 0);
     text(best >= 2 ? 'Ein prächtiger Fund!' : best === 1 ? 'Eine gute Ausbeute.' : 'Ein bescheidenes Bündel.', 640, 560, 20, RARITY[RARITY_KEYS[best]].c, 'center', F_TITLE);
@@ -1933,7 +2194,7 @@ function surplusList() {
 function recycleCard(c, n) {
   n = Math.min(n, Math.max(0, (SAVE.owned[c.id] || 0) - copyLimit(c)));
   if (n <= 0) return;
-  SAVE.owned[c.id] -= n; SAVE.silver += n * RECYCLE_VALUE[c.rarity]; persist();
+  SAVE.owned[c.id] -= n; SAVE.silver += n * RECYCLE_VALUE[c.rarity]; persist(); sfx('coin');
 }
 function drawRecycleScreen() {
   uiBtns = [];
@@ -1967,61 +2228,71 @@ function drawRecycleScreen() {
 function drawMerchantScreen() {
   uiBtns = [];
   overlay(0.82);
-  const m = merchantNow, X = 100, Y = 70, W = 1080, H = 580;
+  const m = merchantNow, X = 50, Y = 48, W = 1180, H = 624;
   rr(X, Y, W, H, 16);
   let g = ctx.createLinearGradient(0, Y, 0, Y + H); g.addColorStop(0, '#1a2a20'); g.addColorStop(1, '#101a14');
   ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 3; ctx.stroke();
-  ctx.save(); rr(X + 2, Y + 2, 310, H - 4, [14, 0, 0, 14]); ctx.clip();
+  ctx.save(); rr(X + 2, Y + 2, 232, H - 4, [14, 0, 0, 14]); ctx.clip();
   g = ctx.createLinearGradient(0, Y, 0, Y + H); g.addColorStop(0, '#1a2638'); g.addColorStop(1, '#0c1510');
-  ctx.fillStyle = g; ctx.fillRect(X, Y, 312, H); ctx.restore();
-  ctx.fillStyle = '#5a4a1a'; ctx.fillRect(X + 312, Y + 6, 2, H - 12);
-  const cx = X + 156, cy = Y + 150;
-  g = ctx.createRadialGradient(cx + 50, cy - 90, 4, cx + 50, cy - 90, 60); g.addColorStop(0, 'rgba(255,217,120,.5)'); g.addColorStop(1, 'rgba(255,217,120,0)');
-  ctx.fillStyle = g; ctx.fillRect(cx - 20, cy - 160, 160, 160);
-  ctx.fillStyle = '#ffd978'; ctx.beginPath(); ctx.arc(cx + 50, cy - 90, 8, 0, 7); ctx.fill();
+  ctx.fillStyle = g; ctx.fillRect(X, Y, 236, H); ctx.restore();
+  ctx.fillStyle = '#5a4a1a'; ctx.fillRect(X + 236, Y + 6, 2, H - 12);
+  // Händler und Karren
+  const cx = X + 118, cy = Y + 130;
+  g = ctx.createRadialGradient(cx + 40, cy - 80, 4, cx + 40, cy - 80, 56); g.addColorStop(0, 'rgba(255,217,120,.5)'); g.addColorStop(1, 'rgba(255,217,120,0)');
+  ctx.fillStyle = g; ctx.fillRect(cx - 20, cy - 140, 140, 140);
+  ctx.fillStyle = '#ffd978'; ctx.beginPath(); ctx.arc(cx + 40, cy - 80, 7, 0, 7); ctx.fill();
   ctx.fillStyle = '#6a4a2a'; ctx.strokeStyle = '#2a1a0c'; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(cx - 100, cy + 70); ctx.lineTo(cx - 70, cy + 10); ctx.lineTo(cx + 70, cy + 10); ctx.lineTo(cx + 100, cy + 70); ctx.closePath(); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#a8323c'; ctx.beginPath(); ctx.moveTo(cx - 76, cy + 12); ctx.lineTo(cx - 56, cy - 18); ctx.lineTo(cx + 56, cy - 18); ctx.lineTo(cx + 76, cy + 12); ctx.closePath(); ctx.fill(); ctx.stroke();
-  for (const dx of [-60, 60]) { ctx.fillStyle = '#4a3220'; ctx.beginPath(); ctx.arc(cx + dx, cy + 74, 22, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#9a7a3a'; ctx.beginPath(); ctx.arc(cx + dx, cy + 74, 6, 0, 7); ctx.fill(); }
-  ctx.fillStyle = '#e0c298'; ctx.beginPath(); ctx.arc(cx, cy - 46, 22, 0, 7); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#3a5a8a'; ctx.beginPath(); ctx.arc(cx, cy - 52, 26, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#c8d0d8'; ctx.beginPath(); ctx.moveTo(cx - 14, cy - 36); ctx.quadraticCurveTo(cx, cy - 12, cx + 14, cy - 36); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#1c140c'; ctx.beginPath(); ctx.arc(cx - 8, cy - 48, 2.5, 0, 7); ctx.arc(cx + 8, cy - 48, 2.5, 0, 7); ctx.fill();
-  text('Bromm der Wanderer', X + 156, Y + 306, 22, '#f0e6c8', 'center', F_TITLE);
-  text('FAHRENDER HÄNDLER', X + 156, Y + 330, 14, '#b8c4d0', 'center', F_TEXT, '500');
-  rr(X + 20, Y + 348, 272, 180, 10); ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
-  wrap(MERCHANT_QUOTES[m.quote], 242, 'italic 19px ' + F_TEXT).slice(0, 6).forEach((l, i) => text(l, X + 156, Y + 380 + i * 24, 19, '#d8e0d0', 'center', F_TEXT, 'italic'));
-  text('RAST BEI ' + Math.floor(G.dist) + ' M', X + 350, Y + 50, 16, '#8ee8ff', 'left', F_TEXT, '500');
-  titleText('Ein Lagerfeuer im Wald', X + 350, Y + 100, 36);
-  drawSilverRun(X + W - 24, Y + 28);
-  const cw = 176, ch = 256, gap = 26, ox = X + 350 + (W - 350 - 24 - (3 * cw + 2 * gap)) / 2;
-  m.offers.forEach((o, i) => {
-    const x = ox + i * (cw + gap), y = Y + 140;
+  ctx.beginPath(); ctx.moveTo(cx - 84, cy + 60); ctx.lineTo(cx - 58, cy + 8); ctx.lineTo(cx + 58, cy + 8); ctx.lineTo(cx + 84, cy + 60); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#a8323c'; ctx.beginPath(); ctx.moveTo(cx - 64, cy + 10); ctx.lineTo(cx - 46, cy - 14); ctx.lineTo(cx + 46, cy - 14); ctx.lineTo(cx + 64, cy + 10); ctx.closePath(); ctx.fill(); ctx.stroke();
+  for (const dx of [-50, 50]) { ctx.fillStyle = '#4a3220'; ctx.beginPath(); ctx.arc(cx + dx, cy + 64, 19, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#9a7a3a'; ctx.beginPath(); ctx.arc(cx + dx, cy + 64, 5, 0, 7); ctx.fill(); }
+  ctx.fillStyle = '#e0c298'; ctx.beginPath(); ctx.arc(cx, cy - 38, 19, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#3a5a8a'; ctx.beginPath(); ctx.arc(cx, cy - 43, 23, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#c8d0d8'; ctx.beginPath(); ctx.moveTo(cx - 12, cy - 30); ctx.quadraticCurveTo(cx, cy - 8, cx + 12, cy - 30); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#1c140c'; ctx.beginPath(); ctx.arc(cx - 7, cy - 40, 2.2, 0, 7); ctx.arc(cx + 7, cy - 40, 2.2, 0, 7); ctx.fill();
+  text('Bromm der Wanderer', cx, Y + 262, 17, '#f0e6c8', 'center', F_TITLE);
+  text('FAHRENDER HÄNDLER', cx, Y + 284, 13, '#b8c4d0', 'center', F_TEXT, '500');
+  rr(X + 14, Y + 304, 208, 240, 10); ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+  wrap(MERCHANT_QUOTES[m.quote], 184, 'italic 18px ' + F_TEXT).slice(0, 8).forEach((l, i) => text(l, cx, Y + 336 + i * 24, 18, '#d8e0d0', 'center', F_TEXT, 'italic'));
+  wrap('Spätere Händler führen bessere Ware. Mit Glück auch schon früher.', 200, 'italic 13px ' + F_TEXT).forEach((l, i) => text(l, cx, Y + 566 + i * 16, 13, '#8a9aa0', 'center', F_TEXT, 'italic'));
+  // Kopf
+  text('RAST BEI ' + Math.floor(G.dist) + ' M', X + 270, Y + 44, 15, '#8ee8ff', 'left', F_TEXT, '500');
+  titleText('Ein Lagerfeuer im Wald', X + 270, Y + 88, 34);
+  drawSilverTotal(X + W - 22, Y + 20);
+  // Angebote
+  const cw = 136, ch = 198, k = 0.62, gap = 14, gx = [X + 270, X + 270 + 3 * cw + 2 * gap + 22], gy = Y + 168;
+  const heads = ['KARTEN · kommen in deine Sammlung', 'TRÄNKE · wirken nur in diesem Lauf'];
+  heads.forEach((h, i) => { text(h, gx[i], Y + 144, 14, i ? '#8ee8ff' : '#f2c14e', 'left', F_TEXT, 'bold'); ctx.fillStyle = i ? '#2a6a7a' : '#7a5a1a'; ctx.fillRect(gx[i], Y + 152, 3 * cw + 2 * gap, 2); });
+  let hovered = null;
+  const counts = { card: 0, buff: 0 };
+  m.offers.forEach(o => {
+    const gi = o.kind === 'card' ? 0 : 1, i = counts[o.kind]++;
+    const x = gx[gi] + i * (cw + gap), y = gy;
+    if (mouse.fx >= x && mouse.fx <= x + cw && mouse.fy >= y && mouse.fy <= y + ch) hovered = o.item;
     ctx.globalAlpha = o.sold ? 0.35 : 1;
-    drawCard(o.c, x, y, 0.8, false);
+    drawCard(o.item, x, y, k, false);
     ctx.globalAlpha = 1;
-    if (o.sold) { rr(x + 20, y + 100, cw - 40, 40, 8); ctx.fillStyle = 'rgba(10,17,13,.92)'; ctx.fill(); text('Verkauft', x + cw / 2, y + 128, 20, '#f2c14e', 'center', F_TITLE); }
-    if (o.old) { ctx.save(); ctx.translate(x + cw - 6, y - 4); ctx.rotate(0.1); rr(-34, -14, 56, 26, 4); ctx.fillStyle = '#f2c14e'; ctx.fill(); text('−30 %', -6, 5, 15, '#1c140c', 'center', F_TITLE); ctx.restore(); }
-    if (o.exclusive) { rr(x - 6, y - 14, 140, 22, 4); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 1; ctx.stroke(); text('NUR BEIM HÄNDLER', x + 64, y + 2, 12, '#f2c14e', 'center', F_TEXT, 'bold'); }
-    const owned = G.cards.filter(x2 => x2 === o.c.id).length, maxed = owned >= o.c.max;
-    const afford = runSilver() >= o.price;
-    const label = o.sold ? 'Gekauft' : maxed ? 'Schon max.' : String(o.price);
-    uiButton(x, y + ch + 16, cw, 44, label, () => buyOffer(o), { primary: true, disabled: o.sold || maxed || !afford });
-    if (o.old && !o.sold && !maxed) text('statt ' + o.old, x + cw / 2, y + ch + 78, 14, '#8a9aa0', 'center', F_TEXT, 'italic');
-    else if (!o.sold && !maxed && !afford) text('zu wenig Mondsilber', x + cw / 2, y + ch + 78, 14, '#ff9a9a', 'center', F_TEXT, 'italic');
-    if (o.old && !o.sold && !maxed && !afford) text('zu wenig Mondsilber', x + cw / 2, y + ch + 96, 14, '#ff9a9a', 'center', F_TEXT, 'italic');
+    if (o.sold) { rr(x + 12, y + 80, cw - 24, 34, 8); ctx.fillStyle = 'rgba(10,17,13,.92)'; ctx.fill(); text(o.kind === 'card' ? 'Gekauft' : 'Getrunken', x + cw / 2, y + 104, 17, '#f2c14e', 'center', F_TITLE); }
+    if (o.old) { ctx.save(); ctx.translate(x + cw - 4, y - 2); ctx.rotate(0.1); rr(-40, -13, 50, 24, 4); ctx.fillStyle = '#f2c14e'; ctx.fill(); text('−30 %', -15, 4, 13, '#1c140c', 'center', F_TITLE); ctx.restore(); }
+    const afford = totalSilver() >= o.price;
+    uiButton(x, y + ch + 14, cw, 38, o.sold ? '—' : String(o.price), () => buyOffer(o), { primary: true, disabled: o.sold || !afford, size: 16 });
+    if (o.kind === 'card') text('Besitz ×' + (SAVE.owned[o.item.id] || 0), x + cw / 2, y + ch + 72, 14, '#c8d4de', 'center', F_TEXT);
+    else text('gilt für diesen Lauf', x + cw / 2, y + ch + 72, 14, '#c8d4de', 'center', F_TEXT);
+    if (o.old && !o.sold) text('statt ' + o.old, x + cw / 2, y + ch + 90, 13, '#8a9aa0', 'center', F_TEXT, 'italic');
+    if (!o.sold && !afford) text('zu wenig Mondsilber', x + cw / 2, y + ch + 108, 13, '#ff9a9a', 'center', F_TEXT, 'italic');
   });
-  uiButton(X + W - 200, Y + H - 62, 170, 44, 'Weiterziehen', () => { state = 'play'; merchantNow = null; });
-  text('Bezahlt wird mit dem Mondsilber, das du in diesem Lauf verdient hast.', X + 350, Y + H - 30, 15, '#8a9aa0', 'left', F_TEXT, 'italic');
+  uiButton(X + W - 200, Y + H - 60, 170, 42, 'Weiterziehen', () => { state = 'play'; merchantNow = null; });
+  text('Bezahlt wird mit deinem gesamten Mondsilber.', X + 270, Y + H - 28, 14, '#8a9aa0', 'left', F_TEXT, 'italic');
+  if (hovered) drawCard(hovered, clamp(mouse.fx + 22, 20, 1040), clamp(mouse.fy - 170, 20, 380), 1.0, true);
 }
-function drawSilverRun(rx, y) {
-  const label = String(runSilver());
-  ctx.font = '18px ' + F_TITLE;
-  const tw = ctx.measureText(label).width, w = tw + 126, x = rx - w;
-  rr(x, y - 6, w, 34, 17); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 1.5; ctx.stroke();
-  drawIcon('moon', x + 22, y + 11, 20, '#c8d0d8', 1.6);
-  text(label, x + 40, y + 18, 18, '#f0e6c8', 'left', F_TITLE);
-  text('im Lauf', x + 48 + tw, y + 17, 14, '#b8c4d0', 'left', F_TEXT);
+function drawSilverTotal(rx, y) {
+  const label = totalSilver().toLocaleString('de-DE');
+  ctx.font = '19px ' + F_TITLE;
+  const tw = ctx.measureText(label).width, w = tw + 140, x = rx - w;
+  rr(x, y, w, 38, 19); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 1.5; ctx.stroke();
+  drawIcon('moon', x + 24, y + 19, 22, '#c8d0d8', 1.6);
+  text(label, x + 44, y + 26, 19, '#f0e6c8', 'left', F_TITLE);
+  text('Mondsilber', x + 52 + tw, y + 25, 15, '#b8c4d0', 'left', F_TEXT);
+  text('davon ' + runSilver() + ' aus diesem Lauf', rx, y + 56, 13, '#8a9aa0', 'right', F_TEXT, 'italic');
 }
 
 // Menü
@@ -2088,7 +2359,7 @@ function drawMenu() {
     text(b.label, b.x + b.w / 2, b.y + 36, 19, b.main ? '#1c140c' : (b.action ? '#e8dcbc' : '#7a8a7a'), 'center', F_TITLE);
     if (b.note) text(b.note, b.x + b.w - 22, b.y + 34, 14, '#7a8a7a', 'right', F_TEXT, 'italic');
   });
-  text('Prototyp v0.6 · Händler am Wegesrand', 80, 690, 16, '#b8c4d0', 'left', F_TEXT);
+  text('Prototyp v0.7 · M Musik · N Effekte', 80, 690, 16, '#b8c4d0', 'left', F_TEXT);
   text('Klick oder Enter zum Starten', 440, 456, 17, '#f2c14e', 'left', F_TEXT, 'italic');
 }
 
@@ -2117,7 +2388,7 @@ function draw() {
   drawRails();
 
   if (state === 'play') drawCrosshair();
-  if (state === 'pause') { overlay(0.7); text('Pause', 640, 340, 48, '#f0e6c8', 'center', F_TITLE); text('Esc / P zum Fortsetzen', 640, 384, 19, '#b8c4d0', 'center', F_TEXT); }
+  if (state === 'pause') { overlay(0.7); text('Pause', 640, 340, 48, '#f0e6c8', 'center', F_TITLE); text('Esc / P zum Fortsetzen', 640, 384, 19, '#b8c4d0', 'center', F_TEXT); text('M Musik ' + (audioPrefs.music ? 'an' : 'aus') + '  ·  N Effekte ' + (audioPrefs.sfx ? 'an' : 'aus'), 640, 420, 17, '#8a9aa0', 'center', F_TEXT); }
   if (state === 'pick') { drawPickScreen(); drawCursor(); }
   if (state === 'merchant') { drawMerchantScreen(); drawCursor(); }
   if (state === 'dead') {
@@ -2138,6 +2409,9 @@ function drawCursor() {
 // ---------- Eingabe ----------
 function toSelect() { selectHover = lastClass; state = 'select'; }
 addEventListener('keydown', e => {
+  audioInit();
+  if (e.code === 'KeyM') { audioPrefs.music = !audioPrefs.music; applyAudioPrefs(); }
+  if (e.code === 'KeyN') { audioPrefs.sfx = !audioPrefs.sfx; applyAudioPrefs(); }
   keys[e.code] = true;
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
   if (state === 'menu' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
@@ -2188,6 +2462,7 @@ function setMouse(e) {
 }
 canvas.addEventListener('mousemove', setMouse);
 canvas.addEventListener('mousedown', e => {
+  audioInit();
   setMouse(e);
   if (state === 'play' || state === 'pause') {
     if (e.button === 2) mouse.rdown = true;
@@ -2195,10 +2470,10 @@ canvas.addEventListener('mousedown', e => {
   if (state === 'book') { bookClick(bookHit(mouse.fx, mouse.fy), e.button === 2); return; }
   if (state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant') { if (e.button === 0) uiClick(); return; }
   if (e.button !== 0) return;
-  if (state === 'menu') { const b = menuButtons[menuHover]; if (b && b.action) b.action(); return; }
+  if (state === 'menu') { const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
   if (state === 'select') {
     if (selectHover === -2) { state = 'menu'; return; }
-    if (selectHover >= 0) startRun(selectHover);
+    if (selectHover >= 0) { sfx('ui_click'); startRun(selectHover); }
     return;
   }
   if (state === 'dead') { toSelect(); return; }
@@ -2219,6 +2494,8 @@ function loop(t) {
   const dt = Math.min((t - (last || t)) / 1000, 0.05);
   last = t;
   update(dt);
+  updateMusicIntensity(dt);
+  musicFor(state);
   draw();
   requestAnimationFrame(loop);
 }
