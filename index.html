@@ -143,6 +143,56 @@ const ICONS = {
 const ICON_PATHS = {};
 for (const k in ICONS) ICON_PATHS[k] = new Path2D(ICONS[k]);
 
+// ---------- Sammlung & Kartenbücher (im Browser gespeichert) ----------
+const DECK_SIZE = 12, MAX_COPIES = 3;
+// Prototyp: Die Bibliothek (Packs) gibt es noch nicht, deshalb ist die Sammlung vorerst gefüllt
+const STARTER_COUNT = { gewoehnlich: 3, selten: 2, episch: 1, legendaer: 1 };
+const SAVE_KEY = 'left-behind-save-v1';
+const compat = (card, cls) => !card.types || card.types.includes(WEAPONS[cls.weapon].type);
+const copyLimit = card => Math.min(MAX_COPIES, card.max);
+const cardOrder = id => CARDS.findIndex(c => c.id === id);
+
+function defaultDeck(cls, owned) {
+  // zuerst Karten, die nur zu dieser Waffe passen, dann allgemeine
+  const list = CARDS.filter(c => compat(c, cls)).sort((a, b) => (b.types ? 1 : 0) - (a.types ? 1 : 0));
+  const deck = [];
+  for (const c of list) {
+    for (let i = 0; i < Math.min(2, copyLimit(c), owned[c.id] || 0) && deck.length < DECK_SIZE; i++) deck.push(c.id);
+  }
+  return deck.sort((a, b) => cardOrder(a) - cardOrder(b));
+}
+function loadSave() {
+  let sv = null;
+  try { sv = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) {}
+  if (!sv || typeof sv !== 'object') sv = {};
+  sv.owned = sv.owned || {};
+  for (const c of CARDS) if (sv.owned[c.id] === undefined) sv.owned[c.id] = STARTER_COUNT[c.rarity];
+  sv.decks = sv.decks || {};
+  for (const cls of CLASSES) {
+    let d = sv.decks[cls.id];
+    if (!Array.isArray(d)) d = defaultDeck(cls, sv.owned);
+    sv.decks[cls.id] = d.filter(id => CARD_BY_ID[id] && compat(CARD_BY_ID[id], cls)).slice(0, DECK_SIZE);
+  }
+  return sv;
+}
+let SAVE = loadSave();
+function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)); } catch (e) {} }
+const deckOf = cls => SAVE.decks[cls.id];
+const inDeck = (cls, id) => deckOf(cls).filter(x => x === id).length;
+function canAddCard(cls, card) {
+  return compat(card, cls) && deckOf(cls).length < DECK_SIZE && inDeck(cls, card.id) < Math.min(copyLimit(card), SAVE.owned[card.id] || 0);
+}
+function addToDeck(cls, card) {
+  if (!canAddCard(cls, card)) return false;
+  const d = deckOf(cls); d.push(card.id); d.sort((a, b) => cardOrder(a) - cardOrder(b));
+  persist(); return true;
+}
+function removeFromDeck(cls, id) {
+  const d = deckOf(cls), i = d.lastIndexOf(id);
+  if (i >= 0) { d.splice(i, 1); persist(); }
+}
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
 // ---------- Setup ----------
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -229,6 +279,7 @@ let lastClass = Math.max(0, CLASSES.findIndex(c => c.id === (localStorage.getIte
 const keys = {};
 const mouse = { x: VIEW_W / 2, y: VIEW_H / 2, fx: 0, fy: 0, down: false, rdown: false };
 let menuHover = -1, pickHover = -1, selectHover = -1;
+let bookClass = 0, bookFilter = 'usable', bookPage = 0, bookHover = null;
 
 const W = () => WEAPONS[G.cls.weapon];
 const wtype = () => W().type;
@@ -248,7 +299,7 @@ function newGame(cls) {
     time: 0, camTop: 0, genTop: 0,
     obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
     kills: 0, dist: 0,
-    cards: [], offers: [],
+    cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
     stage: 1, stageStart: 0, nextPick: STAGE_BASE,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0,
     player: {
@@ -304,6 +355,7 @@ function generate() {
         let w = rand(60, 170), h = rand(40, 120);
         if (kind === 'tree') { w = rand(64, 104); h = w; }
         const o = { kind, seed: Math.random(), x: rand(70, WORLD_W - 70 - w), y: rand(y0 + 30, y1 - h - 30), w, h };
+        if (kind === 'tree') { o.r = w / 2; o.cx = o.x + o.r; o.cy = o.y + o.r; }   // Bäume haben runde Hitboxen
         if (k === 0 && o.y + o.h > -230 && o.x < 700 && o.x + o.w > 260) continue;
         if (G.obstacles.some(p => rectsGap(o, p, 80))) continue;
         G.obstacles.push(o);
@@ -339,6 +391,13 @@ function generate() {
 function resolve(e) {
   for (const o of G.obstacles) {
     if (o.y > e.y + 80 || o.y + o.h < e.y - 80) continue;
+    if (o.kind === 'tree') {
+      const tx = e.x - o.cx, ty = e.y - o.cy, td = Math.hypot(tx, ty), tm = o.r + e.r;
+      if (td < tm) {
+        if (td > 1e-6) { e.x += tx / td * (tm - td); e.y += ty / td * (tm - td); } else e.x += tm;
+      }
+      continue;
+    }
     const cx = clamp(e.x, o.x, o.x + o.w), cy = clamp(e.y, o.y, o.y + o.h);
     const dx = e.x - cx, dy = e.y - cy, d2 = dx * dx + dy * dy;
     if (d2 >= e.r * e.r) continue;
@@ -359,10 +418,14 @@ function moveCircle(e, dx, dy) {
   e.y += dy; resolve(e);
   return Math.hypot(e.x - ox, e.y - oy);
 }
+// Trefferzeit (0..1) einer Strecke mit einer Deckung; Bäume sind Kreise
+function hitObstacle(o, x1, y1, x2, y2) {
+  return o.kind === 'tree' ? segCircle(x1, y1, x2, y2, o.cx, o.cy, o.r) : segRect(x1, y1, x2, y2, o);
+}
 function hasLOS(x1, y1, x2, y2) {
   for (const o of G.obstacles) {
     if (Math.min(y1, y2) > o.y + o.h || Math.max(y1, y2) < o.y) continue;
-    if (segRect(x1, y1, x2, y2, o) !== Infinity) return false;
+    if (hitObstacle(o, x1, y1, x2, y2) !== Infinity) return false;
   }
   return true;
 }
@@ -533,16 +596,16 @@ function update(dt) {
 function say(t) { G.msg = t; G.msgT = 2.2; }
 
 // ---------- Kartenwahl ----------
+// Die Auswahl kommt aus dem Kartenbuch des Streiters: mehr Kopien = höhere Chance
 function rollOffers() {
-  const n = 3 + S.extraChoices, t = wtype();
-  const count = id => G.cards.filter(c => c === id).length;
-  const pool = CARDS.filter(c => count(c.id) < c.max && (!c.types || c.types.includes(t)));
+  const n = 3 + S.extraChoices;
+  const ids = [...new Set(G.library)];
   const out = [];
-  while (out.length < n && pool.length) {
-    const total = pool.reduce((s, c) => s + RARITY[c.rarity].weight, 0);
-    let r = Math.random() * total, idx = 0;
-    for (; idx < pool.length; idx++) { r -= RARITY[pool[idx].rarity].weight; if (r <= 0) break; }
-    out.push(pool.splice(Math.min(idx, pool.length - 1), 1)[0]);
+  while (out.length < n && ids.length) {
+    const weights = ids.map(id => G.library.filter(x => x === id).length);
+    let r = Math.random() * weights.reduce((a, b) => a + b, 0), idx = 0;
+    for (; idx < ids.length; idx++) { r -= weights[idx]; if (r <= 0) break; }
+    out.push(CARD_BY_ID[ids.splice(Math.min(idx, ids.length - 1), 1)[0]]);
   }
   return out;
 }
@@ -563,6 +626,7 @@ function choosePick(i) {
   if (!card) return;
   const p = G.player, oldMag = S.magSize, oldHp = S.maxHp;
   G.cards.push(card.id);
+  const li = G.library.indexOf(card.id); if (li >= 0) G.library.splice(li, 1);
   recomputeStats();
   if (S.magSize > oldMag) p.mag += S.magSize - oldMag;
   if (S.maxHp > oldHp) p.hp += S.maxHp - oldHp;
@@ -704,7 +768,7 @@ function updateBullets(dt) {
     let tObs = Infinity;
     for (const o of G.obstacles) {
       if (Math.min(b.py, b.y) > o.y + o.h || Math.max(b.py, b.y) < o.y) continue;
-      tObs = Math.min(tObs, segRect(b.px, b.py, b.x, b.y, o));
+      tObs = Math.min(tObs, hitObstacle(o, b.px, b.py, b.x, b.y));
     }
     let tHit = Infinity, target = null;
     if (b.from === 'player') {
@@ -781,12 +845,18 @@ function die() {
 function visionParams() {
   return { fov: S.fov * deg, range: VISION.range * S.rangeMul, near: VISION.near };
 }
+// Ecken für Sichtstrahlen; Bäume als 16-Eck
+function obstacleCorners(o) {
+  if (o.kind !== 'tree') return [[o.x, o.y], [o.x + o.w, o.y], [o.x + o.w, o.y + o.h], [o.x, o.y + o.h]];
+  if (!o.poly) o.poly = Array.from({ length: 16 }, (_, i) => [o.cx + Math.cos(i / 16 * Math.PI * 2) * o.r * 1.02, o.cy + Math.sin(i / 16 * Math.PI * 2) * o.r * 1.02]);
+  return o.poly;
+}
 function obstacleSegments() {
   const segs = [], top = G.camTop - 800, bot = G.camTop + VIEW_H + 800;
   for (const o of G.obstacles) {
     if (o.y > bot || o.y + o.h < top) continue;
-    segs.push([o.x, o.y, o.x + o.w, o.y], [o.x + o.w, o.y, o.x + o.w, o.y + o.h],
-              [o.x + o.w, o.y + o.h, o.x, o.y + o.h], [o.x, o.y + o.h, o.x, o.y]);
+    const c = obstacleCorners(o);
+    for (let i = 0; i < c.length; i++) { const a = c[i], b = c[(i + 1) % c.length]; segs.push([a[0], a[1], b[0], b[1]]); }
   }
   segs.push([0, top - 2000, 0, bot + 2000], [WORLD_W, top - 2000, WORLD_W, bot + 2000]);
   return segs;
@@ -798,7 +868,7 @@ function visPoly(cx, cy, center, half, range, segs, step) {
   for (let i = 0; i <= n; i++) rels.push(-half + i * (2 * half / n));
   for (const o of G.obstacles) {
     if (o.x > cx + range || o.x + o.w < cx - range || o.y > cy + range || o.y + o.h < cy - range) continue;
-    for (const [px, py] of [[o.x, o.y], [o.x + o.w, o.y], [o.x + o.w, o.y + o.h], [o.x, o.y + o.h]]) {
+    for (const [px, py] of obstacleCorners(o)) {
       const rel = normAngle(Math.atan2(py - cy, px - cx) - center);
       if (Math.abs(rel) <= half) rels.push(rel - 0.0003, rel, rel + 0.0003);
     }
@@ -1248,6 +1318,8 @@ function drawRails() {
     text('Bei ' + Math.ceil(G.nextPick) + ' m wählst du', 1180, 146, 15, '#b8c4d0', 'center', F_TEXT);
     text('deine erste Karte.', 1180, 166, 15, '#b8c4d0', 'center', F_TEXT);
   }
+  ctx.fillStyle = '#9a7a3a'; ctx.fillRect(1092, 676, 176, 1);
+  text('Im Kartenbuch: ' + G.library.length + ' Karten', 1180, 700, 14, '#b8c4d0', 'center', F_TEXT);
 }
 
 function drawFieldHUD() {
@@ -1379,6 +1451,8 @@ function drawSelectScreen() {
     text(c.special, L.w / 2, 458, 14, '#6a3a1a', 'center', F_TEXT, 'bold');
     ctx.restore();
     text(String(L.i + 1), L.x + L.w / 2, L.y + L.h + 34, 18, hover ? '#f2c14e' : '#b8c4d0', 'center', F_TITLE);
+    const dn = deckOf(c).length;
+    text('Kartenbuch ' + dn + ' / ' + DECK_SIZE, L.x + L.w / 2, L.y + L.h + 58, 15, dn < DECK_SIZE ? '#f2c14e' : '#8ee8ff', 'center', F_TEXT);
   });
   // Zurück
   rr(40, 36, 120, 40, 20); ctx.fillStyle = selectHover === -2 ? '#1e2c22' : '#101a14'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
@@ -1386,12 +1460,143 @@ function drawSelectScreen() {
   text('1 · 2 · 3 oder Klick  ·  Weitere Streiter folgen später', 640, 692, 17, '#c8d4de', 'center', F_TEXT);
 }
 
+// ---------- Kartenbuch ----------
+function bookLayout() {
+  const cls = CLASSES[bookClass];
+  const L = { tabs: [], chips: [], items: [], rows: [] };
+  CLASSES.forEach((c, i) => L.tabs.push({ i, x: 400 + i * 168, y: 18, w: 158, h: 42 }));
+  L.back = { x: 40, y: 18, w: 120, h: 42 };
+  L.chips = [{ id: 'usable', label: 'Nutzbar', x: 560, y: 104, w: 96, h: 32 }, { id: 'all', label: 'Alle', x: 664, y: 104, w: 66, h: 32 }];
+  const list = CARDS.filter(c => bookFilter === 'all' || compat(c, cls));
+  L.pages = Math.max(1, Math.ceil(list.length / 10));
+  bookPage = clamp(bookPage, 0, L.pages - 1);
+  list.slice(bookPage * 10, bookPage * 10 + 10).forEach((c, i) => {
+    L.items.push({ c, x: 40 + (i % 5) * 160, y: 150 + Math.floor(i / 5) * 226, w: 146, h: 212 });
+  });
+  L.prev = { x: 300, y: 614, w: 44, h: 34 }; L.next = { x: 440, y: 614, w: 44, h: 34 };
+  const d = deckOf(cls), ids = [...new Set(d)];
+  ids.forEach((id, i) => L.rows.push({ id, n: d.filter(x => x === id).length, x: 876, y: 176 + i * 36, w: 348, h: 30, minus: { x: 1190, y: 177 + i * 36, w: 28, h: 28 } }));
+  L.clear = { x: 880, y: 640, w: 160, h: 38 }; L.auto = { x: 1060, y: 640, w: 160, h: 38 };
+  return L;
+}
+const hitR = (r, x, y) => r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+function bookHit(x, y) {
+  const L = bookLayout();
+  if (hitR(L.back, x, y)) return { t: 'back' };
+  for (const t of L.tabs) if (hitR(t, x, y)) return { t: 'tab', i: t.i };
+  for (const c of L.chips) if (hitR(c, x, y)) return { t: 'chip', id: c.id };
+  if (hitR(L.prev, x, y)) return { t: 'prev' };
+  if (hitR(L.next, x, y)) return { t: 'next' };
+  if (hitR(L.clear, x, y)) return { t: 'clear' };
+  if (hitR(L.auto, x, y)) return { t: 'auto' };
+  for (const r of L.rows) if (hitR(r.minus, x, y)) return { t: 'minus', id: r.id };
+  for (const it of L.items) if (hitR(it, x, y)) return { t: 'card', c: it.c };
+  return null;
+}
+function bookClick(h, right) {
+  const cls = CLASSES[bookClass];
+  if (!h) return;
+  if (right) { if (h.t === 'card') removeFromDeck(cls, h.c.id); return; }
+  if (h.t === 'back') state = 'menu';
+  else if (h.t === 'tab') { bookClass = h.i; bookPage = 0; }
+  else if (h.t === 'chip') { bookFilter = h.id; bookPage = 0; }
+  else if (h.t === 'prev') bookPage--;
+  else if (h.t === 'next') bookPage++;
+  else if (h.t === 'minus') removeFromDeck(cls, h.id);
+  else if (h.t === 'clear') { SAVE.decks[cls.id] = []; persist(); }
+  else if (h.t === 'auto') { SAVE.decks[cls.id] = defaultDeck(cls, SAVE.owned); persist(); }
+  else if (h.t === 'card') addToDeck(cls, h.c);
+}
+function drawBookScreen() {
+  const cls = CLASSES[bookClass], L = bookLayout(), d = deckOf(cls);
+  let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
+  g.addColorStop(0, '#0c1a1a'); g.addColorStop(0.75, '#0a110d'); g.addColorStop(1, '#0a110d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  for (const s of stars) { ctx.fillStyle = 'rgba(255,255,255,' + (s[3] * 0.6) + ')'; ctx.fillRect(s[0], s[1], s[2], s[2]); }
+  // Kopfleiste
+  g = ctx.createLinearGradient(0, 0, 0, 78); g.addColorStop(0, '#14201a'); g.addColorStop(1, '#0a110d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, 78); ctx.fillStyle = '#9a7a3a'; ctx.fillRect(0, 76, FRAME_W, 2);
+  const btn = (r, label, active, color, hov) => {
+    rr(r.x, r.y, r.w, r.h, r.h / 2);
+    ctx.fillStyle = active ? (color || '#1e2c22') : (hov ? '#1e2c22' : '#101a14'); ctx.fill();
+    ctx.strokeStyle = active ? '#f2c14e' : '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
+    text(label, r.x + r.w / 2, r.y + r.h / 2 + 6, 16, active ? '#f2c14e' : '#e8dcbc', 'center', F_TITLE);
+  };
+  const hv = (t, k, v) => bookHover && bookHover.t === t && (k === undefined || bookHover[k] === v);
+  btn(L.back, '‹ Menü', false, null, hv('back'));
+  L.tabs.forEach(t => {
+    const c = CLASSES[t.i], act = t.i === bookClass;
+    rr(t.x, t.y, t.w, t.h, 21); ctx.fillStyle = act ? c.accent2 : (hv('tab', 'i', t.i) ? '#1e2c22' : '#101a14'); ctx.fill();
+    ctx.strokeStyle = act ? c.accent : '#4a5a4a'; ctx.lineWidth = 2; ctx.stroke();
+    text(c.name, t.x + t.w / 2, t.y + 28, 17, act ? '#fff' : '#b8c4d0', 'center', F_TITLE);
+  });
+  text('Gesammelt: ' + CARDS.length + ' Karten', 1240, 46, 16, '#c8d4de', 'right', F_TEXT);
+
+  // Sammlung
+  ctx.font = '34px ' + F_TITLE; ctx.textAlign = 'left'; ctx.fillStyle = silverGrad(98, 132);
+  ctx.fillText('Sammlung', 40, 130);
+  L.chips.forEach(c => {
+    const act = bookFilter === c.id;
+    rr(c.x, c.y, c.w, c.h, 16); ctx.fillStyle = act ? '#1e2c22' : (hv('chip', 'id', c.id) ? '#16231b' : '#101a14'); ctx.fill();
+    ctx.strokeStyle = act ? '#f2c14e' : '#2e3e32'; ctx.lineWidth = 1.5; ctx.stroke();
+    text(c.label, c.x + c.w / 2, c.y + 22, 16, act ? '#f2c14e' : '#c8d4de', 'center', F_TEXT, '500');
+  });
+  text('Streiter: ' + cls.role, 300, 128, 17, cls.accent, 'left', F_TEXT, 'italic');
+  L.items.forEach(it => {
+    const c = it.c, ok = compat(c, cls), o = SAVE.owned[c.id] || 0, k = inDeck(cls, c.id), R = RARITY[c.rarity];
+    ctx.globalAlpha = ok ? 1 : 0.32;
+    drawCard(c, it.x, it.y, 0.664, bookHover && bookHover.t === 'card' && bookHover.c === c && ok);
+    ctx.globalAlpha = 1;
+    // Anzahl
+    rr(it.x + it.w - 22, it.y - 8, 30, 26, 13); ctx.fillStyle = '#f2c14e'; ctx.fill(); ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.stroke();
+    text('×' + o, it.x + it.w - 7, it.y + 10, 14, '#1c140c', 'center', F_TITLE);
+    if (!ok) { rr(it.x + 14, it.y + it.h - 36, it.w - 28, 22, 4); ctx.fillStyle = 'rgba(10,17,13,.92)'; ctx.fill(); text('passt nicht', it.x + it.w / 2, it.y + it.h - 20, 14, '#b8c4d0', 'center', F_TEXT, 'italic'); }
+    else if (k > 0) {
+      rr(it.x + 8, it.y + it.h - 30, 74, 20, 10); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#8ee8ff'; ctx.lineWidth = 1; ctx.stroke();
+      text('Im Buch ' + k + '/' + Math.min(copyLimit(c), o), it.x + 45, it.y + it.h - 16, 12, '#8ee8ff', 'center', F_TEXT, 'bold');
+    }
+  });
+  // Seiten
+  [[L.prev, '‹', hv('prev')], [L.next, '›', hv('next')]].forEach(([r, l, h]) => {
+    rr(r.x, r.y, r.w, r.h, 17); ctx.fillStyle = h ? '#1e2c22' : '#101a14'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
+    text(l, r.x + r.w / 2, r.y + 25, 22, '#e8dcbc', 'center', F_TITLE);
+  });
+  text('Seite ' + (bookPage + 1) + ' / ' + L.pages, 392, 638, 16, '#c8d4de', 'center', F_TEXT);
+  text('Klick: ins Buch  ·  Rechtsklick: entfernen', 40, 680, 15, '#8a9aa0', 'left', F_TEXT, 'italic');
+
+  // Kartenbuch des Streiters
+  rr(860, 100, 380, 590, 16);
+  g = ctx.createLinearGradient(0, 100, 0, 690); g.addColorStop(0, '#1a2a20'); g.addColorStop(1, '#101a14');
+  ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = cls.accent; ctx.lineWidth = 2; ctx.stroke();
+  text('Kartenbuch: ' + cls.name, 880, 134, 22, '#f0e6c8', 'left', F_TITLE);
+  text(d.length + ' / ' + DECK_SIZE, 1222, 134, 20, d.length >= DECK_SIZE ? '#8ee8ff' : '#f2c14e', 'right', F_TITLE);
+  text('Jede Karte höchstens ' + MAX_COPIES + '×  ·  gezogen wird zufällig aus diesem Buch', 880, 156, 14, '#b8c4d0', 'left', F_TEXT);
+  L.rows.forEach(r => {
+    const c = CARD_BY_ID[r.id], R = RARITY[c.rarity];
+    rr(r.x, r.y, r.w, r.h, 15); ctx.fillStyle = '#0c1510'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = R.c; ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(r.x + 16, r.y + 15, 6, 0, 7); ctx.fill(); ctx.stroke();
+    text(c.name, r.x + 32, r.y + 20, 13, '#f0e6c8', 'left', F_TITLE);
+    text(r.n + ' / ' + Math.min(copyLimit(c), SAVE.owned[c.id] || 0), r.x + r.w - 66, r.y + 20, 15, '#c8d4de', 'right', F_TEXT);
+    const m = r.minus, mh = bookHover && bookHover.t === 'minus' && bookHover.id === r.id;
+    rr(m.x, m.y, m.w, m.h, 14); ctx.fillStyle = mh ? '#3a1c1c' : '#101a14'; ctx.fill(); ctx.strokeStyle = mh ? '#ff7a8a' : '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+    text('−', m.x + 14, m.y + 21, 20, '#e8dcbc', 'center', F_TEXT);
+  });
+  if (!d.length) text('Das Buch ist leer.', 1050, 300, 18, '#7a8a7a', 'center', F_TEXT, 'italic');
+  if (d.length < DECK_SIZE) text(DECK_SIZE - d.length + ' freie Plätze', 1050, Math.min(176 + L.rows.length * 36 + 22, 620), 15, '#6f8274', 'center', F_TEXT, 'italic');
+  btn(L.clear, 'Leeren', false, null, hv('clear')); btn(L.auto, 'Standard', false, null, hv('auto'));
+  // Großansicht der Karte unter dem Mauszeiger
+  if (bookHover && bookHover.t === 'card') {
+    const px = clamp(mouse.fx + 24, 10, 640), py = clamp(mouse.fy - 150, 90, 380);
+    drawCard(bookHover.c, px, py, 1.0, true);
+  }
+}
+
 // Menü
 const stars = Array.from({ length: 120 }, () => [Math.random() * FRAME_W, Math.random() * 420, Math.random() * 1.4 + 0.4, Math.random() * 0.6 + 0.3]);
 const pines = Array.from({ length: 40 }, (_, i) => [i * 34 - 10, 540 + Math.random() * 60, 70 + Math.random() * 70]);
 const menuButtons = [
   { label: 'Neuer Durchlauf', main: true, x: 80, y: 420, w: 330, h: 56, action: () => { selectHover = lastClass; state = 'select'; } },
-  { label: 'Kartenbuch', note: 'bald', x: 80, y: 490, w: 330, h: 56 },
+  { label: 'Kartenbuch', x: 80, y: 490, w: 330, h: 56, action: () => { bookClass = lastClass; bookPage = 0; bookHover = null; state = 'book'; } },
   { label: 'Bibliothek', note: 'bald', x: 80, y: 560, w: 330, h: 56 }
 ];
 function drawMenu() {
@@ -1449,13 +1654,14 @@ function drawMenu() {
     text(b.label, b.x + b.w / 2, b.y + 36, 19, b.main ? '#1c140c' : (b.action ? '#e8dcbc' : '#7a8a7a'), 'center', F_TITLE);
     if (b.note) text(b.note, b.x + b.w - 22, b.y + 34, 14, '#7a8a7a', 'right', F_TEXT, 'italic');
   });
-  text('Prototyp v0.3 · Streiter wählen, Karten im Lauf', 80, 690, 16, '#b8c4d0', 'left', F_TEXT);
+  text('Prototyp v0.4 · Streiter wählen, Kartenbuch bauen', 80, 690, 16, '#b8c4d0', 'left', F_TEXT);
   text('Klick oder Enter zum Starten', 440, 456, 17, '#f2c14e', 'left', F_TEXT, 'italic');
 }
 
 function draw() {
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.fillStyle = '#0a110d'; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  if (state === 'book') { drawBookScreen(); drawCursor(); return; }
   if (state === 'menu' || !G && state !== 'select') { drawMenu(); drawCursor(); return; }
   if (state === 'select') { drawSelectScreen(); drawCursor(); return; }
 
@@ -1497,6 +1703,13 @@ addEventListener('keydown', e => {
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
   if (state === 'menu' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
   if (state === 'dead' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
+  if (state === 'book') {
+    if (e.code === 'Escape') state = 'menu';
+    if (/^Digit[1-3]$/.test(e.code)) { bookClass = Number(e.code.slice(5)) - 1; bookPage = 0; }
+    if (e.code === 'ArrowRight') bookPage++;
+    if (e.code === 'ArrowLeft') bookPage--;
+    return;
+  }
   if (state === 'select') {
     if (/^Digit[1-9]$/.test(e.code)) { const i = Number(e.code.slice(5)) - 1; if (CLASSES[i]) startRun(i); return; }
     if (e.code === 'Enter' || e.code === 'Space') { startRun(selectHover >= 0 ? selectHover : lastClass); return; }
@@ -1520,6 +1733,7 @@ function setMouse(e) {
   mouse.fy = (e.clientY - r.top) / r.height * FRAME_H;
   mouse.x = mouse.fx - FIELD_X;
   mouse.y = mouse.fy;
+  if (state === 'book') bookHover = bookHit(mouse.fx, mouse.fy);
   if (state === 'menu') menuHover = menuButtons.findIndex(b => mouse.fx >= b.x && mouse.fx <= b.x + b.w && mouse.fy >= b.y && mouse.fy <= b.y + b.h);
   if (state === 'pick') pickHover = pickLayout().findIndex(L => mouse.fx >= L.x && mouse.fx <= L.x + L.w && mouse.fy >= L.y && mouse.fy <= L.y + L.h);
   if (state === 'select') {
@@ -1534,6 +1748,7 @@ canvas.addEventListener('mousedown', e => {
   if (state === 'play' || state === 'pause') {
     if (e.button === 2) mouse.rdown = true;
   }
+  if (state === 'book') { bookClick(bookHit(mouse.fx, mouse.fy), e.button === 2); return; }
   if (e.button !== 0) return;
   if (state === 'menu') { const b = menuButtons[menuHover]; if (b && b.action) b.action(); return; }
   if (state === 'select') {
@@ -1548,6 +1763,7 @@ canvas.addEventListener('mousedown', e => {
 });
 addEventListener('mouseup', e => { if (e.button === 0) mouse.down = false; if (e.button === 2) mouse.rdown = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('wheel', e => { if (state === 'book') { bookPage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); } }, { passive: false });
 
 // ---------- Hauptschleife ----------
 let last = 0;
