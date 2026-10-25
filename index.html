@@ -9,12 +9,20 @@
   html, body { margin: 0; height: 100%; background: #060a08; overflow: hidden; }
   body { display: flex; align-items: center; justify-content: center; }
   #bg { position: fixed; left: 0; top: 0; width: 100%; height: 100%; z-index: 0; }
+  #fb input, #fb textarea { position: fixed; display: none; z-index: 2; box-sizing: border-box; margin: 0; padding: 8px 12px; background: #0a110d; color: #f0e6c8; border: 2px solid #4a5a4a; border-radius: 10px; font-family: 'EB Garamond', Georgia, serif; outline: none; resize: none; }
+  #fb input:focus, #fb textarea:focus { border-color: #f2c14e; }
+  #fb .on { display: block; }
   #game { position: relative; z-index: 1; display: block; cursor: none; background: #0a110d; box-shadow: 0 0 0 2px #3a2e12, 0 0 70px 20px rgba(0, 0, 0, .75); }
 </style>
 </head>
 <body>
 <canvas id="bg"></canvas>
 <canvas id="game"></canvas>
+<div id="fb">
+  <input id="fbTitle" type="text" maxlength="120" placeholder="Kurz gesagt: worum geht es?" autocomplete="off" spellcheck="false">
+  <textarea id="fbBody" maxlength="6000" placeholder="Beschreibe deine Idee, den Fehler oder was dir aufgefallen ist …"></textarea>
+  <input id="fbToken" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
+</div>
 <script src="audio/config.js"></script>
 <script>
 // =====================================================================
@@ -226,6 +234,12 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.fl
 const SFX_IDS = ['ui_click', 'card_pick', 'card_flip', 'rare_reveal', 'pack_buy', 'coin', 'buff_drink', 'merchant_open', 'stage_up',
   'shoot_crossbow', 'reload_start', 'reload_done', 'empty_click', 'shoot_spell', 'spell_explode', 'sword_swing', 'sword_hit', 'block',
   'hit_enemy', 'enemy_die', 'enemy_shoot', 'player_hurt', 'player_die', 'dash', 'pickup_heal', 'horde_horn'];
+const DEFAULT_BINDS = { up: 'KeyW', left: 'KeyA', down: 'KeyS', right: 'KeyD', dash: 'Space', reload: 'KeyR', interact: 'KeyE', music: 'KeyM', sfx: 'KeyN' };
+const DEFAULT_SETTINGS = { master: 0.8, music: 0.5, sfx: 0.7, bgMute: true, bright: 100, hitfx: 2, hpbars: true, dmgnums: false, xhair: 0, xcol: '#fff3c8', autoPause: true, hints: true, autofire: true };
+const settings = (() => {
+  let s = {}; try { s = JSON.parse(localStorage.getItem('left-behind-settings')) || {}; } catch (e) {}
+  return Object.assign({}, DEFAULT_SETTINGS, s, { binds: Object.assign({}, DEFAULT_BINDS, s.binds) });
+})();
 const audioPrefs = (() => {
   try { return Object.assign({ music: true, sfx: true }, JSON.parse(localStorage.getItem('left-behind-audio'))); } catch (e) { return { music: true, sfx: true }; }
 })();
@@ -237,23 +251,24 @@ for (const f of (window.CUSTOM_AUDIO || [])) {
   customAudio[id] = a;
 }
 let AC = null, sfxBus = null, musicBus = null, noiseBuf = null, gestureDone = false;
-const MUSIC_VOL = 0.5, SFX_VOL = 0.7;
+let masterBus = null, bgQuiet = false;
+const musicVol = () => audioPrefs.music ? settings.music * settings.master * (bgQuiet ? 0 : 1) : 0;
 function audioInit() {
   gestureDone = true;
   if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
   try {
     AC = new (window.AudioContext || window.webkitAudioContext)();
-    const m = AC.createGain(); m.gain.value = 0.9; m.connect(AC.destination);
-    sfxBus = AC.createGain(); sfxBus.connect(m);
-    musicBus = AC.createGain(); musicBus.connect(m);
+    masterBus = AC.createGain(); masterBus.connect(AC.destination);
+    sfxBus = AC.createGain(); sfxBus.connect(masterBus);
+    musicBus = AC.createGain(); musicBus.connect(masterBus);
     noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
     const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     applyAudioPrefs();
   } catch (e) { AC = null; }
 }
 function applyAudioPrefs() {
-  if (AC) { sfxBus.gain.value = audioPrefs.sfx ? SFX_VOL : 0; musicBus.gain.value = audioPrefs.music ? MUSIC_VOL : 0; }
-  if (MUSIC.el) MUSIC.el.volume = audioPrefs.music ? MUSIC_VOL : 0;
+  if (AC) { masterBus.gain.value = settings.master * (bgQuiet ? 0 : 1); sfxBus.gain.value = audioPrefs.sfx ? settings.sfx : 0; musicBus.gain.value = audioPrefs.music ? settings.music : 0; }
+  if (MUSIC.el) MUSIC.el.volume = musicVol();
   try { localStorage.setItem('left-behind-audio', JSON.stringify(audioPrefs)); } catch (e) {}
 }
 function tone(dest, t, f, dur, type, vol, f2) {
@@ -318,7 +333,7 @@ function sfx(id, vol) {
   if (now - (lastSfx[id] || 0) < (SFX_GAP[id] || 0.02)) return;
   lastSfx[id] = now;
   const c = customAudio[id];
-  if (c) { try { const a = c.cloneNode(); a.volume = clamp(vol * 0.8, 0, 1); a.play().catch(() => {}); } catch (e) {} return; }
+  if (c) { try { const a = c.cloneNode(); a.volume = clamp(vol * 0.8 * (settings.sfx / 0.7) * settings.master * (bgQuiet ? 0 : 1), 0, 1); a.play().catch(() => {}); } catch (e) {} return; }
   if (!AC) return;
   try { const f = SFX_SYNTH[id]; if (f) f(AC.currentTime + 0.001, vol); } catch (e) {}
 }
@@ -355,12 +370,13 @@ const MUSIC_DEFS = {
 };
 function musicFor(st) {
   if (!gestureDone) return;
+  if (['options', 'controls', 'feedback'].includes(st)) return;
   const want = ['menu', 'select', 'book', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
   if (MUSIC.name === want) return;
   stopMusic(); MUSIC.name = want;
   if (!want) return;
   const el = customAudio['music_' + want];
-  if (el) { el.loop = true; el.currentTime = 0; el.volume = 0; el.play().catch(() => {}); MUSIC.el = el; fadeEl(el, audioPrefs.music ? MUSIC_VOL : 0, 1200); return; }
+  if (el) { el.loop = true; el.currentTime = 0; el.volume = 0; el.play().catch(() => {}); MUSIC.el = el; fadeEl(el, musicVol(), 1200); return; }
   if (!AC) return;
   const def = MUSIC_DEFS[want], tr = { def, stepDur: 60 / def.bpm / 4, step: 0, next: AC.currentTime + 0.1, out: AC.createGain() };
   tr.out.gain.setValueAtTime(0.0001, AC.currentTime); tr.out.gain.linearRampToValueAtTime(1, AC.currentTime + 1.5);
@@ -528,7 +544,8 @@ let S = Object.assign({}, BASE);         // aktuelle Werte inkl. Klasse und Kart
 let best = Number(localStorage.getItem('left-behind-best') || 0);
 let lastClass = Math.max(0, CLASSES.findIndex(c => c.id === (localStorage.getItem('left-behind-class') || '')));
 const keys = {};
-const mouse = { x: VIEW_W / 2, y: VIEW_H / 2, fx: 0, fy: 0, down: false, rdown: false };
+const held = a => !!keys[settings.binds[a]];
+const mouse = { x: VIEW_W / 2, y: VIEW_H / 2, fx: 0, fy: 0, down: false, rdown: false, pressed: false };
 let menuHover = -1, pickHover = -1, selectHover = -1;
 let bookClass = 0, bookFilter = 'usable', bookPage = 0, bookHover = null;
 
@@ -554,7 +571,7 @@ function newGame(cls) {
     merchants: [], buffs: [], spent: 0, chunkSinceMerchant: MERCHANT_MIN_GAP,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
     stage: 1, stageStart: 0, nextPick: STAGE_BASE,
-    nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0,
+    nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false,
     player: {
       x: WORLD_W / 2, y: -60, r: 14, hp: 1, angle: -Math.PI / 2,
       mag: 0, mana: 0, manaDelay: 0, cooldown: 0, reloadT: 0, bloom: 0, speed: 0,
@@ -876,7 +893,7 @@ function alertEnemy(e) {
 function tryDash() {
   const p = G.player;
   if (!S.dash || p.dashCd > 0 || p.dashT > 0) return;
-  let mx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0), my = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0);
+  let mx = (held('right') ? 1 : 0) - (held('left') ? 1 : 0), my = (held('down') ? 1 : 0) - (held('up') ? 1 : 0);
   if (!mx && !my) { mx = Math.cos(p.angle); my = Math.sin(p.angle); }
   const l = Math.hypot(mx, my);
   p.dashX = mx / l; p.dashY = my / l;
@@ -892,8 +909,8 @@ function update(dt) {
   G.time += dt;
 
   // Bewegung (WASD) oder Windstoß
-  let mx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
-  let my = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0);
+  let mx = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
+  let my = (held('down') ? 1 : 0) - (held('up') ? 1 : 0);
   let moved;
   if (p.dashT > 0) {
     p.dashT -= dt;
@@ -923,10 +940,11 @@ function update(dt) {
   if (p.reloadT > 0) {
     p.reloadT -= dt;
     if (p.reloadT <= 0) { p.reloadT = 0; p.mag = S.magSize; sfx('reload_done'); }
-  } else if (mouse.down && p.cooldown <= 0 && !isBlocking() && !isMeditating()) {
+  } else if ((settings.autofire ? mouse.down : mouse.pressed) && p.cooldown <= 0 && !isBlocking() && !isMeditating()) {
     if (w.type === 'ranged' && p.mag <= 0) sfx('empty_click');
     else if (w.type === 'spell' && p.mana < w.cost) sfx('empty_click');
     else playerAttack();
+    mouse.pressed = false;
   }
 
   // Kamera: nur nach oben, ab oberem Drittel
@@ -949,6 +967,9 @@ function update(dt) {
   for (const a of G.arcs) a.life -= dt;
   for (const r of G.rings) r.life -= dt;
   G.hurtT = Math.max(0, G.hurtT - dt);
+  G.shakeT = Math.max(0, G.shakeT - dt);
+  for (const f of G.floats) { f.y -= 38 * dt; f.t -= dt; }
+  G.floats = G.floats.filter(f => f.t > 0);
   G.msgT = Math.max(0, G.msgT - dt);
 
   const bottom = G.camTop + VIEW_H + 250;
@@ -1131,7 +1152,7 @@ function hurtPlayer(d, srcAngle) {
     if (d < 1) return;
   }
   p.hp -= d;
-  G.hurtT = 0.35;
+  G.hurtT = 0.35; G.shakeT = 0.25;
   sfx('player_hurt');
 }
 
@@ -1193,6 +1214,7 @@ function explode(x, y, dmg, R, target) {
 function damageEnemy(e, dmg) {
   if (e.hp <= 0) return;
   e.hp -= dmg; e.hit = 0.12;
+  if (settings.dmgnums) G.floats.push({ x: e.x + rand(-8, 8), y: e.y - e.r - 14, t: 0.8, v: Math.max(1, Math.round(dmg)) });
   sfx(e.hp > 0 ? 'hit_enemy' : 'enemy_die', clamp(1 - Math.hypot(e.x - G.player.x, e.y - G.player.y) / 900, 0.3, 1));
   if (e.state === 'idle') alertEnemy(e);
   if (e.hp <= 0) G.kills++;
@@ -1214,6 +1236,12 @@ function spark(x, y, color) {
 function die() {
   state = 'dead';
   sfx('player_die');
+  finishRun();
+}
+// Lauf beenden (Tod, Aufgeben oder Hauptmenü): Mondsilber gutschreiben, nur einmal je Lauf
+function finishRun() {
+  if (G.finished) return;
+  G.finished = true;
   G.earned = Math.max(0, Math.round(G.dist + G.kills * 3) - G.spent);   // 1 Mondsilber pro Meter, 3 pro Gefallenem, abzüglich Händler
   SAVE.silver += G.earned;
   SAVE.maxStage = Math.max(SAVE.maxStage || 1, G.stage);
@@ -1426,9 +1454,17 @@ function drawEntities() {
   for (const e of G.enemies) {
     if (e.hp <= 0 || !visible(e)) continue;
     if (e.type === 'grunt') drawSkeleton(e); else drawGhoul(e);
-    ctx.fillStyle = '#000'; ctx.fillRect(e.x - 14, e.y - e.r - 12, 28, 4);
-    ctx.fillStyle = e.state === 'alert' ? '#ff7a8a' : '#d9b13a';
-    ctx.fillRect(e.x - 14, e.y - e.r - 12, 28 * Math.max(0, e.hp / e.maxHp), 4);
+    if (settings.hpbars) {
+      ctx.fillStyle = '#000'; ctx.fillRect(e.x - 14, e.y - e.r - 12, 28, 4);
+      ctx.fillStyle = e.state === 'alert' ? '#ff7a8a' : '#d9b13a';
+      ctx.fillRect(e.x - 14, e.y - e.r - 12, 28 * Math.max(0, e.hp / e.maxHp), 4);
+    }
+  }
+  for (const f of G.floats) {
+    ctx.globalAlpha = Math.min(1, f.t * 3);
+    ctx.font = 'bold 16px ' + F_TEXT; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = '#0a110d'; ctx.strokeText(String(f.v), f.x, f.y);
+    ctx.fillStyle = '#fff3c8'; ctx.fillText(String(f.v), f.x, f.y);
+    ctx.globalAlpha = 1;
   }
   // Geschosse
   for (const b of G.bullets) {
@@ -1659,7 +1695,7 @@ function drawRails() {
   ctx.strokeStyle = S.dash ? '#4fd08a' : '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
   if (S.dash) {
     rr(ax + 14, 669, 72, 22, 5); ctx.fillStyle = '#e8dcbc'; ctx.fill();
-    text('Leertaste', ax + 50, 685, 14, '#1c140c', 'center', F_TEXT, 'bold');
+    text(keyLabel(bind('dash')), ax + 50, 685, 14, '#1c140c', 'center', F_TEXT, 'bold');
     text('Windstoß', ax + 96, 685, 14, '#f0e6c8', 'left', F_TITLE);
     const cd = 1 - p.dashCd / DASH.cooldown;
     rr(ax + 172, 676, 54, 8, 4); ctx.fillStyle = '#1e2c22'; ctx.fill();
@@ -1671,7 +1707,7 @@ function drawRails() {
   const rx = FIELD_X + VIEW_W - 26;
   text((G.cls.name + ' · ' + w.name).toUpperCase(), rx, 664, 12, '#b8c4d0', 'right', F_TITLE);
   if (w.type === 'ranged') {
-    text(p.reloadT > 0 ? 'spannen …' : 'R spannen · ' + (w.reloadTime * S.reloadMul).toFixed(1) + ' s', rx - 130, 690, 14, '#b8c4d0', 'right', F_TEXT);
+    text(p.reloadT > 0 ? 'spannen …' : keyLabel(bind('reload')) + ' spannen · ' + (w.reloadTime * S.reloadMul).toFixed(1) + ' s', rx - 130, 690, 14, '#b8c4d0', 'right', F_TEXT);
     ctx.font = '42px ' + F_TITLE; ctx.textAlign = 'right';
     ctx.fillStyle = p.mag === 0 ? '#ff7a8a' : silverGrad(672, 706);
     ctx.fillText(String(p.mag), rx - 62, 704);
@@ -1731,42 +1767,47 @@ function drawFieldHUD() {
   text(G.kills + ' Gefallene', 24, 74, 17, '#c8d4de', 'left', F_TEXT);
   drawIcon('moon', 32, 96, 20, '#c8d0d8', 1.6);
   text(String(runSilver()), 50, 103, 19, '#f0e6c8', 'left', F_TITLE);
-  const nm = state === 'play' ? nearMerchant() : null;
+  const nm = state === 'play' && settings.hints ? nearMerchant() : null;
   if (nm) {
     const sx = nm.x, sy = nm.y - G.camTop - 58;
     rr(sx - 62, sy - 18, 124, 30, 15); ctx.fillStyle = 'rgba(10,17,13,.92)'; ctx.fill(); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.stroke();
-    text('E · Handeln', sx, sy + 3, 16, '#f2c14e', 'center', F_TITLE);
+    text(keyLabel(bind('interact')) + ' · Handeln', sx, sy + 3, 16, '#f2c14e', 'center', F_TITLE);
   }
   if (G.msgT > 0) {
     ctx.globalAlpha = Math.min(1, G.msgT * 2);
     text(G.msg, VIEW_W / 2, 56, 20, '#f2c14e', 'center', F_TITLE);
     ctx.globalAlpha = 1;
   }
-  if (G.hurtT > 0) {
+  if (G.hurtT > 0 && settings.hitfx > 0) {
     const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.35, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.8);
-    g.addColorStop(0, 'rgba(200,0,0,0)'); g.addColorStop(1, 'rgba(200,0,0,' + (G.hurtT * 1.6) + ')');
+    g.addColorStop(0, 'rgba(200,0,0,0)'); g.addColorStop(1, 'rgba(200,0,0,' + (G.hurtT * 1.6 * settings.hitfx / 2) + ')');
     ctx.fillStyle = g; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
   }
 }
 
 function drawCrosshair() {
   const p = G.player, w = W();
-  const x = mouse.fx, y = mouse.fy;
-  ctx.strokeStyle = '#fff3c8'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+  const x = mouse.fx, y = mouse.fy, st = settings.xhair;
+  ctx.strokeStyle = settings.xcol; ctx.fillStyle = settings.xcol; ctx.lineWidth = 2; ctx.lineCap = 'round';
   if (w.type === 'melee') {
+    if (st === 1) { ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); return; }
     ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.stroke();
-    ctx.fillStyle = '#fff3c8'; ctx.fillRect(x - 1, y - 1, 2, 2);
+    ctx.fillRect(x - 1, y - 1, 2, 2);
     return;
   }
   const dist = Math.hypot(mouse.x - p.x, mouse.y + G.camTop - p.y);
   const gap = clamp(Math.tan(currentSpread() * deg) * dist, 5, 70);
-  ctx.beginPath();
-  ctx.moveTo(x - gap - 8, y); ctx.lineTo(x - gap, y);
-  ctx.moveTo(x + gap, y); ctx.lineTo(x + gap + 8, y);
-  ctx.moveTo(x, y - gap - 8); ctx.lineTo(x, y - gap);
-  ctx.moveTo(x, y + gap); ctx.lineTo(x, y + gap + 8);
-  ctx.stroke();
-  ctx.fillStyle = '#fff3c8'; ctx.fillRect(x - 1, y - 1, 2, 2);
+  if (st === 1) { ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); }
+  else if (st === 2) { ctx.beginPath(); ctx.arc(x, y, gap + 4, 0, 7); ctx.stroke(); ctx.fillRect(x - 1, y - 1, 2, 2); }
+  else {
+    ctx.beginPath();
+    ctx.moveTo(x - gap - 8, y); ctx.lineTo(x - gap, y);
+    ctx.moveTo(x + gap, y); ctx.lineTo(x + gap + 8, y);
+    ctx.moveTo(x, y - gap - 8); ctx.lineTo(x, y - gap);
+    ctx.moveTo(x, y + gap); ctx.lineTo(x, y + gap + 8);
+    ctx.stroke();
+    ctx.fillRect(x - 1, y - 1, 2, 2);
+  }
   if (p.reloadT > 0) {
     const f = 1 - p.reloadT / (w.reloadTime * S.reloadMul);
     ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 3;
@@ -2028,11 +2069,11 @@ function uiButton(x, y, w, h, label, action, o) {
   if (o.primary && !o.disabled) {
     const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, hov ? '#fbe08a' : '#f6d37a'); g.addColorStop(1, hov ? '#e8b84a' : '#d9a636');
     ctx.fillStyle = g;
-  } else ctx.fillStyle = o.disabled ? '#0c1510' : (hov ? '#1e2c22' : '#101a14');
+  } else ctx.fillStyle = o.disabled ? '#0c1510' : o.danger ? (hov ? '#3a1c20' : '#2a1618') : (hov ? '#1e2c22' : '#101a14');
   ctx.fill();
-  ctx.strokeStyle = o.disabled ? '#2e3e32' : (o.primary ? '#7a5a1a' : (hov ? '#f2c14e' : '#9a7a3a')); ctx.lineWidth = 2; ctx.stroke();
+  ctx.strokeStyle = o.disabled ? '#2e3e32' : o.danger ? (hov ? '#ff7a8a' : '#8a3a40') : (o.primary ? '#7a5a1a' : (hov ? '#f2c14e' : '#9a7a3a')); ctx.lineWidth = 2; ctx.stroke();
   const size = o.size || 16;
-  text(label, x + w / 2, y + h / 2 + size * 0.36, size, o.disabled ? '#6f8274' : (o.primary ? '#1c140c' : '#e8dcbc'), 'center', F_TITLE);
+  text(label, x + w / 2, y + h / 2 + size * 0.36, size, o.disabled ? '#6f8274' : (o.primary ? '#1c140c' : o.danger ? '#ff9aa4' : '#e8dcbc'), 'center', F_TITLE);
   return hov;
 }
 function drawSilver(rx, y) {
@@ -2301,7 +2342,9 @@ const pines = Array.from({ length: 40 }, (_, i) => [i * 34 - 10, 540 + Math.rand
 const menuButtons = [
   { label: 'Neuer Durchlauf', main: true, x: 80, y: 420, w: 330, h: 56, action: () => { selectHover = lastClass; state = 'select'; } },
   { label: 'Kartenbuch', x: 80, y: 490, w: 330, h: 56, action: () => { bookClass = lastClass; bookPage = 0; bookHover = null; state = 'book'; } },
-  { label: 'Bibliothek', x: 80, y: 560, w: 330, h: 56, action: () => { state = 'shop'; } }
+  { label: 'Bibliothek', x: 80, y: 560, w: 330, h: 56, action: () => { state = 'shop'; } },
+  { label: 'Optionen', small: true, x: 1040, y: 24, w: 112, h: 38, action: () => openOptions('menu') },
+  { label: 'Feedback', small: true, x: 1162, y: 24, w: 112, h: 38, action: () => openFeedback('menu') }
 ];
 function drawMenu() {
   let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
@@ -2349,9 +2392,15 @@ function drawMenu() {
   ctx.shadowBlur = 0;
   text('Das Königreich fiel in einer Nacht.', 80, 282, 22, '#c8d4de', 'left', F_TEXT, 'italic');
   text('Du bist, was von ihm übrig blieb.', 80, 312, 22, '#c8d4de', 'left', F_TEXT, 'italic');
-  text('WASD bewegen · Maus zielen · Linksklick angreifen · Rechtsklick Spezial · E Händler', 80, 372, 17, '#b8c4d0', 'left', F_TEXT);
+  text(moveLabel() + ' bewegen · Maus zielen · Linksklick angreifen · Rechtsklick Spezial · ' + keyLabel(bind('interact')) + ' Händler', 80, 372, 17, '#b8c4d0', 'left', F_TEXT);
   menuButtons.forEach((b, i) => {
     const hover = menuHover === i && b.action;
+    if (b.small) {
+      rr(b.x, b.y, b.w, b.h, b.h / 2); ctx.fillStyle = hover ? '#1e2c22' : 'rgba(10,17,13,.9)'; ctx.fill();
+      ctx.strokeStyle = hover ? '#f2c14e' : '#9a7a3a'; ctx.lineWidth = 1.5; ctx.stroke();
+      text(b.label, b.x + b.w / 2, b.y + b.h / 2 + 5, 15, '#e8dcbc', 'center', F_TITLE);
+      return;
+    }
     notched(b.x, b.y, b.w, b.h, 12); ctx.fillStyle = b.main ? '#f2c14e' : (hover ? '#f2c14e' : '#9a7a3a'); ctx.fill();
     const ig = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
     if (b.main) { ig.addColorStop(0, '#f6d37a'); ig.addColorStop(1, '#d9a636'); } else { ig.addColorStop(0, '#1e2c22'); ig.addColorStop(1, '#121b15'); }
@@ -2359,7 +2408,7 @@ function drawMenu() {
     text(b.label, b.x + b.w / 2, b.y + 36, 19, b.main ? '#1c140c' : (b.action ? '#e8dcbc' : '#7a8a7a'), 'center', F_TITLE);
     if (b.note) text(b.note, b.x + b.w - 22, b.y + 34, 14, '#7a8a7a', 'right', F_TEXT, 'italic');
   });
-  text('Prototyp v0.7 · M Musik · N Effekte', 80, 690, 16, '#b8c4d0', 'left', F_TEXT);
+  text('Prototyp ' + VERSION + ' · ' + keyLabel(bind('music')) + ' Musik · ' + keyLabel(bind('sfx')) + ' Effekte', 80, 690, 16, '#b8c4d0', 'left', F_TEXT);
   text('Klick oder Enter zum Starten', 440, 456, 17, '#f2c14e', 'left', F_TEXT, 'italic');
 }
 
@@ -2370,12 +2419,14 @@ function draw() {
   if (state === 'shop') { drawShopScreen(); drawCursor(); return; }
   if (state === 'open') { drawOpenScreen(); drawCursor(); return; }
   if (state === 'recycle') { drawRecycleScreen(); drawCursor(); return; }
+  if (isPanel(state) && (panelFrom === 'menu' || !G)) { drawMenu(); overlay(0.8); drawPanelScreen(); if (state !== 'feedback') drawCursor(); return; }
   if (state === 'menu' || !G && state !== 'select') { drawMenu(); drawCursor(); return; }
   if (state === 'select') { drawSelectScreen(); drawCursor(); return; }
 
   ctx.save();
   ctx.beginPath(); ctx.rect(FIELD_X, 0, VIEW_W, VIEW_H); ctx.clip();
   ctx.translate(FIELD_X, -G.camTop);
+  if (G.shakeT > 0 && settings.hitfx) ctx.translate((Math.random() - 0.5) * G.shakeT * 20 * settings.hitfx / 2, (Math.random() - 0.5) * G.shakeT * 20 * settings.hitfx / 2);
   drawWorld();
   drawEntities();
   ctx.restore();
@@ -2388,12 +2439,13 @@ function draw() {
   drawRails();
 
   if (state === 'play') drawCrosshair();
-  if (state === 'pause') { overlay(0.7); text('Pause', 640, 340, 48, '#f0e6c8', 'center', F_TITLE); text('Esc / P zum Fortsetzen', 640, 384, 19, '#b8c4d0', 'center', F_TEXT); text('M Musik ' + (audioPrefs.music ? 'an' : 'aus') + '  ·  N Effekte ' + (audioPrefs.sfx ? 'an' : 'aus'), 640, 420, 17, '#8a9aa0', 'center', F_TEXT); }
+  if (state === 'pause') { drawPauseScreen(); drawCursor(); }
+  if (isPanel(state)) { overlay(0.86); drawPanelScreen(); if (state !== 'feedback') drawCursor(); }
   if (state === 'pick') { drawPickScreen(); drawCursor(); }
   if (state === 'merchant') { drawMerchantScreen(); drawCursor(); }
   if (state === 'dead') {
     overlay(0.78);
-    text('Gefallen', 640, 290, 56, '#ff7a8a', 'center', F_TITLE);
+    text(G.gaveUp ? 'Aufgegeben' : 'Gefallen', 640, 290, 56, G.gaveUp ? '#f2c14e' : '#ff7a8a', 'center', F_TITLE);
     text(G.cls.name + ' · ' + Math.floor(G.dist) + ' m · ' + G.kills + ' Gefallene · ' + G.cards.length + ' Karten', 640, 346, 24, '#f0e6c8', 'center', F_TEXT);
     text('Rekord: ' + Math.floor(best) + ' m', 640, 384, 19, '#b8c4d0', 'center', F_TEXT);
     text('+ ' + G.earned + ' Mondsilber', 640, 420, 22, '#c8d0d8', 'center', F_TITLE);
@@ -2406,16 +2458,417 @@ function drawCursor() {
   ctx.beginPath(); ctx.arc(mouse.fx, mouse.fy, 4, 0, 7); ctx.fill(); ctx.stroke();
 }
 
+// ---------- Pause, Optionen, Steuerung, Feedback ----------
+const VERSION = 'v0.8';
+const FEEDBACK_REPO = 'sventie/jump-up';
+const TOKEN_KEY = 'left-behind-gh-token';
+let panelFrom = 'pause', armedAct = null, armedAt = 0, listenAct = null, controlsMsg = '', dragSlider = null, uiSliders = [];
+const isPanel = st => st === 'options' || st === 'controls' || st === 'feedback';
+const BIND_NAMES = { up: 'Nach vorn', left: 'Nach links', down: 'Zurück', right: 'Nach rechts', dash: 'Fähigkeit', reload: 'Spannen', interact: 'Handeln', music: 'Musik', sfx: 'Effekte' };
+const KEY_NAMES = { Space: 'Leertaste', ShiftLeft: 'Shift', ShiftRight: 'Shift', ControlLeft: 'Strg', ControlRight: 'Strg', AltLeft: 'Alt', AltRight: 'Alt', Tab: 'Tab', Enter: 'Enter', Backspace: '⌫',
+  ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Escape: 'Esc', CapsLock: 'Caps', Comma: ',', Period: '.', Minus: 'ß', Slash: '-', Semicolon: 'ö', Quote: 'ä', BracketLeft: 'ü' };
+function bind(a) { return settings.binds[a]; }
+function keyLabel(c) { return KEY_NAMES[c] || c.replace(/^Key|^Digit|^Numpad/, ''); }
+function moveLabel() {
+  const b = settings.binds;
+  return b.up === 'KeyW' && b.left === 'KeyA' && b.down === 'KeyS' && b.right === 'KeyD' ? 'WASD' : [b.up, b.left, b.down, b.right].map(keyLabel).join(' ');
+}
+function saveSettings() { try { localStorage.setItem('left-behind-settings', JSON.stringify(settings)); } catch (e) {} }
+function applySettings() {
+  canvas.style.filter = settings.bright === 100 ? '' : 'brightness(' + settings.bright / 100 + ')';
+  applyAudioPrefs();
+}
+function chg(k, v) { settings[k] = v; saveSettings(); applySettings(); }
+function setBgQuiet(v) { bgQuiet = v && settings.bgMute; applyAudioPrefs(); }
+const inside = (x, y, w, h) => mouse.fx >= x && mouse.fx <= x + w && mouse.fy >= y && mouse.fy <= y + h;
+function fit(str, maxW, font) {
+  ctx.font = font;
+  if (ctx.measureText(str).width <= maxW) return str;
+  while (str.length > 1 && ctx.measureText(str + '…').width > maxW) str = str.slice(0, -1);
+  return str + '…';
+}
+
+// Pause
+function resumeRun() { state = 'play'; armedAct = null; mouse.down = false; mouse.rdown = false; mouse.pressed = false; }
+function openOptions(from) { panelFrom = from; state = 'options'; dragSlider = null; }
+function closePanel() { state = panelFrom === 'pause' && G ? 'pause' : 'menu'; }
+function armed(id) { return armedAct === id && performance.now() - armedAt < 4000; }
+function confirmed(id, go) {
+  if (armed(id)) { armedAct = null; go(); } else { armedAct = id; armedAt = performance.now(); }
+}
+function windowFrame(x, y, w, h) {
+  rr(x - 8, y - 8, w + 16, h + 16, 24); ctx.strokeStyle = '#5a4a1a'; ctx.lineWidth = 2; ctx.stroke();
+  rr(x - 5, y - 5, w + 10, h + 10, 22); ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 6; ctx.stroke();
+  const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, '#1a2a20'); g.addColorStop(1, '#101a14');
+  rr(x, y, w, h, 18); ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 3; ctx.stroke();
+}
+function kicker(str, x, y, align) {
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '4px';
+  text(str.toUpperCase(), x, y, 15, '#8ee8ff', align || 'left', F_TEXT);
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+}
+function keycap(rx, cy, label) {
+  ctx.font = 'bold 16px ' + F_TEXT;
+  const w = Math.max(34, ctx.measureText(label).width + 20), x = rx - w;
+  rr(x, cy - 16, w, 32, 7); ctx.fillStyle = '#e8dcbc'; ctx.fill(); ctx.strokeStyle = '#6a5a3a'; ctx.lineWidth = 1; ctx.stroke();
+  text(label, x + w / 2, cy + 6, 16, '#1c140c', 'center', F_TEXT, 'bold');
+  return x;
+}
+function drawPauseScreen() {
+  uiBtns = []; uiSliders = [];
+  overlay(0.84);
+  const X = 170, Y = 70, Wd = 940, Ht = 580;
+  windowFrame(X, Y, Wd, Ht);
+  ctx.save(); rr(X, Y, Wd, Ht, 18); ctx.clip();
+  const g = ctx.createLinearGradient(0, Y, 0, Y + Ht); g.addColorStop(0, '#14201a'); g.addColorStop(1, '#0e1812');
+  ctx.fillStyle = g; ctx.fillRect(X + 380, Y, Wd - 380, Ht);
+  ctx.fillStyle = '#2e3e32'; ctx.fillRect(X + 380, Y, 2, Ht);
+  ctx.restore();
+
+  // Menü
+  const bx = X + 36, bw = 308;
+  kicker('Der Weg ruht', bx, Y + 54);
+  titleText('Pause', bx, Y + 116, 56);
+  const lg = ctx.createLinearGradient(bx, 0, bx + 120, 0); lg.addColorStop(0, '#f2c14e'); lg.addColorStop(1, 'rgba(242,193,78,0)');
+  ctx.fillStyle = lg; ctx.fillRect(bx, Y + 128, 120, 2);
+  let y = Y + 156;
+  const step = () => { const r = y; y += 68; return r; };
+  uiButton(bx, step(), bw, 56, 'Fortsetzen', resumeRun, { primary: true, size: 19 });
+  keycap(bx + bw - 22, y - 68 + 28, 'Esc');
+  uiButton(bx, step(), bw, 56, 'Optionen', () => openOptions('pause'), { size: 19 });
+  uiButton(bx, step(), bw, 56, 'Feedback', () => openFeedback('pause'), { size: 19 });
+  uiButton(bx, step(), bw, 56, armed('menu') ? 'Sicher? Nochmal klicken' : 'Zum Hauptmenü', () => confirmed('menu', () => { finishRun(); state = 'menu'; }), { size: armed('menu') ? 16 : 19 });
+  uiButton(bx, step(), bw, 56, armed('quit') ? 'Sicher? Nochmal klicken' : 'Lauf aufgeben', () => confirmed('quit', () => { G.gaveUp = true; finishRun(); state = 'dead'; }), { size: armed('quit') ? 16 : 19, danger: true });
+  wrap('Wer aufgibt, behält das bisher verdiente Mondsilber, aber nicht den Lauf.', bw, '15px ' + F_TEXT).forEach((l, i) => text(l, bx, Y + Ht - 44 + i * 20, 15, '#8a9aa0'));
+
+  // Dein Lauf
+  const cx = X + 412, cw = 492;
+  text('Dein Lauf', cx, Y + 62, 26, '#f0e6c8', 'left', F_TITLE);
+  text(G.cls.name + ' · Stufe ' + G.stage, cx + cw, Y + 60, 16, '#c8d4de', 'right', F_TEXT);
+  const stats = [['Weg', Math.floor(G.dist) + ' m', '#f0e6c8'], ['Gefallene', String(G.kills), '#f0e6c8'], ['Mondsilber', String(runSilver()), '#f2c14e']];
+  stats.forEach((s, i) => {
+    const sx = cx + i * (156 + 12), sy = Y + 88;
+    rr(sx, sy, 156, 72, 10); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
+    text(s[0].toUpperCase(), sx + 14, sy + 24, 12, '#8a9aa0', 'left', F_TEXT);
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+    text(s[1], sx + 14, sy + 56, 28, s[2], 'left', F_TITLE);
+  });
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
+  text('AKTIVE KARTEN UND TRÄNKE', cx, Y + 192, 13, '#8a9aa0', 'left', F_TEXT);
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  const groups = [];
+  for (const id of G.cards.concat(G.buffs)) { const gr = groups.find(q => q.id === id); if (gr) gr.n++; else groups.push({ id, n: 1 }); }
+  const cwid = (cw - 8) / 2, maxChips = 10;
+  groups.slice(0, maxChips).forEach((gr, i) => {
+    const c = itemOf(gr.id), R = RARITY[c.rarity], sx = cx + (i % 2) * (cwid + 8), sy = Y + 204 + Math.floor(i / 2) * 54;
+    rr(sx, sy, cwid, 46, 6); ctx.fillStyle = '#16231b'; ctx.fill();
+    ctx.strokeStyle = R.c; ctx.lineWidth = 2; if (c.kind === 'Trank') ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
+    rr(sx + 8, sy + 8, 30, 30, [15, 15, 4, 4]); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 1; ctx.stroke();
+    drawIcon(c.icon, sx + 23, sy + 24, 20, R.c, 1.5);
+    text(fit(c.name + (gr.n > 1 ? ' ×' + gr.n : ''), cwid - 56, '12px ' + F_TITLE), sx + 46, sy + 21, 12, '#f0e6c8', 'left', F_TITLE);
+    text(fit(c.kind === 'Trank' ? 'Trank · nur dieser Lauf' : c.stat, cwid - 56, '13px ' + F_TEXT), sx + 46, sy + 38, 13, '#f2c14e', 'left', F_TEXT);
+  });
+  if (groups.length > maxChips) text('… und ' + (groups.length - maxChips) + ' weitere', cx + cw, Y + 204 + 5 * 54 + 8, 14, '#8a9aa0', 'right', F_TEXT, 'italic');
+  if (!groups.length) text('Noch keine Karten gewählt.', cx, Y + 232, 17, '#7a8a7a', 'left', F_TEXT, 'italic');
+  ctx.fillStyle = '#2e3e32'; ctx.fillRect(cx, Y + Ht - 58, cw, 1);
+  text('Im Kartenbuch: ' + G.library.length + ' Karten', cx, Y + Ht - 30, 15, '#8a9aa0', 'left', F_TEXT);
+  const kn = keycap(cx + cw, Y + Ht - 36, keyLabel(bind('sfx')));
+  text('Effekte', kn - 8, Y + Ht - 30, 15, '#8a9aa0', 'right', F_TEXT);
+  const km = keycap(kn - 78, Y + Ht - 36, keyLabel(bind('music')));
+  text('Musik', km - 8, Y + Ht - 30, 15, '#8a9aa0', 'right', F_TEXT);
+}
+
+// Bausteine für Optionen
+function secHead(label, x, y, w) {
+  text(label, x, y, 21, '#f2c14e', 'left', F_TITLE);
+  ctx.font = '21px ' + F_TITLE;
+  const tw = ctx.measureText(label).width, g = ctx.createLinearGradient(x + tw + 10, 0, x + w, 0);
+  g.addColorStop(0, '#7a5a1a'); g.addColorStop(1, 'rgba(122,90,26,0)');
+  ctx.fillStyle = g; ctx.fillRect(x + tw + 10, y - 8, w - tw - 10, 2);
+}
+function uiSlider(x, y, w, v, min, max, step, set) {
+  const f = clamp((v - min) / (max - min), 0, 1), tx = x + w * f;
+  rr(x, y - 6, w, 12, 6); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#050a07'; ctx.lineWidth = 1; ctx.stroke();
+  rr(x, y - 6, Math.max(12, w * f), 12, 6); ctx.fillStyle = '#d9a636'; ctx.fill();
+  const g = ctx.createRadialGradient(tx - 3, y - 4, 1, tx, y, 13); g.addColorStop(0, '#fff1b8'); g.addColorStop(1, '#c9973f');
+  ctx.beginPath(); ctx.arc(tx, y, 12, 0, 7); ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = '#3a2a08'; ctx.lineWidth = 2; ctx.stroke();
+  uiSliders.push({ x: x - 14, y: y - 18, w: w + 28, h: 36, x0: x, w0: w, min, max, step, set });
+}
+function sliderSet(s) {
+  const f = clamp((mouse.fx - s.x0) / s.w0, 0, 1);
+  s.set(Math.round((s.min + f * (s.max - s.min)) / s.step) * s.step);
+}
+function rowSlider(x, top, w, label, sub, val, min, max, step, fmt, set) {
+  text(label, x, top + 18, 18, '#f0e6c8');
+  text(fmt(val), x + w, top + 18, 15, '#8ee8ff', 'right', F_TITLE);
+  if (sub) text(sub, x, top + 35, 14, '#8a9aa0');
+  uiSlider(x + 12, top + (sub ? 56 : 40), w - 24, val, min, max, step, set);
+  return sub ? 76 : 60;
+}
+function rowToggle(x, top, w, label, sub, val, set) {
+  const hov = inside(x, top, w, 50);
+  text(label, x, top + 22, 18, hov ? '#fff6d8' : '#f0e6c8');
+  if (sub) text(sub, x, top + 40, 14, '#8a9aa0');
+  const sx = x + w - 56, sy = top + 6;
+  rr(sx, sy, 56, 30, 15); ctx.fillStyle = val ? '#1f5a3c' : '#0c1510'; ctx.fill(); ctx.strokeStyle = val ? '#4fd08a' : '#4a5a4a'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.beginPath(); ctx.arc(sx + (val ? 41 : 15), sy + 15, 10, 0, 7); ctx.fillStyle = val ? '#e8ffd8' : '#8a9aa0'; ctx.fill();
+  uiHit(x, top, w, 50, () => set(!val));
+  return 56;
+}
+function rowSeg(x, top, w, label, opts, idx, set, sub) {
+  text(label, x, top + 18, 18, '#f0e6c8');
+  if (sub) text(sub, x, top + 35, 14, '#8a9aa0');
+  const y = top + (sub ? 42 : 30), sw = w / opts.length;
+  ctx.save(); rr(x, y, w, 36, 18); ctx.clip();
+  opts.forEach((o, i) => {
+    ctx.fillStyle = i === idx ? '#2a4a38' : (inside(x + i * sw, y, sw, 36) ? '#16231b' : '#0c1510'); ctx.fillRect(x + i * sw, y, sw, 36);
+    if (i) { ctx.fillStyle = '#2e3e32'; ctx.fillRect(x + i * sw, y, 1, 36); }
+    text(o, x + i * sw + sw / 2, y + 24, 16, i === idx ? '#f2c14e' : '#b8c4d0', 'center', F_TEXT, i === idx ? 'bold' : '500');
+    uiHit(x + i * sw, y, sw, 36, () => set(i));
+  });
+  ctx.restore();
+  rr(x, y, w, 36, 18); ctx.strokeStyle = '#4a5a4a'; ctx.lineWidth = 2; ctx.stroke();
+  return sub ? 92 : 80;
+}
+const XCOLORS = [['#fff3c8', 'Elfenbein'], ['#8ee8ff', 'Himmelblau'], ['#4fd08a', 'Smaragd'], ['#f2c14e', 'Gold'], ['#ff7a8a', 'Rosé']];
+function rowSwatch(x, top, label) {
+  text(label, x, top + 18, 18, '#f0e6c8');
+  XCOLORS.forEach(([c], i) => {
+    const cx = x + 18 + i * 46, cy = top + 48, on = settings.xcol === c;
+    ctx.beginPath(); ctx.arc(cx, cy, 17, 0, 7); ctx.fillStyle = c; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#0a110d'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, 20, 0, 7); ctx.lineWidth = on ? 3 : 2; ctx.strokeStyle = on ? '#f2c14e' : (inside(cx - 20, cy - 20, 40, 40) ? '#9a7a3a' : '#4a5a4a'); ctx.stroke();
+    uiHit(cx - 20, cy - 20, 40, 40, () => chg('xcol', c));
+  });
+  return 84;
+}
+function panelHead(kick, title, hint) {
+  windowFrame(70, 34, 1140, 652);
+  kicker(kick, 110, 84);
+  titleText(title, 110, 134, 46);
+  text(hint, 1170, 130, 16, '#8a9aa0', 'right', F_TEXT);
+}
+
+function drawOptionsScreen() {
+  uiBtns = []; uiSliders = [];
+  const fromPause = panelFrom === 'pause' && G;
+  panelHead(fromPause ? 'Pause' : 'Hauptmenü', 'Optionen', 'Änderungen gelten sofort und werden gespeichert.  Esc zurück');
+  const colW = 326, cx = i => 110 + i * 366, pct = v => Math.round(v * 100) + ' %';
+  // Ton
+  let x = cx(0), y = 214;
+  secHead('Ton', x, 190, colW);
+  y += rowSlider(x, y, colW, 'Gesamtlautstärke', '', settings.master, 0, 1, 0.01, pct, v => chg('master', v));
+  y += rowSlider(x, y, colW, 'Musik', 'Taste ' + keyLabel(bind('music')) + ' schaltet stumm', settings.music, 0, 1, 0.01, pct, v => chg('music', v));
+  y += rowSlider(x, y, colW, 'Effekte', 'Taste ' + keyLabel(bind('sfx')) + ' schaltet stumm', settings.sfx, 0, 1, 0.01, pct, v => chg('sfx', v));
+  uiButton(x, y - 6, 110, 30, 'Probeton', () => { audioInit(); sfx('shoot_crossbow'); }, { size: 14 });
+  y += 36;
+  rowToggle(x, y, colW, 'Ton im Hintergrund stumm', 'wenn das Fenster nicht aktiv ist', settings.bgMute, v => chg('bgMute', v));
+  // Anzeige
+  x = cx(1); y = 214;
+  secHead('Anzeige', x, 190, colW);
+  y += rowToggle(x, y, colW, 'Vollbild', 'oder Taste F11', !!document.fullscreenElement, v => {
+    try { const r = v ? document.documentElement.requestFullscreen() : document.exitFullscreen(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
+  });
+  y += rowSlider(x, y, colW, 'Helligkeit', 'hebt das ganze Bild an', settings.bright, 60, 140, 1, v => v + ' %', v => chg('bright', v));
+  y += rowSeg(x, y, colW, 'Treffer-Effekte', ['Aus', 'Schwach', 'Normal'], settings.hitfx, i => chg('hitfx', i), 'Rotfärbung und Wackeln');
+  y += rowToggle(x, y, colW, 'Lebensbalken der Gegner', '', settings.hpbars, v => chg('hpbars', v)) - 6;
+  rowToggle(x, y, colW, 'Schadenszahlen', '', settings.dmgnums, v => chg('dmgnums', v));
+  // Spiel
+  x = cx(2); y = 214;
+  secHead('Spiel', x, 190, colW);
+  y += rowSeg(x, y, colW, 'Fadenkreuz', ['Kreuz', 'Punkt', 'Ring'], settings.xhair, i => chg('xhair', i));
+  y += rowSwatch(x, y, 'Fadenkreuz-Farbe');
+  y += rowToggle(x, y, colW, 'Automatisch pausieren', 'wenn das Fenster den Fokus verliert', settings.autoPause, v => chg('autoPause', v));
+  y += rowToggle(x, y, colW, 'Hinweise einblenden', 'z. B. „E · Handeln“ am Händler', settings.hints, v => chg('hints', v));
+  rowToggle(x, y, colW, 'Dauerfeuer mit gedrückter Taste', 'aus: ein Klick, ein Schuss', settings.autofire, v => chg('autofire', v));
+  // Fuß
+  uiButton(110, 620, 210, 48, 'Steuerung ändern', () => { state = 'controls'; listenAct = null; controlsMsg = ''; }, { size: 17 });
+  uiButton(334, 620, 190, 48, 'Standardwerte', () => { const b = settings.binds; Object.assign(settings, DEFAULT_SETTINGS, { binds: b }); saveSettings(); applySettings(); }, { size: 17 });
+  uiButton(1170 - 270, 620, 270, 48, fromPause ? 'Zurück zur Pause' : 'Zurück zum Menü', closePanel, { primary: true, size: 17 });
+}
+
+// Steuerung
+function mouseIcon(cx, cy, right) {
+  ctx.save(); rr(cx - 11, cy - 15, 22, 30, 11); ctx.clip();
+  ctx.fillStyle = '#f2c14e'; ctx.fillRect(right ? cx : cx - 11, cy - 15, 11, 13);
+  ctx.restore();
+  rr(cx - 11, cy - 15, 22, 30, 11); ctx.strokeStyle = '#e8dcbc'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#e8dcbc'; ctx.fillRect(cx - 1, cy - 15, 2, 13);
+}
+function actRow(x, y, w, name, sub, act, o) {
+  o = o || {};
+  rr(x, y, w, 46, 23); ctx.fillStyle = '#0c1510'; ctx.fill(); ctx.strokeStyle = listenAct && listenAct === act ? '#8ee8ff' : '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+  text(name, x + 18, y + (sub ? 21 : 29), 18, '#f0e6c8');
+  if (sub) text(sub, x + 18, y + 38, 13, '#8a9aa0');
+  const bw = o.bw || 88, bx = x + w - bw - 10;
+  if (o.mouse) { mouseIcon(bx - 130, y + 23, o.mouse === 'r'); text(o.mouse === 'r' ? 'Rechtsklick' : 'Linksklick', bx - 12, y + 28, 15, '#8a9aa0', 'right', F_TEXT); }
+  else if (listenAct && listenAct === act) text('Taste drücken …', bx - 10, y + 29, 16, '#8ee8ff', 'right', F_TEXT);
+  else if (act) keycap(bx - 10, y + 23, keyLabel(bind(act)));
+  else if (o.cap) keycap(bx - 10, y + 23, o.cap);
+  if (o.fixed) uiButton(bx, y + 8, bw, 30, 'fest', null, { size: 14, disabled: true });
+  else if (listenAct === act) uiButton(bx, y + 8, bw, 30, 'Abbrechen', () => { listenAct = null; }, { size: 13 });
+  else uiButton(bx, y + 8, bw, 30, 'Ändern', () => { listenAct = act; controlsMsg = ''; for (const k in keys) keys[k] = false; }, { size: 14 });
+}
+function bindKey(code) {
+  if (code === 'Escape') { listenAct = null; return; }
+  if (code === 'KeyP' || /^F\d+$/.test(code) || /^Meta/.test(code) || code === 'ContextMenu') { controlsMsg = keyLabel(code) + ' ist reserviert.'; return; }
+  const b = settings.binds, a = listenAct, other = Object.keys(b).find(k => k !== a && b[k] === code);
+  controlsMsg = '';
+  if (other) { b[other] = b[a]; controlsMsg = keyLabel(code) + ' gehörte zu „' + BIND_NAMES[other] + '“ – die beiden Tasten wurden getauscht.'; }
+  b[a] = code; listenAct = null; saveSettings();
+}
+function drawControlsScreen() {
+  uiBtns = []; uiSliders = [];
+  panelHead('Optionen', 'Steuerung', '„Ändern“ klicken, dann die neue Taste drücken. Esc bricht ab.');
+  const lx = 110, rx = 664, w = 506;
+  secHead('Bewegung', lx, 190, w);
+  actRow(lx, 206, w, 'Nach vorn', '', 'up');
+  actRow(lx, 260, w, 'Nach links', '', 'left');
+  actRow(lx, 314, w, 'Zurück', 'nur innerhalb des Bildes', 'down');
+  actRow(lx, 368, w, 'Nach rechts', '', 'right');
+  actRow(lx, 422, w, 'Fähigkeit', 'zum Beispiel Windstoß', 'dash');
+  secHead('Kampf und Welt', rx, 190, w);
+  actRow(rx, 206, w, 'Angreifen', '', null, { mouse: 'l', fixed: true });
+  actRow(rx, 260, w, 'Spezial', 'Schild, Fokus oder Meditieren', null, { mouse: 'r', fixed: true });
+  actRow(rx, 314, w, 'Spannen', 'Waldläufer', 'reload');
+  actRow(rx, 368, w, 'Handeln', '', 'interact');
+  actRow(rx, 422, w, 'Pause', '', null, { cap: 'Esc', fixed: true });
+  actRow(rx, 476, 247, 'Musik', '', 'music', { bw: 78 });
+  actRow(rx + 259, 476, 247, 'Effekte', '', 'sfx', { bw: 78 });
+  if (controlsMsg) text(controlsMsg, 640, 596, 16, '#f2c14e', 'center', F_TEXT, 'italic');
+  uiButton(110, 620, 230, 48, 'Standardbelegung', () => { Object.assign(settings.binds, DEFAULT_BINDS); listenAct = null; controlsMsg = ''; saveSettings(); }, { size: 17 });
+  uiButton(1170 - 320, 620, 320, 48, 'Zurück zu den Optionen', () => { state = 'options'; listenAct = null; }, { primary: true, size: 17 });
+}
+
+// Feedback: Eingabefelder liegen als echte HTML-Elemente über dem Bild
+const fbEl = { title: document.getElementById('fbTitle'), body: document.getElementById('fbBody'), token: document.getElementById('fbToken') };
+const fb = { busy: false, msg: '', kind: '', url: '', tokenEdit: false };
+let ghToken = ''; try { ghToken = localStorage.getItem(TOKEN_KEY) || ''; } catch (e) {}
+const FB_RECT = { title: { x: 276, y: 198, w: 728, h: 40 }, body: { x: 276, y: 282, w: 728, h: 170 }, token: { x: 276, y: 482, w: 560, h: 36 } };
+function fbPlace(el, r, show) {
+  el.classList.toggle('on', show);
+  if (!show) return;
+  const cr = canvas.getBoundingClientRect(), s = cr.width / FRAME_W;
+  el.style.left = (cr.left + r.x * s) + 'px'; el.style.top = (cr.top + r.y * s) + 'px';
+  el.style.width = r.w * s + 'px'; el.style.height = r.h * s + 'px'; el.style.fontSize = 18 * s + 'px';
+}
+function fbHide() { for (const k in fbEl) fbEl[k].classList.remove('on'); canvas.style.cursor = ''; if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); }
+function openFeedback(from) {
+  panelFrom = from; state = 'feedback'; fb.msg = ''; fb.kind = ''; fb.url = ''; fb.tokenEdit = false;
+  canvas.style.cursor = 'default';
+  for (const k in keys) keys[k] = false;
+  mouse.down = false; mouse.rdown = false; mouse.pressed = false;
+  setTimeout(() => { fbPlace(fbEl.title, FB_RECT.title, true); fbEl.title.focus(); }, 0);
+}
+function closeFeedback() { fbHide(); closePanel(); }
+function feedbackContext() {
+  const l = ['Version: ' + VERSION];
+  if (G && panelFrom === 'pause') {
+    l.push('Streiter: ' + G.cls.name, 'Weg: ' + Math.floor(G.dist) + ' m · Stufe ' + G.stage + ' · ' + G.kills + ' Gefallene');
+    l.push('Karten: ' + (G.cards.map(id => itemOf(id).name).join(', ') || '–'), 'Tränke: ' + (G.buffs.map(id => itemOf(id).name).join(', ') || '–'));
+  }
+  l.push('Fenster: ' + innerWidth + '×' + innerHeight, 'Browser: ' + navigator.userAgent);
+  return l.map(s => '- ' + s).join('\n');
+}
+function feedbackBody() {
+  return (fbEl.body.value.trim() || '_(keine Beschreibung)_') + '\n\n---\n**Kontext (automatisch aus dem Spiel)**\n' + feedbackContext();
+}
+function openInBrowser() {
+  const t = fbEl.title.value.trim();
+  if (!t) { fb.msg = 'Bitte zuerst einen Titel eingeben.'; fb.kind = 'err'; return; }
+  const url = 'https://github.com/' + FEEDBACK_REPO + '/issues/new?title=' + encodeURIComponent(t) + '&body=' + encodeURIComponent(feedbackBody().slice(0, 5000));
+  window.open(url, '_blank', 'noopener');
+}
+async function sendFeedback() {
+  if (fb.busy) return;
+  const title = fbEl.title.value.trim(), token = (fb.tokenEdit || !ghToken ? fbEl.token.value.trim() : '') || ghToken;
+  if (!title) { fb.msg = 'Bitte einen Titel eingeben.'; fb.kind = 'err'; return; }
+  if (!token) { fb.msg = 'Zum direkten Senden fehlt der GitHub-Zugangstoken. Alternativ: „Im Browser öffnen“.'; fb.kind = 'err'; return; }
+  fb.busy = true; fb.msg = 'Sende …'; fb.kind = ''; fb.url = '';
+  const payload = { title, body: feedbackBody(), labels: ['feedback'] };
+  const post = p => fetch('https://api.github.com/repos/' + FEEDBACK_REPO + '/issues', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
+    body: JSON.stringify(p)
+  });
+  try {
+    let res = await post(payload);
+    if (res.status === 422) { delete payload.labels; res = await post(payload); }
+    if (res.ok) {
+      const j = await res.json();
+      fb.msg = 'Danke! Issue #' + j.number + ' wurde angelegt.'; fb.kind = 'ok'; fb.url = j.html_url || '';
+      fbEl.title.value = ''; fbEl.body.value = '';
+      if (token !== ghToken) { ghToken = token; try { localStorage.setItem(TOKEN_KEY, token); } catch (e) {} }
+      fbEl.token.value = ''; fb.tokenEdit = false;
+      sfx('card_pick');
+    } else {
+      fb.kind = 'err';
+      fb.msg = res.status === 401 ? 'Der Zugangstoken wurde abgelehnt (ungültig oder abgelaufen).'
+        : res.status === 403 ? 'Keine Berechtigung. Der Token braucht „Issues: Read and write“ für ' + FEEDBACK_REPO + '.'
+        : res.status === 404 ? 'Repository nicht gefunden – oder der Token hat keinen Zugriff darauf.'
+        : 'GitHub hat den Eintrag abgelehnt (Status ' + res.status + ').';
+    }
+  } catch (e) { fb.kind = 'err'; fb.msg = 'Keine Verbindung zu GitHub. Prüfe das Netz oder nutze „Im Browser öffnen“.'; }
+  fb.busy = false;
+}
+function drawFeedbackScreen() {
+  uiBtns = []; uiSliders = [];
+  const X = 240, Y = 48, Wd = 800, Ht = 624;
+  windowFrame(X, Y, Wd, Ht);
+  kicker('Rückmeldung', 276, 100);
+  titleText('Feedback', 276, 152, 44);
+  text('Landet direkt als Issue auf GitHub', 1004, 148, 15, '#8a9aa0', 'right', F_TEXT);
+  text('Titel', 276, 190, 18, '#f0e6c8');
+  text('Beschreibung', 276, 274, 18, '#f0e6c8');
+  text('Idee, Fehler oder Beobachtung – gern ausführlich', 1004, 274, 14, '#8a9aa0', 'right', F_TEXT);
+  const hasTok = !!ghToken && !fb.tokenEdit;
+  fbPlace(fbEl.title, FB_RECT.title, true);
+  fbPlace(fbEl.body, FB_RECT.body, true);
+  fbPlace(fbEl.token, FB_RECT.token, !hasTok);
+  if (hasTok) {
+    text('✓ GitHub-Zugang gespeichert (nur in diesem Browser)', 276, 506, 17, '#4fd08a');
+    uiButton(676, 482, 100, 34, 'Ändern', () => { fb.tokenEdit = true; setTimeout(() => fbEl.token.focus(), 0); }, { size: 14 });
+    uiButton(786, 482, 110, 34, 'Entfernen', () => { ghToken = ''; try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} }, { size: 14 });
+  } else {
+    text('GitHub-Zugangstoken (einmalig)', 276, 474, 18, '#f0e6c8');
+    if (ghToken) uiButton(846, 482, 110, 36, 'Behalten', () => { fb.tokenEdit = false; fbEl.token.value = ''; }, { size: 14 });
+    wrap('Fine-grained Token mit Zugriff nur auf ' + FEEDBACK_REPO + ' und „Issues: Read and write“. Er bleibt ausschließlich in diesem Browser gespeichert.', 728, '14px ' + F_TEXT)
+      .forEach((l, i) => text(l, 276, 542 + i * 18, 14, '#8a9aa0'));
+  }
+  if (fb.msg) {
+    const col = fb.kind === 'ok' ? '#4fd08a' : fb.kind === 'err' ? '#ff7a8a' : '#c8d4de';
+    wrap(fb.msg, fb.url ? 560 : 728, '16px ' + F_TEXT).slice(0, 2).forEach((l, i) => text(l, 276, 580 + i * 19, 16, col));
+    if (fb.url) uiButton(854, 566, 150, 32, 'Issue ansehen', () => window.open(fb.url, '_blank', 'noopener'), { size: 14 });
+  }
+  uiButton(276, 606, 150, 48, 'Abbrechen', closeFeedback, { size: 17 });
+  uiButton(440, 606, 230, 48, 'Im Browser öffnen', openInBrowser, { size: 17 });
+  uiButton(1004 - 200, 606, 200, 48, fb.busy ? 'Sende …' : 'Senden', sendFeedback, { primary: true, size: 18, disabled: fb.busy });
+}
+function drawPanelScreen() {
+  if (state === 'options') drawOptionsScreen(); else if (state === 'controls') drawControlsScreen(); else drawFeedbackScreen();
+}
+applySettings();
+
 // ---------- Eingabe ----------
 function toSelect() { selectHover = lastClass; state = 'select'; }
 addEventListener('keydown', e => {
   audioInit();
-  if (e.code === 'KeyM') { audioPrefs.music = !audioPrefs.music; applyAudioPrefs(); }
-  if (e.code === 'KeyN') { audioPrefs.sfx = !audioPrefs.sfx; applyAudioPrefs(); }
+  if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) {
+    if (e.code === 'Escape') closeFeedback();
+    else if (e.code === 'Enter' && (e.ctrlKey || e.metaKey)) sendFeedback();
+    return;
+  }
+  if (state === 'controls' && listenAct) { e.preventDefault(); bindKey(e.code); return; }
+  if (e.code === bind('music')) { audioPrefs.music = !audioPrefs.music; applyAudioPrefs(); }
+  if (e.code === bind('sfx')) { audioPrefs.sfx = !audioPrefs.sfx; applyAudioPrefs(); }
   keys[e.code] = true;
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
   if (state === 'menu' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
   if (state === 'dead' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
+  if (state === 'options') { if (e.code === 'Escape') closePanel(); return; }
+  if (state === 'controls') { if (e.code === 'Escape') state = 'options'; return; }
+  if (state === 'feedback') { if (e.code === 'Escape') closeFeedback(); return; }
   if (state === 'shop') { if (e.code === 'Escape') state = 'menu'; return; }
   if (state === 'recycle') { if (e.code === 'Escape') state = 'book'; if (e.code === 'ArrowRight') recyclePage++; if (e.code === 'ArrowLeft') recyclePage--; return; }
   if (state === 'open') { if (e.code === 'Escape' && packOpen && packOpen.cards.every(it => it.t)) { state = 'shop'; packOpen = null; } return; }
@@ -2434,17 +2887,20 @@ addEventListener('keydown', e => {
     if (e.code === 'Escape') state = 'menu';
     return;
   }
-  if (state === 'merchant') { if (e.code === 'Escape' || e.code === 'KeyE') { state = 'play'; merchantNow = null; } return; }
+  if (state === 'merchant') { if (e.code === 'Escape' || e.code === bind('interact')) { state = 'play'; merchantNow = null; } return; }
   if (state === 'play') {
-    if (e.code === 'KeyE') { const nm = nearMerchant(); if (nm) { openMerchant(nm); return; } }
-    if (e.code === 'KeyR') startReload();
-    if (e.code === 'Space') tryDash();
+    if (e.code === bind('interact')) { const nm = nearMerchant(); if (nm) { openMerchant(nm); return; } }
+    if (e.code === bind('reload')) startReload();
+    if (e.code === bind('dash')) tryDash();
   }
   if (state === 'pick' && /^Digit[1-4]$/.test(e.code)) choosePick(Number(e.code.slice(5)) - 1);
-  if ((e.code === 'Escape' || e.code === 'KeyP') && (state === 'play' || state === 'pause')) state = state === 'play' ? 'pause' : 'play';
+  if ((e.code === 'Escape' || e.code === 'KeyP') && (state === 'play' || state === 'pause')) { if (state === 'play') state = 'pause'; else resumeRun(); }
 });
 addEventListener('keyup', e => keys[e.code] = false);
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouse.down = false; mouse.rdown = false; if (state === 'play') state = 'pause'; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouse.down = false; mouse.rdown = false; mouse.pressed = false; if (state === 'play' && settings.autoPause) state = 'pause'; setBgQuiet(true); });
+addEventListener('focus', () => setBgQuiet(false));
+document.addEventListener('visibilitychange', () => setBgQuiet(document.hidden));
+addEventListener('mousemove', e => { if (dragSlider) { setMouse(e); sliderSet(dragSlider); } });
 function setMouse(e) {
   const r = canvas.getBoundingClientRect();
   mouse.fx = (e.clientX - r.left) / r.width * FRAME_W;
@@ -2464,7 +2920,13 @@ canvas.addEventListener('mousemove', setMouse);
 canvas.addEventListener('mousedown', e => {
   audioInit();
   setMouse(e);
-  if (state === 'play' || state === 'pause') {
+  if (state === 'pause' || isPanel(state)) {
+    if (e.button !== 0) return;
+    const sl = uiSliders.find(q => mouse.fx >= q.x && mouse.fx <= q.x + q.w && mouse.fy >= q.y && mouse.fy <= q.y + q.h);
+    if (sl) { dragSlider = sl; sliderSet(sl); } else uiClick();
+    return;
+  }
+  if (state === 'play') {
     if (e.button === 2) mouse.rdown = true;
   }
   if (state === 'book') { bookClick(bookHit(mouse.fx, mouse.fy), e.button === 2); return; }
@@ -2477,11 +2939,10 @@ canvas.addEventListener('mousedown', e => {
     return;
   }
   if (state === 'dead') { toSelect(); return; }
-  if (state === 'pause') { state = 'play'; return; }
   if (state === 'pick') { if (pickHover >= 0) choosePick(pickHover); return; }
-  mouse.down = true;
+  mouse.down = true; mouse.pressed = true;
 });
-addEventListener('mouseup', e => { if (e.button === 0) mouse.down = false; if (e.button === 2) mouse.rdown = false; });
+addEventListener('mouseup', e => { if (e.button === 0) { mouse.down = false; mouse.pressed = false; dragSlider = null; } if (e.button === 2) mouse.rdown = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('wheel', e => {
   if (state === 'book') { bookPage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
