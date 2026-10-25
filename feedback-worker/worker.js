@@ -8,7 +8,7 @@ const ALLOWED_ORIGINS = ['https://sventie.github.io'];   // Adresse des Spiels (
 const WINDOW_MS = 60000, MAX_PER_WINDOW = 3;
 const hits = new Map();
 const CLASSES = ['ritter', 'waldlaeufer', 'magier'];
-const MAX_DIST = 410, MAX_KILLS = 400, KEEP = 50, SHOW = 20;
+const MAX_DIST = 5000, MAX_KILLS = 5000, KEEP = 50, SHOW = 20;
 
 export default {
   async fetch(request, env) {
