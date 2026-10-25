@@ -2481,7 +2481,7 @@ function draw() {
     text(G.cls.name + ' · ' + Math.floor(G.dist) + ' m · ' + G.kills + ' Gefallene · ' + G.cards.length + ' Karten', 640, 346, 24, '#f0e6c8', 'center', F_TEXT);
     text('Rekord: ' + Math.floor(best) + ' m', 640, 384, 19, '#b8c4d0', 'center', F_TEXT);
     text('+ ' + G.earned + ' Mondsilber', 640, 420, 22, '#c8d0d8', 'center', F_TITLE);
-    text('Klick oder Enter: neuen Streiter wählen', 640, 470, 20, '#f2c14e', 'center', F_TEXT, 'italic');
+    text('Klick oder Enter: zurück ins Menü', 640, 470, 20, '#f2c14e', 'center', F_TEXT, 'italic');
     drawCursor();
   }
 }
@@ -2920,7 +2920,7 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
   if (state === 'menu' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
-  if (state === 'dead' && (e.code === 'Enter' || e.code === 'Space')) { toSelect(); return; }
+  if (state === 'dead' && (e.code === 'Enter' || e.code === 'Space')) { state = 'menu'; return; }
   if (state === 'options') { if (e.code === 'Escape') closePanel(); return; }
   if (state === 'controls') { if (e.code === 'Escape') state = 'options'; return; }
   if (state === 'feedback') { if (e.code === 'Escape') closeFeedback(); return; }
@@ -2993,7 +2993,7 @@ canvas.addEventListener('mousedown', e => {
     if (selectHover >= 0) { sfx('ui_click'); startRun(selectHover); }
     return;
   }
-  if (state === 'dead') { toSelect(); return; }
+  if (state === 'dead') { state = 'menu'; return; }
   if (state === 'pick') { if (pickHover >= 0) choosePick(pickHover); return; }
   mouse.down = true; mouse.pressed = true;
 });
