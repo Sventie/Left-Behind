@@ -2463,7 +2463,7 @@ const VERSION = 'v0.8';
 const FEEDBACK_REPO = 'sventie/jump-up';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
-const FEEDBACK_ENDPOINT = '';
+const FEEDBACK_ENDPOINT = 'https://left-behind-feedback.s-tietgen1.workers.dev';
 const NAME_KEY = 'left-behind-name';
 let panelFrom = 'pause', armedAct = null, armedAt = 0, listenAct = null, controlsMsg = '', dragSlider = null, uiSliders = [];
 const isPanel = st => st === 'options' || st === 'controls' || st === 'feedback';
