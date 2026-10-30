@@ -2033,13 +2033,35 @@ function drawBookScreen() {
 
   const ay = Y + 24, ah = Ht - 48, pw = 483, lp = X + 22 + 24, rp = lp + pw + 37;
   // Seitenkanten: links schon umgeblättert, rechts noch ungelesen
-  const edges = (n, x0, dir) => {
-    for (let k = Math.min(n, 4); k >= 1; k--) {
+  const edges = (n, x0, dir, kmin) => {
+    for (let k = Math.min(n, 4); k >= (kmin || 1); k--) {
       const w = 7, h = ah - k * 10, x = dir < 0 ? x0 - k * w : x0 + (k - 1) * w;
       rr(x, ay + (ah - h) / 2, w, h, 3); ctx.fillStyle = '#0f1713'; ctx.fill(); ctx.strokeStyle = 'rgba(220,230,240,.42)'; ctx.lineWidth = 1; ctx.stroke();
     }
   };
-  edges(bookSpread, lp, -1); edges(spreads - 1 - bookSpread, rp + pw, 1);
+  const R = spreads - 1 - bookSpread;
+  edges(bookSpread, lp, -1); edges(R, rp + pw, 1, 2);   // weiter hinten liegende Blätter
+  // Reiter stecken zwischen den Seiten und springen zur Kategorie
+  const drawTabs = () => {
+  const firstOf = cat => Math.max(0, Math.floor(pages.findIndex(p => p.cat === cat) / 2));
+    const lpI = bookSpread * 2, curCat = pages[lpI] ? pages[lpI].cat : CATS[0];
+    const tabs = [
+      { label: 'Segen', y: 130, h: 150, on: curCat === 'Segen', go: () => { bookSpread = firstOf('Segen'); } },
+      { label: 'Zauber', y: 290, h: 150, on: curCat === 'Zauber', go: () => { bookSpread = firstOf('Zauber'); } },
+      { label: 'Fähigkeiten', y: 450, h: 168, on: curCat === 'Fähigkeit', go: () => { bookSpread = firstOf('Fähigkeit'); } }
+    ];
+    tabs.forEach(t => {
+      t.r = 1200 - tabs.indexOf(t) * 6;   // gestaffelte Breite wie Register
+      const x = rp + pw - 8, w = t.r - x, hov = inside(x, t.y, w, t.h);
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, t.y, w, t.h, [0, 12, 12, 0]) : ctx.rect(x, t.y, w, t.h);
+      if (t.on) { g = ctx.createLinearGradient(x, 0, t.r, 0); g.addColorStop(0, '#d9a636'); g.addColorStop(1, '#f2c14e'); ctx.fillStyle = g; } else ctx.fillStyle = hov ? '#26382c' : '#1e2c22';
+      ctx.fill(); ctx.strokeStyle = t.on ? '#7a5a1a' : '#5a4a1a'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.save(); ctx.translate((rp + pw + 7 + t.r) / 2, t.y + t.h / 2); ctx.rotate(Math.PI / 2);
+      text(t.label, 0, 5, 16, t.on ? '#1c140c' : '#c8d4de', 'center', F_TITLE); ctx.restore();
+      uiHit(rp + pw + 7, t.y, t.r - (rp + pw + 7), t.h, t.go);
+    });
+  };
+  drawTabs();
   // Buchrücken
   g = ctx.createLinearGradient(lp + pw, 0, rp, 0); g.addColorStop(0, '#0a110d'); g.addColorStop(0.5, '#060a08'); g.addColorStop(1, '#0a110d');
   ctx.fillStyle = g; ctx.fillRect(lp + pw, ay, 37, ah);
@@ -2092,6 +2114,7 @@ function drawBookScreen() {
   const lpIdx = bookSpread * 2;
   drawPage(lp, 'L', pages[lpIdx], lpIdx + 1);
   drawPage(rp, 'R', pages[lpIdx + 1], lpIdx + 2);
+  if (R >= 1) { const w = 7, h = ah - 10; rr(rp + pw, ay + (ah - h) / 2, w, h, 3); ctx.fillStyle = '#0f1713'; ctx.fill(); ctx.strokeStyle = 'rgba(220,230,240,.42)'; ctx.lineWidth = 1; ctx.stroke(); }   // nächstes Blatt vor den Reiterwurzeln
   // Glanz über beiden Seiten
   for (const px of [lp, rp]) { g = ctx.createLinearGradient(px, ay, px + pw * 0.8, ay + ah * 0.8); g.addColorStop(0, 'rgba(255,255,255,.05)'); g.addColorStop(0.35, 'rgba(255,255,255,0)'); rr(px, ay, pw, ah, 6); ctx.fillStyle = g; ctx.fill(); }
 
@@ -2104,25 +2127,6 @@ function drawBookScreen() {
     ctx.beginPath(); ctx.arc(mid, ay + t + 29, 30.5, Math.PI, 2 * Math.PI); ctx.strokeStyle = '#aab2bc'; ctx.lineWidth = 5; ctx.lineCap = 'butt'; ctx.stroke(); ctx.restore();
     ctx.beginPath(); ctx.arc(mid, ay + t + 28, 29, Math.PI * 1.15, Math.PI * 1.85); ctx.strokeStyle = '#f6f8fa'; ctx.lineWidth = 2; ctx.stroke();
   }
-
-  // Reiter am Buchrand: springen zur Kategorie, Mondstein+ filtert
-  const firstOf = cat => Math.max(0, Math.floor(pages.findIndex(p => p.cat === cat) / 2));
-  const curCat = pages[lpIdx] ? pages[lpIdx].cat : CATS[0];
-  const tabs = [
-    { label: 'Segen', y: 130, h: 150, on: curCat === 'Segen', go: () => { bookSpread = firstOf('Segen'); } },
-    { label: 'Zauber', y: 290, h: 150, on: curCat === 'Zauber', go: () => { bookSpread = firstOf('Zauber'); } },
-    { label: 'Fähigkeiten', y: 450, h: 168, on: curCat === 'Fähigkeit', go: () => { bookSpread = firstOf('Fähigkeit'); } }
-  ];
-  tabs.forEach(t => {
-    t.r = 1200 - tabs.indexOf(t) * 6;   // gestaffelte Breite wie Register
-    const x = 1100, w = t.r - x, hov = inside(x, t.y, w, t.h);
-    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, t.y, w, t.h, [0, 12, 12, 0]) : ctx.rect(x, t.y, w, t.h);
-    if (t.on) { g = ctx.createLinearGradient(x, 0, t.r, 0); g.addColorStop(0, '#d9a636'); g.addColorStop(1, '#f2c14e'); ctx.fillStyle = g; } else ctx.fillStyle = hov ? '#26382c' : '#1e2c22';
-    ctx.fill(); ctx.strokeStyle = t.on ? '#7a5a1a' : '#5a4a1a'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.save(); ctx.translate(x + w / 2, t.y + t.h / 2); ctx.rotate(Math.PI / 2);
-    text(t.label, 0, 5, 16, t.on ? '#1c140c' : '#c8d4de', 'center', F_TITLE); ctx.restore();
-    uiHit(x, t.y, w, t.h, t.go);
-  });
 
   // Legende
   const leg = [['Eisen', '#aeb6c0'], ['Smaragd', '#4fd08a'], ['Mondstein', '#bfe3ff'], ['Drachengold', '#f2c14e']];
