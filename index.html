@@ -574,7 +574,7 @@ function newGame(cls) {
     merchants: [], buffs: [], spent: 0, chunkSinceMerchant: MERCHANT_MIN_GAP,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
     stage: 1, stageStart: 0, nextPick: stageLength(1),
-    nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, endless: false, bossSpawned: false, camLock: false, boss: null,
+    nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
       x: WORLD_W / 2, y: -60, r: 14, hp: 1, angle: -Math.PI / 2,
       mag: 0, mana: 0, manaDelay: 0, cooldown: 0, reloadT: 0, bloom: 0, speed: 0,
@@ -975,6 +975,8 @@ function update(dt) {
   for (const r of G.rings) r.life -= dt;
   G.hurtT = Math.max(0, G.hurtT - dt);
   G.shakeT = Math.max(0, G.shakeT - dt);
+  if (G.banner) { G.banner.t -= dt; if (G.banner.t <= 0) G.banner = null; }
+  if (G.pickDelay > 0) G.pickDelay -= dt;
   for (const f of G.floats) { f.y -= 38 * dt; f.t -= dt; }
   G.floats = G.floats.filter(f => f.t > 0);
   G.msgT = Math.max(0, G.msgT - dt);
@@ -990,7 +992,7 @@ function update(dt) {
 
   if (G.boss && G.boss.hp <= 0 && !G.won) { winRun(); return; }
   if (p.hp <= 0) { die(); return; }
-  if (G.dist >= G.nextPick && (!G.bossSpawned || G.endless)) openPick();
+  if (G.dist >= G.nextPick && (!G.bossSpawned || G.endless) && !(G.pickDelay > 0)) openPick();
 }
 
 function spawnBoss() {
@@ -998,13 +1000,13 @@ function spawnBoss() {
   const b = makeEnemy('boss', WORLD_W / 2, G.camTop + 70, true);
   b.in = true; b.reaction = 1.2;
   G.enemies.push(b); G.boss = b;
-  say('Der Bogenmeister stellt sich dir in den Weg!'); sfx('horde_horn');
+  G.banner = { t: 4, head: 'BOGENMEISTER', sub: 'Besiege ihn, dann beginnt der Endlosmodus' }; sfx('horde_horn');
 }
 // Boss besiegt: der Lauf geht im Endlosmodus weiter, bis man fällt
 function winRun() {
   G.won = true; G.endless = true; G.camLock = false;
-  G.nextPick = G.dist;   // Belohnung: sofort eine Kartenwahl
-  say('Der Bogenmeister ist gefallen – doch der Wald hört nicht auf …');
+  G.nextPick = G.dist; G.pickDelay = 3;   // Belohnung: Kartenwahl nach dem Banner
+  G.banner = { t: 3, head: 'BOGENMEISTER BESIEGT', sub: 'Der Wald hört nicht auf … Endlosmodus' }; sfx('stage_up');
 }
 function say(t) { G.msg = t; G.msgT = 2.2; }
 
@@ -1807,10 +1809,21 @@ function drawFieldHUD() {
     text(keyLabel(bind('interact')) + ' · Handeln', sx, sy + 3, 16, '#f2c14e', 'center', F_TITLE);
   }
   if (G.boss && G.boss.hp > 0) {
+    // Ring um den Boss, auch im Nebel zu sehen
+    const bx = G.boss.x, by = G.boss.y - G.camTop, pul = 0.5 + 0.5 * Math.sin(G.time * 5);
+    ctx.strokeStyle = 'rgba(255,90,90,' + (0.35 + 0.35 * pul) + ')'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(bx, by, G.boss.r + 10 + pul * 4, 0, 7); ctx.stroke();
     const f = G.boss.hp / G.boss.maxHp;
     text('BOGENMEISTER', VIEW_W / 2, 24, 14, '#f0e6c8', 'center', F_TITLE);
     rr(VIEW_W / 2 - 200, 32, 400, 12, 6); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
     rr(VIEW_W / 2 - 198, 34, Math.max(8, 396 * f), 8, 4); ctx.fillStyle = '#d9473f'; ctx.fill();
+  }
+  if (G.banner) {
+    ctx.globalAlpha = Math.min(1, G.banner.t * 2);
+    ctx.fillStyle = 'rgba(2,5,4,.6)'; ctx.fillRect(0, 210, VIEW_W, 110);
+    titleText(G.banner.head, VIEW_W / 2, 272, 44, 'center');
+    text(G.banner.sub, VIEW_W / 2, 304, 19, '#f2c14e', 'center', F_TEXT, 'italic');
+    ctx.globalAlpha = 1;
   }
   if (G.msgT > 0) {
     ctx.globalAlpha = Math.min(1, G.msgT * 2);
@@ -2492,7 +2505,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.11';
+const VERSION = 'v0.12';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
