@@ -1002,9 +1002,9 @@ function update(dt) {
   if (G.banner) { G.banner.t -= dt; if (G.banner.t <= 0) G.banner = null; }
   if (G.pickDelay > 0) G.pickDelay -= dt;
   G.deltaT = Math.max(0, G.deltaT - dt);
-  for (const q of G.pops) { q.y -= 34 * dt; q.t -= dt; }
+  for (const q of G.pops) { q.y -= 34 * dt; q.x += (q.vx || 0) * dt; q.t -= dt; }
   G.pops = G.pops.filter(q => q.t > 0);
-  for (const f of G.floats) { f.y -= 38 * dt; f.t -= dt; }
+  for (const f of G.floats) { f.y -= 38 * dt; f.x += (f.vx || 0) * dt; f.t -= dt; }
   G.floats = G.floats.filter(f => f.t > 0);
   G.msgT = Math.max(0, G.msgT - dt);
 
@@ -1173,7 +1173,7 @@ function updateEnemies(dt) {
       const ox = e.x - o.x, oy = e.y - o.y, od = Math.hypot(ox, oy);
       if (od > 0 && od < e.r + o.r) moveCircle(e, ox / od * 40 * dt, oy / od * 40 * dt);
     }
-    if (e.in) { e.x = clamp(e.x, e.r, WORLD_W - e.r); e.y = clamp(e.y, G.camTop + e.r, G.camTop + VIEW_H - e.r); }
+    if (e.in) { e.x = clamp(e.x, e.r, WORLD_W - e.r); e.y = clamp(e.y, G.camTop + e.r + 24, G.camTop + VIEW_H - e.r); }   // oben bleibt Platz für die Lebensleiste
     if (e.lostT > 6 && e.type === 'grunt') { e.state = 'idle'; e.reaction = 0.7; }
   }
 }
@@ -1279,7 +1279,7 @@ function explode(x, y, dmg, R, target) {
 function damageEnemy(e, dmg) {
   if (e.hp <= 0) return;
   e.hp -= dmg; e.hit = 0.12;
-  if (settings.dmgnums) G.floats.push({ x: e.x + rand(-8, 8), y: e.y - e.r - 14, t: 0.8, v: Math.max(1, Math.round(dmg)) });
+  if (settings.dmgnums) G.floats.push({ x: e.x + e.r + 4, y: e.y - e.r * 0.4, vx: 30, t: 0.8, v: Math.max(1, Math.round(dmg)) });
   sfx(e.hp > 0 ? 'hit_enemy' : 'enemy_die', clamp(1 - Math.hypot(e.x - G.player.x, e.y - G.player.y) / 900, 0.3, 1));
   if (e.state === 'idle') alertEnemy(e);
   if (e.hp <= 0) {
@@ -1287,7 +1287,7 @@ function damageEnemy(e, dmg) {
     const pts = ENEMY_POINTS[e.type] !== undefined ? ENEMY_POINTS[e.type] : 3;
     G.points += pts;
     G.delta = (G.deltaT > 0 ? G.delta : 0) + pts; G.deltaT = 1.2;
-    G.pops.push({ x: e.x, y: e.y - e.r - 6, t: 1.1, v: pts });
+    G.pops.push({ x: e.x - e.r - 4, y: e.y - e.r * 0.4, vx: -34, t: 1.1, v: pts });
   }
 }
 function chainLightning(from, dmg) {
@@ -1537,16 +1537,16 @@ function drawEntities() {
   }
   for (const f of G.floats) {
     ctx.globalAlpha = Math.min(1, f.t * 3);
-    ctx.font = 'bold 16px ' + F_TEXT; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = '#0a110d'; ctx.strokeText(String(f.v), f.x, f.y);
-    ctx.fillStyle = '#fff3c8'; ctx.fillText(String(f.v), f.x, f.y);
+    ctx.font = 'bold 15px ' + F_TEXT; ctx.textAlign = 'left'; ctx.lineWidth = 3; ctx.strokeStyle = '#0a110d'; ctx.strokeText(String(f.v), f.x, f.y);
+    ctx.fillStyle = '#ff8c7a'; ctx.fillText(String(f.v), f.x, f.y);   // Schaden: rot, rechts vom Gegner
     ctx.globalAlpha = 1;
   }
   for (const q of G.pops) {   // Punkte beim Töten: je mehr Punkte, desto größer und goldener
     const big = q.v >= 100, mid = q.v >= 10, size = big ? 54 : mid ? 30 : 22 + (1 - q.t / 1.1) * 4;
     ctx.globalAlpha = Math.min(1, q.t * 2.5);
-    ctx.font = size + 'px ' + F_TITLE; ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = '#0a110d';
+    ctx.font = size + 'px ' + F_TITLE; ctx.textAlign = 'right'; ctx.lineWidth = 4; ctx.strokeStyle = '#0a110d';   // Punkte: gelb, links vom Gegner
     if (big) { ctx.shadowColor = 'rgba(242,193,78,.9)'; ctx.shadowBlur = 20; }
-    ctx.strokeText('+' + q.v, q.x, q.y); ctx.fillStyle = mid ? '#f2c14e' : '#fff3c8'; ctx.fillText('+' + q.v, q.x, q.y);
+    ctx.strokeText('+' + q.v, q.x, q.y); ctx.fillStyle = '#f2c14e'; ctx.fillText('+' + q.v, q.x, q.y);
     ctx.shadowBlur = 0; ctx.globalAlpha = 1;
   }
   // Geschosse
@@ -2703,7 +2703,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.20';
+const VERSION = 'v0.21';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
