@@ -21,7 +21,7 @@
 <div id="fb">
   <input id="fbTitle" type="text" maxlength="120" placeholder="Kurz gesagt: worum geht es?" autocomplete="off" spellcheck="false">
   <textarea id="fbBody" maxlength="6000" placeholder="Beschreibe deine Idee, den Fehler oder was dir aufgefallen ist …"></textarea>
-  <input id="scName" type="text" maxlength="20" placeholder="Dein Name" autocomplete="off" spellcheck="false">
+  <input id="scName" type="text" maxlength="25" placeholder="Dein Name" autocomplete="off" spellcheck="false">
   <input id="fbToken" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
 </div>
 <script src="audio/config.js"></script>
@@ -2707,7 +2707,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.18';
+const VERSION = 'v0.19';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -3163,7 +3163,8 @@ applySettings();
 
 // ---------- Rangliste ----------
 const SCORES_URL = FEEDBACK_ENDPOINT ? FEEDBACK_ENDPOINT + '/scores' : '';
-const board = { list: null, err: false, at: -1e9, loading: false };
+const board = { lists: null, err: false, at: -1e9, loading: false }, BOARD_TABS = [['all', 'Alle', 48], ['ritter', 'Ritter', 66], ['waldlaeufer', 'Waldläufer', 96], ['magier', 'Magier', 70]];
+let boardTab = 'all', boardTabRects = [];
 let scoreSt = { run: null };
 const runScore = () => Math.floor(G.dist) + G.points;
 const savedName = () => { try { return localStorage.getItem(NAME_KEY) || ''; } catch (e) { return ''; } };
@@ -3173,7 +3174,7 @@ async function loadBoard() {
   try {
     const res = await fetch(SCORES_URL);
     if (!res.ok) throw 0;
-    board.list = (await res.json()).scores || []; board.err = false;
+    const j = await res.json(); board.lists = j.lists || { all: j.scores || [] }; board.err = false;
   } catch (e) { board.err = true; }
   board.loading = false;
 }
@@ -3188,9 +3189,9 @@ async function submitScore() {
     const j = await res.json().catch(() => ({}));
     if (res.ok) {
       try { localStorage.setItem(NAME_KEY, name); } catch (e) {}
-      if (j.scores) { board.list = j.scores; board.err = false; board.at = performance.now(); }
+      if (j.lists || j.scores) { board.lists = j.lists || { all: j.scores }; board.err = false; board.at = performance.now(); }
       scoreSt.done = true; scoreSt.kind = 'ok'; fbEl.name.blur();
-      scoreSt.msg = j.best ? 'Eingetragen: Platz ' + j.rank + '!' : 'Dein bisheriger Rekord ist besser und bleibt stehen.';
+      scoreSt.msg = j.best ? 'Eingetragen: Platz ' + j.rank + (run.cls ? ' (' + run.cls.name + ')' : '') + '!' : 'Dein bisheriger Rekord ist besser und bleibt stehen.';
       sfx('card_pick');
     } else { scoreSt.kind = 'err'; scoreSt.msg = res.status === 429 ? 'Zu viele Einträge – bitte kurz warten.' : (j.error || 'Das Speichern hat nicht geklappt.'); }
   } catch (e) { scoreSt.kind = 'err'; scoreSt.msg = 'Keine Verbindung zur Rangliste.'; }
@@ -3220,24 +3221,43 @@ function drawDeadScreen() {
   drawCursor();
 }
 function drawBoard() {
+  boardTabRects = [];
   if (!SCORES_URL) return;
   if (!board.loading && performance.now() - board.at > (board.err ? 8000 : 30000)) loadBoard();
   const x = 890, y = 272, w = 350, h = 392;
-  rr(x, y, w, h, 14); ctx.fillStyle = 'rgba(10,17,13,.86)'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
-  text('Rangliste', x + 20, y + 36, 22, '#f2c14e', 'left', F_TITLE);
-  text('Punkte', x + w - 18, y + 34, 13, '#8a9aa0', 'right', F_TEXT);
-  ctx.fillStyle = '#2e3e32'; ctx.fillRect(x + 16, y + 46, w - 32, 1);
-  const me = savedName().toLowerCase();
-  if (!board.list) text(board.err ? 'Rangliste nicht erreichbar' : 'Lädt …', x + w / 2, y + 120, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
-  else if (!board.list.length) text('Noch keine Einträge – sei der Erste!', x + w / 2, y + 120, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
-  else board.list.slice(0, 10).forEach((e, i) => {
-    const ry = y + 76 + i * 33, mine = me && e.name.toLowerCase() === me, col = mine ? '#f2c14e' : '#e8dcbc';
-    text(String(i + 1), x + 20, ry, 17, i < 3 ? '#f2c14e' : '#8a9aa0', 'left', F_TITLE);
-    text(fit(e.name, 150, '17px ' + F_TEXT) + (e.won ? ' ✓' : ''), x + 52, ry, 17, col, 'left', F_TEXT, mine ? 'bold' : '');
-    text(e.dist + ' m', x + w - 92, ry, 14, '#8a9aa0', 'right', F_TEXT);
-    text(String(e.score), x + w - 18, ry, 17, col, 'right', F_TITLE);
+  rr(x, y, w, h, 14); ctx.fillStyle = 'rgba(10,17,13,.88)'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
+  text('Rangliste', x + 20, y + 34, 22, '#f2c14e', 'left', F_TITLE);
+  text('Punkte', x + w - 18, y + 30, 13, '#8a9aa0', 'right', F_TEXT);
+  let tx = x + 14;
+  for (const [id, label, tw] of BOARD_TABS) {   // Reiter: Alle und je Streiter
+    const on = boardTab === id, hov = inside(tx, y + 48, tw, 30);
+    rr(tx, y + 48, tw, 30, 15); ctx.fillStyle = on ? '#1e2c22' : (hov ? '#16231b' : '#101a14'); ctx.fill(); ctx.strokeStyle = on ? '#f2c14e' : '#2e3e32'; ctx.lineWidth = 1.5; ctx.stroke();
+    text(label, tx + tw / 2, y + 68, 14, on ? '#f2c14e' : '#c8d4de', 'center', F_TEXT);
+    boardTabRects.push({ id, x: tx, y: y + 48, w: tw, h: 30 }); tx += tw + 6;
+  }
+  ctx.fillStyle = '#2e3e32'; ctx.fillRect(x + 18, y + 80, w - 36, 1);
+  const me = savedName().toLowerCase(), list = board.lists && (board.lists[boardTab] || []);
+  if (!board.lists) text(board.err ? 'Rangliste nicht erreichbar' : 'Lädt …', x + w / 2, y + 160, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
+  else if (!list.length) text('Noch keine Einträge – sei der Erste!', x + w / 2, y + 160, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
+  else list.slice(0, 10).forEach((e, i) => {
+    const ry = y + 92 + i * 29, mine = me && e.name.toLowerCase() === me, col = mine ? '#f2c14e' : '#e8dcbc', bx = x + 18;
+    text(String(i + 1), bx, ry + 19, 16, i < 3 ? '#f2c14e' : '#8a9aa0', 'left', F_TITLE);
+    if (CLASS_ICON[e.cls]) drawIcon(CLASS_ICON[e.cls], bx + 38, ry + 13, 16, col, 1.6);
+    // Name: lange Namen laufen langsam hin und her
+    const nm = e.name + (e.won ? ' ✓' : ''), nx = bx + 58, nw = 146;
+    ctx.font = (mine ? 'bold ' : '') + '17px ' + F_TEXT;
+    const tw = ctx.measureText(nm).width;
+    ctx.save(); ctx.beginPath(); ctx.rect(nx, ry, nw, 26); ctx.clip();
+    let off = 0;
+    if (tw > nw) { let u = (performance.now() / 7000) % 2; if (u > 1) u = 2 - u; const k = clamp((u - 0.18) / 0.64, 0, 1); off = (tw - nw) * (k * k * (3 - 2 * k)); }
+    text(nm, nx - off, ry + 19, 17, col, 'left', F_TEXT, mine ? 'bold' : '');
+    if (tw > nw) { const g = ctx.createLinearGradient(nx + nw - 18, 0, nx + nw, 0); g.addColorStop(0, 'rgba(10,17,13,0)'); g.addColorStop(1, 'rgba(10,17,13,.95)'); ctx.fillStyle = g; ctx.fillRect(nx + nw - 18, ry, 18, 26); }
+    ctx.restore();
+    text(e.dist + ' m', bx + 314 - 62, ry + 19, 14, '#8a9aa0', 'right', F_TEXT);
+    text(e.score.toLocaleString('de-DE'), bx + 314, ry + 19, 17, col, 'right', F_TITLE);
   });
 }
+const CLASS_ICON = { ritter: 'k_ritter', waldlaeufer: 'k_waldlaeufer', magier: 'k_magier' };
 
 // ---------- Intro / Spielhilfe ----------
 const INTRO_KEY = 'left-behind-intro';
@@ -3501,7 +3521,7 @@ canvas.addEventListener('mousedown', e => {
   }
   if (state === 'intro' || state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant') { if (e.button === 0) uiClick(); return; }
   if (e.button !== 0) return;
-  if (state === 'menu') { const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
+  if (state === 'menu') { const bt = boardTabRects.find(r => mouse.fx >= r.x && mouse.fx <= r.x + r.w && mouse.fy >= r.y && mouse.fy <= r.y + r.h); if (bt) { boardTab = bt.id; sfx('ui_click'); return; } const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
   if (state === 'select') {
     if (selectHover === -2) { state = 'menu'; return; }
     if (selectHover >= 0) { sfx('ui_click'); startRun(selectHover); }
