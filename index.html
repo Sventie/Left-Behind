@@ -2609,14 +2609,10 @@ function drawMenu() {
   mg2.addColorStop(0, '#fff'); mg2.addColorStop(0.6, '#dce8f2'); mg2.addColorStop(1, '#aab8c6');
   ctx.fillStyle = mg2; ctx.beginPath(); ctx.arc(995, 165, 95, 0, 7); ctx.fill();
   ctx.fillStyle = 'rgba(120,140,160,.28)'; ctx.beginPath(); ctx.arc(947, 128, 17, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(1025, 195, 25, 0, 7); ctx.fill();
+  // dieselbe Burg wie im Intro; sie steht hinter dem Hügel
+  ctx.save(); ctx.translate(640 - 92, 488 - 362); drawCastleBuildings('#0a120d'); ctx.fillStyle = '#0a120d'; ctx.fillRect(92, 360, 254, 90); ctx.restore();
   ctx.fillStyle = '#0d1a14';
   ctx.beginPath(); ctx.moveTo(560, 720); ctx.bezierCurveTo(640, 470, 760, 440, 860, 450); ctx.bezierCurveTo(960, 460, 1060, 500, 1280, 520); ctx.lineTo(1280, 720); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#0a120d';
-  ctx.fillRect(700, 360, 130, 112); ctx.fillRect(640, 400, 78, 80); ctx.fillRect(880, 320, 118, 150);
-  for (let x = 700; x < 830; x += 22) ctx.fillRect(x, 336, 12, 24);
-  for (let x = 880; x < 998; x += 24) ctx.fillRect(x, 292, 14, 28);
-  ctx.beginPath(); ctx.moveTo(912, 320); ctx.lineTo(936, 250); ctx.lineTo(960, 320); ctx.fill();
-  ctx.fillStyle = 'rgba(233,196,106,.85)'; ctx.fillRect(926, 350, 8, 16); ctx.fillRect(740, 400, 8, 14);
   for (const layer of [0, 1]) {
     ctx.fillStyle = layer ? '#07100b' : '#0a130e';
     for (const [x, y, h] of pines) {
@@ -2707,7 +2703,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.19';
+const VERSION = 'v0.20';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -3273,6 +3269,20 @@ function para(str, x, y, maxW, size, color, lh, font) {
   lines.forEach((l, i) => text(l, x, y + i * lh, size, color, 'left', F_TEXT, '500'));
   return y + lines.length * lh;
 }
+// Burg (Bergfried, Seitenturm, Turm mit Spitze, Mauer, Fenster, Tor) in den Koordinaten des Intro-Bildes; Fuß der Burg bei y = 362
+function drawCastleBuildings(col) {
+  ctx.fillStyle = col;
+  const keep = (bx, by, bw, bh, n) => {
+    ctx.fillRect(bx, by, bw, bh);
+    const cw = bw / (2 * n - 1); for (let i = 0; i < n; i++) ctx.fillRect(bx + i * 2 * cw, by - 14, cw, 14);
+  };
+  keep(96, 300, 250, 62, 10); keep(150, 222, 92, 140, 5); keep(92, 262, 52, 100, 3);
+  ctx.fillRect(272, 196, 64, 166);
+  ctx.beginPath(); ctx.moveTo(304, 128); ctx.lineTo(346, 200); ctx.lineTo(262, 200); ctx.closePath(); ctx.fill(); ctx.fillRect(303, 112, 2, 22);
+  ctx.shadowColor = 'rgba(233,196,106,.8)'; ctx.shadowBlur = 12; ctx.fillStyle = '#e9c46a';
+  [[190, 250, 9, 18], [298, 226, 8, 16], [112, 290, 7, 14]].forEach(([wx, wy, ww, wh]) => ctx.fillRect(wx, wy, ww, wh));
+  ctx.shadowBlur = 0; ctx.fillStyle = '#0a1210'; rr(182, 326, 26, 36, [13, 13, 0, 0]); ctx.fill();
+}
 function drawCastle(x, y, w, h) {
   ctx.save(); rr(x, y, w, h, 14); ctx.clip(); ctx.translate(x, y);
   let g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0a1424'); g.addColorStop(0.45, '#12283a'); g.addColorStop(0.78, '#1c3a40'); g.addColorStop(1, '#0a110d');
@@ -3287,17 +3297,7 @@ function drawCastle(x, y, w, h) {
   ctx.fillStyle = '#0d1a1a'; ctx.beginPath(); ctx.moveTo(-40, 480);
   [[-40, 330], [30, 270], [100, 345], [180, 250], [260, 338], [330, 270], [400, 345], [480, 300], [480, 480]].forEach(p => ctx.lineTo(p[0], p[1])); ctx.fill();
   ctx.fillStyle = '#0a120e'; ctx.beginPath(); ctx.ellipse(220, 480, 280, 130, 0, Math.PI, 2 * Math.PI); ctx.fill();
-  const col = '#070d09'; ctx.fillStyle = col;
-  const keep = (bx, by, bw, bh, n) => {
-    ctx.fillRect(bx, by, bw, bh);
-    const cw = bw / (2 * n - 1); for (let i = 0; i < n; i++) ctx.fillRect(bx + i * 2 * cw, by - 14, cw, 14);
-  };
-  keep(96, 300, 250, 62, 10); keep(150, 222, 92, 140, 5); keep(92, 262, 52, 100, 3);
-  ctx.fillRect(272, 196, 64, 166);
-  ctx.beginPath(); ctx.moveTo(304, 128); ctx.lineTo(346, 200); ctx.lineTo(262, 200); ctx.closePath(); ctx.fill(); ctx.fillRect(303, 112, 2, 22);
-  ctx.shadowColor = 'rgba(233,196,106,.8)'; ctx.shadowBlur = 12; ctx.fillStyle = '#e9c46a';
-  [[190, 250, 9, 18], [298, 226, 8, 16], [112, 290, 7, 14]].forEach(([wx, wy, ww, wh]) => ctx.fillRect(wx, wy, ww, wh));
-  ctx.shadowBlur = 0; ctx.fillStyle = '#0a1210'; rr(182, 326, 26, 36, [13, 13, 0, 0]); ctx.fill();
+  drawCastleBuildings('#070d09');
   ctx.fillStyle = '#050a07';
   [[-10, 330, 70, 150], [40, 370, 60, 110], [350, 320, 70, 160], [396, 360, 70, 120], [300, 390, 56, 90], [70, 400, 50, 80], [14, 300, 50, 110]].forEach(([tx, ty, tw, th]) => { ctx.beginPath(); ctx.moveTo(tx + tw / 2, ty); ctx.lineTo(tx + tw, ty + th); ctx.lineTo(tx, ty + th); ctx.closePath(); ctx.fill(); });
   g = ctx.createLinearGradient(0, h - 90, 0, h); g.addColorStop(0, 'rgba(5,10,7,0)'); g.addColorStop(1, '#050a07'); ctx.fillStyle = g; ctx.fillRect(0, h - 90, w, 90);
