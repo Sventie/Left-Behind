@@ -2674,7 +2674,7 @@ function draw() {
   if (state === 'open') { drawOpenScreen(); drawCursor(); return; }
   if (state === 'recycle') { drawRecycleScreen(); drawCursor(); return; }
   if (state === 'intro') { drawIntroScreen(); drawCursor(); return; }
-  if (isPanel(state) && (panelFrom === 'menu' || !G)) { drawMenu(); overlay(0.8); drawPanelScreen(); if (state !== 'feedback') drawCursor(); return; }
+  if (isPanel(state) && (panelFrom === 'menu' || !G)) { drawMenu(); overlay(0.8); drawPanelScreen(); drawToast(); if (state !== 'feedback') drawCursor(); return; }
   if (state === 'menu' || !G && state !== 'select') { drawMenu(); drawCursor(); return; }
   if (state === 'select') { drawSelectScreen(); drawCursor(); return; }
 
@@ -2707,7 +2707,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.17';
+const VERSION = 'v0.18';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -2756,9 +2756,17 @@ function drawToast() {
   titleText(toast.text, 640, 360, 44, 'center');
   ctx.globalAlpha = 1;
 }
+// Fortschritt zurücksetzen (Optionen): löscht Karten, Decks, Mondsilber, Rekord und Freischaltungen; Einstellungen, Name und Intro bleiben
+let resetAsk = false;
+function resetProgress() {
+  try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem('left-behind-best'); } catch (e) {}
+  SAVE = loadSave(); persist(); best = 0;
+  deckClass = 0; deckHoverIdx = -1; bookSpread = 0; recyclePage = 0; deckFilter = 'all'; deckPage = 0;
+  toast = { text: 'Fortschritt zurückgesetzt', until: performance.now() + 2600 };
+}
 // Pause
 function resumeRun() { state = 'play'; armedAct = null; mouse.down = false; mouse.rdown = false; mouse.pressed = false; }
-function openOptions(from) { panelFrom = from; state = 'options'; dragSlider = null; }
+function openOptions(from) { panelFrom = from; state = 'options'; dragSlider = null; resetAsk = false; }
 function closePanel() { state = panelFrom === 'pause' && G ? 'pause' : 'menu'; }
 function armed(id) { return armedAct === id && performance.now() - armedAt < 4000; }
 function confirmed(id, go) {
@@ -2953,7 +2961,18 @@ function drawOptionsScreen() {
   // Fuß
   uiButton(110, 620, 210, 48, 'Steuerung ändern', () => { state = 'controls'; listenAct = null; controlsMsg = ''; }, { size: 17 });
   uiButton(334, 620, 190, 48, 'Standardwerte', () => { const b = settings.binds; Object.assign(settings, DEFAULT_SETTINGS, { binds: b }); saveSettings(); applySettings(); }, { size: 17 });
+  if (!fromPause) uiButton(540, 620, 270, 48, 'Fortschritt zurücksetzen', () => { resetAsk = true; }, { size: 15, danger: true });
   uiButton(1170 - 270, 620, 270, 48, fromPause ? 'Zurück zur Pause' : 'Zurück zum Menü', closePanel, { primary: true, size: 17 });
+  if (resetAsk) {   // Sicherheitsabfrage
+    uiBtns = []; uiSliders = [];
+    overlay(0.7);
+    const dx = 380, dy = 210, dw = 520, dh = 305;
+    windowFrame(dx, dy, dw, dh);
+    titleText('Wirklich zurücksetzen?', dx + dw / 2, dy + 62, 30, 'center');
+    wrap('Alle Karten, Decks, dein Mondsilber, der Rekord und die Freischaltungen werden gelöscht. Das lässt sich nicht rückgängig machen. Einstellungen, Name und die Rangliste bleiben.', dw - 70, '500 18px ' + F_TEXT).forEach((l, i) => text(l, dx + dw / 2, dy + 104 + i * 25, 18, '#e8dcbc', 'center', F_TEXT, '500'));
+    uiButton(dx + 36, dy + dh - 76, 200, 48, 'Abbrechen', () => { resetAsk = false; }, { size: 17 });
+    uiButton(dx + dw - 36 - 236, dy + dh - 76, 236, 48, 'Ja, zurücksetzen', () => { resetAsk = false; resetProgress(); }, { size: 17, danger: true });
+  }
 }
 
 // Steuerung
@@ -3400,7 +3419,7 @@ addEventListener('keydown', e => {
     }
     return;
   }
-  if (state === 'options') { if (e.code === 'Escape') closePanel(); return; }
+  if (state === 'options') { if (e.code === 'Escape') { if (resetAsk) resetAsk = false; else closePanel(); } return; }
   if (state === 'controls') { if (e.code === 'Escape') state = 'options'; return; }
   if (state === 'feedback') { if (e.code === 'Escape') closeFeedback(); return; }
   if (state === 'shop') { if (e.code === 'Escape') state = 'menu'; return; }
