@@ -574,7 +574,7 @@ function newGame(cls) {
     merchants: [], buffs: [], spent: 0, chunkSinceMerchant: MERCHANT_MIN_GAP,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
     stage: 1, stageStart: 0, nextPick: stageLength(1),
-    nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
+    nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
       x: WORLD_W / 2, y: -60, r: 14, hp: 1, angle: -Math.PI / 2,
       mag: 0, mana: 0, manaDelay: 0, cooldown: 0, reloadT: 0, bloom: 0, speed: 0,
@@ -1175,6 +1175,7 @@ function spawnReinforcements() {
 // srcAngle: Richtung vom Spieler zur Quelle; wird mit dem Schild abgefangen
 function hurtPlayer(d, srcAngle) {
   const p = G.player;
+  if (godMode) { G.cheated = true; return; }
   if (p.invuln > 0) return;
   if (isBlocking() && srcAngle !== undefined && Math.abs(normAngle(srcAngle - p.angle)) < S.blockArc * deg) {
     d *= (1 - S.block);
@@ -1818,6 +1819,7 @@ function drawFieldHUD() {
     rr(VIEW_W / 2 - 200, 32, 400, 12, 6); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
     rr(VIEW_W / 2 - 198, 34, Math.max(8, 396 * f), 8, 4); ctx.fillStyle = '#d9473f'; ctx.fill();
   }
+  if (godMode) text('UNVERWUNDBAR', VIEW_W - 16, 24, 14, '#f2c14e', 'right', F_TITLE);
   if (G.banner) {
     ctx.globalAlpha = Math.min(1, G.banner.t * 2);
     ctx.fillStyle = 'rgba(2,5,4,.6)'; ctx.fillRect(0, 210, VIEW_W, 110);
@@ -2498,6 +2500,7 @@ function draw() {
   if (state === 'pick') { drawPickScreen(); drawCursor(); }
   if (state === 'merchant') { drawMerchantScreen(); drawCursor(); }
   if (state === 'dead') drawDeadScreen();
+  drawToast();
 }
 function drawCursor() {
   ctx.fillStyle = '#fff3c8'; ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2;
@@ -2505,7 +2508,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.12';
+const VERSION = 'v0.13';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -2537,6 +2540,23 @@ function fit(str, maxW, font) {
   return str + '…';
 }
 
+// Testhilfe: im Pausenmenü 5× auf „Der Weg ruht“ klicken schaltet Unverwundbarkeit um (ohne Ton, nur Banner)
+let godMode = false, eggClicks = 0, eggAt = 0, toast = null;
+function eggClick() {
+  const now = performance.now();
+  eggClicks = now - eggAt < 1500 ? eggClicks + 1 : 1; eggAt = now;
+  if (eggClicks >= 5) { eggClicks = 0; godMode = !godMode; toast = { text: godMode ? 'Unverwundbar an' : 'Unverwundbar aus', until: now + 2000 }; }
+}
+function drawToast() {
+  if (!toast) return;
+  const left = toast.until - performance.now();
+  if (left <= 0) { toast = null; return; }
+  ctx.globalAlpha = Math.min(1, left / 300);
+  ctx.fillStyle = 'rgba(2,5,4,.85)'; ctx.fillRect(0, 300, FRAME_W, 90);
+  ctx.fillStyle = '#9a7a3a'; ctx.fillRect(0, 300, FRAME_W, 2); ctx.fillRect(0, 388, FRAME_W, 2);
+  titleText(toast.text, 640, 360, 44, 'center');
+  ctx.globalAlpha = 1;
+}
 // Pause
 function resumeRun() { state = 'play'; armedAct = null; mouse.down = false; mouse.rdown = false; mouse.pressed = false; }
 function openOptions(from) { panelFrom = from; state = 'options'; dragSlider = null; }
@@ -2937,7 +2957,7 @@ async function loadBoard() {
 }
 async function submitScore() {
   const run = G;
-  if (!SCORES_URL || CHEAT || scoreSt.busy || scoreSt.done) return;
+  if (!SCORES_URL || CHEAT || run.cheated || scoreSt.busy || scoreSt.done) return;
   const name = fbEl.name.value.trim();
   if (!name) { scoreSt.msg = 'Bitte einen Namen eingeben.'; scoreSt.kind = 'err'; return; }
   scoreSt.busy = true; scoreSt.msg = 'Speichere …'; scoreSt.kind = '';
@@ -2959,7 +2979,7 @@ function drawDeadScreen() {
   uiBtns = [];
   if (scoreSt.run !== G) { scoreSt = { run: G, busy: false, done: false, msg: '', kind: '', t0: performance.now() }; fbEl.name.value = savedName(); }
   overlay(0.8);
-  const form = !!SCORES_URL && !CHEAT && !scoreSt.done;
+  const form = !!SCORES_URL && !CHEAT && !G.cheated && !scoreSt.done;
   text(G.gaveUp ? 'Aufgegeben' : 'Gefallen', 640, 200, 56, G.gaveUp ? '#f2c14e' : '#ff7a8a', 'center', F_TITLE);
   if (G.won) text('✓ Bogenmeister besiegt · Endlos bis ' + Math.floor(G.dist) + ' m', 640, 226, 18, '#4fd08a', 'center', F_TEXT);
   text(G.cls.name + ' · ' + Math.floor(G.dist) + ' m · ' + G.kills + ' Gefallene · ' + G.cards.length + ' Karten', 640, 252, 24, '#f0e6c8', 'center', F_TEXT);
@@ -2967,7 +2987,7 @@ function drawDeadScreen() {
   titleText(runScore() + ' Punkte', 640, 352, 40, 'center');
   if (G.won) text('Weg + 3 je Gefallenem + 500 Siegbonus', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
   else text('Weg + 3 je Gefallenem', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
-  if (SCORES_URL && CHEAT) text('Testmodus: kein Eintrag in die Rangliste', 640, 470, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
+  if (SCORES_URL && (CHEAT || G.cheated)) text('Testmodus: kein Eintrag in die Rangliste', 640, 470, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
   if (form) {
     text('Dein Name für die Rangliste', 640, 446, 18, '#f0e6c8', 'center', F_TEXT);
     fbPlace(fbEl.name, { x: 430, y: 462, w: 280, h: 44 }, true);
@@ -3016,7 +3036,7 @@ addEventListener('keydown', e => {
   if (state === 'dead') {
     if (e.code === 'Escape') leaveDead();
     else if (e.code === 'Enter' && performance.now() - (scoreSt.t0 || 0) > 700) {
-      if (SCORES_URL && !CHEAT && !scoreSt.done) { if (fbEl.name.value.trim()) submitScore(); else fbEl.name.focus(); } else leaveDead();
+      if (SCORES_URL && !CHEAT && !G.cheated && !scoreSt.done) { if (fbEl.name.value.trim()) submitScore(); else fbEl.name.focus(); } else leaveDead();
     }
     return;
   }
@@ -3076,6 +3096,8 @@ canvas.addEventListener('mousedown', e => {
   setMouse(e);
   if (state === 'pause' || isPanel(state)) {
     if (e.button !== 0) return;
+    if (state === 'pause' && inside(206, 104, 240, 28)) { eggClick(); return; }
+    eggClicks = 0;
     const sl = uiSliders.find(q => mouse.fx >= q.x && mouse.fx <= q.x + q.w && mouse.fy >= q.y && mouse.fy <= q.y + q.h);
     if (sl) { dragSlider = sl; sliderSet(sl); } else uiClick();
     return;
