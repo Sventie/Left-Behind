@@ -2757,9 +2757,10 @@ function drawToast() {
   ctx.globalAlpha = 1;
 }
 // Fortschritt zurücksetzen (Optionen): löscht Karten, Decks, Mondsilber, Rekord und Freischaltungen; Einstellungen, Name und Intro bleiben
-let resetAsk = false;
+let resetAsk = false, introPending = false;
 function resetProgress() {
-  try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem('left-behind-best'); } catch (e) {}
+  try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem('left-behind-best'); localStorage.removeItem(INTRO_KEY); } catch (e) {}
+  introPending = true;   // beim Zurückkehren ins Hauptmenü erscheint das Intro wieder
   SAVE = loadSave(); persist(); best = 0;
   deckClass = 0; deckHoverIdx = -1; bookSpread = 0; recyclePage = 0; deckFilter = 'all'; deckPage = 0;
   toast = { text: 'Fortschritt zurückgesetzt', until: performance.now() + 2600 };
@@ -2767,7 +2768,10 @@ function resetProgress() {
 // Pause
 function resumeRun() { state = 'play'; armedAct = null; mouse.down = false; mouse.rdown = false; mouse.pressed = false; }
 function openOptions(from) { panelFrom = from; state = 'options'; dragSlider = null; resetAsk = false; }
-function closePanel() { state = panelFrom === 'pause' && G ? 'pause' : 'menu'; }
+function closePanel() {
+  if (introPending && !(panelFrom === 'pause' && G)) { introPending = false; openIntro(); return; }
+  state = panelFrom === 'pause' && G ? 'pause' : 'menu';
+}
 function armed(id) { return armedAct === id && performance.now() - armedAt < 4000; }
 function confirmed(id, go) {
   if (armed(id)) { armedAct = null; go(); } else { armedAct = id; armedAt = performance.now(); }
@@ -2969,7 +2973,7 @@ function drawOptionsScreen() {
     const dx = 380, dy = 210, dw = 520, dh = 305;
     windowFrame(dx, dy, dw, dh);
     titleText('Wirklich zurücksetzen?', dx + dw / 2, dy + 62, 30, 'center');
-    wrap('Alle Karten, Decks, dein Mondsilber, der Rekord und die Freischaltungen werden gelöscht. Das lässt sich nicht rückgängig machen. Einstellungen, Name und die Rangliste bleiben.', dw - 70, '500 18px ' + F_TEXT).forEach((l, i) => text(l, dx + dw / 2, dy + 104 + i * 25, 18, '#e8dcbc', 'center', F_TEXT, '500'));
+    wrap('Alle Karten, Decks, dein Mondsilber, der Rekord und die Freischaltungen werden gelöscht. Das lässt sich nicht rückgängig machen. Einstellungen, Name und die Rangliste bleiben. Das Intro erscheint danach noch einmal.', dw - 70, '500 18px ' + F_TEXT).forEach((l, i) => text(l, dx + dw / 2, dy + 104 + i * 25, 18, '#e8dcbc', 'center', F_TEXT, '500'));
     uiButton(dx + 36, dy + dh - 76, 200, 48, 'Abbrechen', () => { resetAsk = false; }, { size: 17 });
     uiButton(dx + dw - 36 - 236, dy + dh - 76, 236, 48, 'Ja, zurücksetzen', () => { resetAsk = false; resetProgress(); }, { size: 17, danger: true });
   }
