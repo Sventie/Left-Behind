@@ -116,9 +116,9 @@ const CARDS = [
   // für alle
   { id: 'stiefel',  name: 'Wanderstiefel',        kind: 'Segen',  rarity: 'gewoehnlich', icon: 'boot',    max: 3, stat: '+10 % Lauftempo',      text: 'Leder und Moos tragen dich schneller.',            flavor: '„Die Straße kennt keine Müdigkeit.“', apply: S => { S.moveSpeed *= 1.10; } },
   { id: 'schild',   name: 'Eichenschild',         kind: 'Segen',  rarity: 'gewoehnlich', icon: 'shield',  max: 3, stat: '+30 Leben',            text: 'Altes Eichenholz schützt deine Brust.',            flavor: '„Es hat Schlimmeres gesehen.“',        apply: S => { S.maxHp += 30; } },
-  { id: 'irrlicht', name: 'Irrlicht',             kind: 'Zauber', rarity: 'selten',      icon: 'wisp',    max: 2, stat: 'Sichtweite +25 %',     text: 'Ein Irrlicht leuchtet den Weg weiter aus.',        flavor: '„Folge dem Licht. Nicht dem anderen.“', apply: S => { S.rangeMul *= 1.25; } },
-  { id: 'wind',     name: 'Windstoß',             kind: 'Zauber', rarity: 'selten',      icon: 'wind',    max: 1, stat: 'Sprint (Leertaste)',   text: 'Ein Stoß treibt dich 4 m nach vorn. 12 s Abklingzeit.', flavor: '„Der Wald hält den Atem an.“',    apply: S => { S.dash = true; } },
-  { id: 'falke',    name: 'Falkenauge',           kind: 'Zauber', rarity: 'episch',      icon: 'eye',     max: 2, stat: 'Sichtkegel +25°',      text: 'Du siehst weiter zur Seite, ohne den Kopf zu drehen.', flavor: '„Nichts entgeht dem Jäger.“',    apply: S => { S.fov += 25; } },
+  { id: 'irrlicht', name: 'Irrlicht',             kind: 'Segen', rarity: 'selten',      icon: 'wisp',    max: 2, stat: 'Sichtweite +25 %',     text: 'Ein Irrlicht leuchtet den Weg weiter aus.',        flavor: '„Folge dem Licht. Nicht dem anderen.“', apply: S => { S.rangeMul *= 1.25; } },
+  { id: 'wind',     name: 'Windstoß',             kind: 'Fähigkeit', rarity: 'selten',      icon: 'wind',    max: 1, stat: 'Sprint (Leertaste)',   text: 'Ein Stoß treibt dich 4 m nach vorn. 12 s Abklingzeit.', flavor: '„Der Wald hält den Atem an.“',    apply: S => { S.dash = true; } },
+  { id: 'falke',    name: 'Falkenauge',           kind: 'Segen', rarity: 'episch',      icon: 'eye',     max: 2, stat: 'Sichtkegel +25°',      text: 'Du siehst weiter zur Seite, ohne den Kopf zu drehen.', flavor: '„Nichts entgeht dem Jäger.“',    apply: S => { S.fov += 25; } },
   { id: 'blitz',    name: 'Kettenblitz',          kind: 'Zauber', rarity: 'episch',      icon: 'bolt',    max: 2, stat: 'Kettenblitz-Treffer',  text: 'Treffer springen auf 2 weitere Gegner über.',      flavor: '„Der Himmel schuldet dir etwas.“',     apply: S => { S.chain += 2; } },
   { id: 'krone',    name: 'Krone der Verlorenen', kind: 'Zauber', rarity: 'legendaer',   icon: 'crown',   max: 1, stat: '4 statt 3 Karten',     text: 'Wähle nach jeder Stufe aus vier Karten.',          flavor: '„Wer sie trägt, wird nicht vergessen.“', apply: S => { S.extraChoices += 1; } },
   // Fernkampf
@@ -151,6 +151,9 @@ const ICONS = {
   bolt:   'M13 2L4.5 13.5H11L10 22l9-12h-6.5z',
   crown:  'M3 18l1.5-10 4.5 4 3-7 3 7 4.5-4L21 18zM3 21h18',
   sword:  'M12 2l2.5 3v9.5h-5V5zM7 14.5h10M12 14.5V21M10 21h4',
+  k_ritter: 'M12 2l2.2 3v10H9.8V5L12 2zM7 15h10M12 15v4.5M10.6 21a1.4 1.4 0 1 0 2.8 0 1.4 1.4 0 0 0-2.8 0z',
+  k_waldlaeufer: 'M6 3c9 3 9 15 0 18M6 3v18M6 12h14M16.5 8.5L20 12l-3.5 3.5',
+  k_magier: 'M12 2l2 6 6 .5-4.6 4 1.4 6L12 15l-4.8 3.5 1.4-6L4 8.5 10 8z',
   arc:    'M3 17c0-7 4-12 9-12s9 5 9 12M12 5v8M7 8l2.5 4M17 8l-2.5 4',
   flask:  'M9 2h6M10 2v6l-5 10a2.5 2.5 0 0 0 2.2 3.5h9.6A2.5 2.5 0 0 0 19 18l-5-10V2M7.5 15h9',
   moon:   'M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z',
@@ -160,9 +163,11 @@ const ICON_PATHS = {};
 for (const k in ICONS) ICON_PATHS[k] = new Path2D(ICONS[k]);
 
 // ---------- Sammlung & Kartenbücher (im Browser gespeichert) ----------
-const DECK_SIZE = 12, MAX_COPIES = 3;
-// Startsammlung: nur Eisen-Karten. Den Rest findest du in Kartenpacks der Bibliothek.
-const STARTER_COUNT = { gewoehnlich: 2, selten: 0, episch: 0, legendaer: 0 };
+const DECK_SIZE = 12;
+// Wie oft eine Karte ins Deck darf, richtet sich nach der Seltenheit (eine Karte kann mit `limit` ein eigenes Limit bekommen)
+const DECK_LIMIT = { gewoehnlich: 4, selten: 3, episch: 2, legendaer: 1 };
+// Startsammlung: drei Karten (Lauftempo, Leben, Sichtkegel), je zweimal. Den Rest findest du in Kartenpacks der Bibliothek.
+const STARTER = { stiefel: 2, schild: 2, falke: 2 };
 const START_SILVER = 150;
 const MERCHANT_PRICE = { gewoehnlich: 40, selten: 100, episch: 260, legendaer: 600 };
 const MERCHANT_DISCOUNT = 0.7;        // 30 % Rabatt
@@ -171,7 +176,7 @@ const MERCHANT_MIN_GAP = 5;           // mindestens so viele Abschnitte dazwisch
 const SAVE_KEY = 'left-behind-save-v2';
 // Test: index.html?cheat gibt alle Karten und viel Mondsilber
 const CHEAT = /[?&]cheat/.test(location.search);
-const CHEAT_COUNT = { gewoehnlich: 3, selten: 2, episch: 1, legendaer: 1 };
+const CHEAT_COUNT = { gewoehnlich: 4, selten: 3, episch: 2, legendaer: 1 };
 const RARITY_KEYS = ['gewoehnlich', 'selten', 'episch', 'legendaer'];
 const RECYCLE_VALUE = { gewoehnlich: 10, selten: 30, episch: 90, legendaer: 300 };
 const PACKS = [
@@ -181,15 +186,16 @@ const PACKS = [
   { id: 'drache',  name: 'Drachen-Grimoire', price: 2000, odds: [10, 30, 40, 20], min: 'legendaer', cover: ['#a8323c', '#4a0f18'], ink: '#ffe9a8', seal: '#f2c14e', unlockStage: 5, content: '5 Karten · 1 Drachengold sicher' }
 ];
 const compat = (card, cls) => !card.types || card.types.includes(WEAPONS[cls.weapon].type);
-const copyLimit = card => Math.min(MAX_COPIES, card.max);
+const copyLimit = card => card.limit !== undefined ? card.limit : DECK_LIMIT[card.rarity];
 const cardOrder = id => CARDS.findIndex(c => c.id === id);
 
 function defaultDeck(cls, owned) {
   // zuerst Karten, die nur zu dieser Waffe passen, dann allgemeine
-  const list = CARDS.filter(c => compat(c, cls)).sort((a, b) => (b.types ? 1 : 0) - (a.types ? 1 : 0));
+  // Startdeck: die Startkarten, soweit der Streiter sie besitzt und nutzen kann
   const deck = [];
-  for (const c of list) {
-    for (let i = 0; i < Math.min(2, copyLimit(c), owned[c.id] || 0) && deck.length < DECK_SIZE; i++) deck.push(c.id);
+  for (const id in STARTER) {
+    const c = CARD_BY_ID[id];
+    if (c && compat(c, cls)) for (let i = 0; i < Math.min(STARTER[id], copyLimit(c), owned[id] || 0); i++) deck.push(id);
   }
   return deck.sort((a, b) => cardOrder(a) - cardOrder(b));
 }
@@ -198,7 +204,7 @@ function loadSave() {
   try { sv = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) {}
   if (!sv || typeof sv !== 'object') sv = {};
   sv.owned = sv.owned || {};
-  for (const c of CARDS) if (sv.owned[c.id] === undefined) sv.owned[c.id] = STARTER_COUNT[c.rarity];
+  for (const c of CARDS) if (sv.owned[c.id] === undefined) sv.owned[c.id] = STARTER[c.id] || 0;
   if (typeof sv.silver !== 'number') sv.silver = START_SILVER;
   sv.maxStage = sv.maxStage || 1;
   if (CHEAT) {
@@ -209,7 +215,13 @@ function loadSave() {
   for (const cls of CLASSES) {
     let d = sv.decks[cls.id];
     if (!Array.isArray(d)) d = defaultDeck(cls, sv.owned);
-    sv.decks[cls.id] = d.filter(id => CARD_BY_ID[id] && compat(CARD_BY_ID[id], cls)).slice(0, DECK_SIZE);
+    const seen = {};   // Limits einhalten (auch bei älteren Spielständen)
+    sv.decks[cls.id] = d.filter(id => {
+      const c = CARD_BY_ID[id];
+      if (!c || !compat(c, cls)) return false;
+      seen[id] = (seen[id] || 0) + 1;
+      return seen[id] <= Math.min(copyLimit(c), sv.owned[id] || 0);
+    }).slice(0, DECK_SIZE);
   }
   return sv;
 }
@@ -374,7 +386,7 @@ const MUSIC_DEFS = {
 function musicFor(st) {
   if (!gestureDone) return;
   if (['options', 'controls', 'feedback'].includes(st)) return;
-  const want = ['menu', 'select', 'book', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
+  const want = ['menu', 'select', 'book', 'deck', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
   if (MUSIC.name === want) return;
   stopMusic(); MUSIC.name = want;
   if (!want) return;
@@ -550,7 +562,6 @@ const keys = {};
 const held = a => !!keys[settings.binds[a]];
 const mouse = { x: VIEW_W / 2, y: VIEW_H / 2, fx: 0, fy: 0, down: false, rdown: false, pressed: false };
 let menuHover = -1, pickHover = -1, selectHover = -1;
-let bookClass = 0, bookFilter = 'usable', bookPage = 0, bookHover = null;
 
 const W = () => WEAPONS[G.cls.weapon];
 const wtype = () => W().type;
@@ -1673,6 +1684,11 @@ function drawCard(c, x, y, k, hover) {
   rr(15, 48, 190, 120, [60, 60, 6, 6]); ctx.fillStyle = ag; ctx.fill();
   ctx.strokeStyle = R.c; ctx.lineWidth = 3; ctx.stroke();
   drawIcon(c.icon, 110, 108, 72, R.c, 1.2);
+  cardUsers(c).forEach((cl, i) => {   // wer die Karte nutzen kann
+    const ux = 28, uy = 94 + i * 25;
+    ctx.beginPath(); ctx.arc(ux, uy, 10.5, 0, 7); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 1; ctx.stroke();
+    drawIcon('k_' + cl.id, ux, uy, 13, R.c, 2);
+  });
   rr(40, 156, 140, 20, 3); ctx.fillStyle = R.c; ctx.fill(); ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 1; ctx.stroke();
   text(c.kind.toUpperCase(), 110, 171, 12, '#1c140c', 'center', F_TEXT, 'bold');
   const sl = wrap(c.stat, 190, '14px ' + F_TITLE);
@@ -1791,7 +1807,7 @@ function drawRails() {
     text('deine erste Karte.', 1180, 166, 15, '#b8c4d0', 'center', F_TEXT);
   }
   ctx.fillStyle = '#9a7a3a'; ctx.fillRect(1092, 676, 176, 1);
-  text('Im Kartenbuch: ' + G.library.length + ' Karten', 1180, 700, 14, '#b8c4d0', 'center', F_TEXT);
+  text('Im Deck: ' + G.library.length + ' Karten', 1180, 700, 14, '#b8c4d0', 'center', F_TEXT);
 }
 
 function drawFieldHUD() {
@@ -1955,7 +1971,7 @@ function drawSelectScreen() {
     ctx.restore();
     text(String(L.i + 1), L.x + L.w / 2, L.y + L.h + 34, 18, hover ? '#f2c14e' : '#b8c4d0', 'center', F_TITLE);
     const dn = deckOf(c).length;
-    text('Kartenbuch ' + dn + ' / ' + DECK_SIZE, L.x + L.w / 2, L.y + L.h + 58, 15, dn < DECK_SIZE ? '#f2c14e' : '#8ee8ff', 'center', F_TEXT);
+    text('Deck ' + dn + ' / ' + DECK_SIZE, L.x + L.w / 2, L.y + L.h + 58, 15, dn < DECK_SIZE ? '#f2c14e' : '#8ee8ff', 'center', F_TEXT);
   });
   // Zurück
   rr(40, 36, 120, 40, 20); ctx.fillStyle = selectHover === -2 ? '#1e2c22' : '#101a14'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
@@ -1963,146 +1979,264 @@ function drawSelectScreen() {
   text('1 · 2 · 3 oder Klick  ·  Weitere Streiter folgen später', 640, 692, 17, '#c8d4de', 'center', F_TEXT);
 }
 
-// ---------- Kartenbuch ----------
-function bookLayout() {
-  const cls = CLASSES[bookClass];
-  const L = { tabs: [], chips: [], items: [], rows: [] };
-  CLASSES.forEach((c, i) => L.tabs.push({ i, x: 400 + i * 168, y: 18, w: 158, h: 42 }));
-  L.back = { x: 40, y: 18, w: 120, h: 42 }; L.recycle = { x: 1060, y: 18, w: 180, h: 42 };
-  L.chips = [{ id: 'usable', label: 'Nutzbar', x: 650, y: 104, w: 96, h: 32 }, { id: 'all', label: 'Alle', x: 754, y: 104, w: 66, h: 32 }];
-  const list = CARDS.filter(c => bookFilter === 'all' || compat(c, cls));
-  L.pages = Math.max(1, Math.ceil(list.length / 10));
-  bookPage = clamp(bookPage, 0, L.pages - 1);
-  list.slice(bookPage * 10, bookPage * 10 + 10).forEach((c, i) => {
-    L.items.push({ c, x: 40 + (i % 5) * 160, y: 150 + Math.floor(i / 5) * 226, w: 146, h: 212 });
-  });
-  L.prev = { x: 300, y: 614, w: 44, h: 34 }; L.next = { x: 440, y: 614, w: 44, h: 34 };
-  const d = deckOf(cls), ids = [...new Set(d)];
-  ids.forEach((id, i) => L.rows.push({ id, n: d.filter(x => x === id).length, x: 876, y: 176 + i * 36, w: 348, h: 30, minus: { x: 1190, y: 177 + i * 36, w: 28, h: 28 } }));
-  L.clear = { x: 880, y: 640, w: 160, h: 38 }; L.auto = { x: 1060, y: 640, w: 160, h: 38 };
-  return L;
-}
-const hitR = (r, x, y) => r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
-function bookHit(x, y) {
-  const L = bookLayout();
-  if (hitR(L.back, x, y)) return { t: 'back' };
-  if (hitR(L.recycle, x, y)) return { t: 'recycle' };
-  for (const t of L.tabs) if (hitR(t, x, y)) return { t: 'tab', i: t.i };
-  for (const c of L.chips) if (hitR(c, x, y)) return { t: 'chip', id: c.id };
-  if (hitR(L.prev, x, y)) return { t: 'prev' };
-  if (hitR(L.next, x, y)) return { t: 'next' };
-  if (hitR(L.clear, x, y)) return { t: 'clear' };
-  if (hitR(L.auto, x, y)) return { t: 'auto' };
-  for (const r of L.rows) if (hitR(r.minus, x, y)) return { t: 'minus', id: r.id };
-  for (const it of L.items) if (hitR(it, x, y)) return { t: 'card', c: it.c };
-  return null;
-}
-function bookClick(h, right) {
-  const cls = CLASSES[bookClass];
-  if (!h) return;
-  sfx('ui_click');
-  if (right) { if (h.t === 'card') removeFromDeck(cls, h.c.id); return; }
-  if (h.t === 'back') state = 'menu';
-  else if (h.t === 'recycle') { recyclePage = 0; state = 'recycle'; }
-  else if (h.t === 'tab') { bookClass = h.i; bookPage = 0; }
-  else if (h.t === 'chip') { bookFilter = h.id; bookPage = 0; }
-  else if (h.t === 'prev') bookPage--;
-  else if (h.t === 'next') bookPage++;
-  else if (h.t === 'minus') removeFromDeck(cls, h.id);
-  else if (h.t === 'clear') { SAVE.decks[cls.id] = []; persist(); }
-  else if (h.t === 'auto') { SAVE.decks[cls.id] = defaultDeck(cls, SAVE.owned); persist(); }
-  else if (h.t === 'card') addToDeck(cls, h.c);
-}
-function drawBookScreen() {
-  const cls = CLASSES[bookClass], L = bookLayout(), d = deckOf(cls);
-  let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
-  g.addColorStop(0, '#0c1a1a'); g.addColorStop(0.75, '#0a110d'); g.addColorStop(1, '#0a110d');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
-  for (const s of stars) { ctx.fillStyle = 'rgba(255,255,255,' + (s[3] * 0.6) + ')'; ctx.fillRect(s[0], s[1], s[2], s[2]); }
-  // Kopfleiste
-  g = ctx.createLinearGradient(0, 0, 0, 78); g.addColorStop(0, '#14201a'); g.addColorStop(1, '#0a110d');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, 78); ctx.fillStyle = '#9a7a3a'; ctx.fillRect(0, 76, FRAME_W, 2);
-  const btn = (r, label, active, color, hov) => {
-    rr(r.x, r.y, r.w, r.h, r.h / 2);
-    ctx.fillStyle = active ? (color || '#1e2c22') : (hov ? '#1e2c22' : '#101a14'); ctx.fill();
-    ctx.strokeStyle = active ? '#f2c14e' : '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
-    text(label, r.x + r.w / 2, r.y + r.h / 2 + 6, 16, active ? '#f2c14e' : '#e8dcbc', 'center', F_TITLE);
-  };
-  const hv = (t, k, v) => bookHover && bookHover.t === t && (k === undefined || bookHover[k] === v);
-  btn(L.back, '‹ Menü', false, null, hv('back'));
-  L.tabs.forEach(t => {
-    const c = CLASSES[t.i], act = t.i === bookClass;
-    rr(t.x, t.y, t.w, t.h, 21); ctx.fillStyle = act ? c.accent2 : (hv('tab', 'i', t.i) ? '#1e2c22' : '#101a14'); ctx.fill();
-    ctx.strokeStyle = act ? c.accent : '#4a5a4a'; ctx.lineWidth = 2; ctx.stroke();
-    text(c.name, t.x + t.w / 2, t.y + 28, 17, act ? '#fff' : '#b8c4d0', 'center', F_TITLE);
-  });
-  btn(L.recycle, 'Recycling · ' + surplusList().reduce((a, x) => a + x.n, 0), false, null, hv('recycle'));
+// ---------- Kartenbuch (Sammlung) und Deck ----------
+const CATS = ['Segen', 'Zauber', 'Fähigkeit'];
+const CAT_SUB = { Segen: 'Statuswerte', Zauber: 'Wirkungen', Fähigkeit: 'Aktionen' };
+let deckClass = 0, bookSpread = 0, bookMond = false, deckFilter = 'all', deckPage = 0, deckHoverIdx = -1, deckMsg = null;
+const rarIdx = c => RARITY_KEYS.indexOf(c.rarity);
+const byRarity = (a, b) => CATS.indexOf(a.kind) - CATS.indexOf(b.kind) || rarIdx(a) - rarIdx(b) || cardOrder(a.id) - cardOrder(b.id);
+function cardUsers(c) { return CLASSES.filter(cl => compat(c, cl)); }
 
-  // Sammlung
-  ctx.font = '34px ' + F_TITLE; ctx.textAlign = 'left'; ctx.fillStyle = silverGrad(98, 132);
-  ctx.fillText('Sammlung', 40, 130);
-  L.chips.forEach(c => {
-    const act = bookFilter === c.id;
-    rr(c.x, c.y, c.w, c.h, 16); ctx.fillStyle = act ? '#1e2c22' : (hv('chip', 'id', c.id) ? '#16231b' : '#101a14'); ctx.fill();
-    ctx.strokeStyle = act ? '#f2c14e' : '#2e3e32'; ctx.lineWidth = 1.5; ctx.stroke();
-    text(c.label, c.x + c.w / 2, c.y + 22, 16, act ? '#f2c14e' : '#c8d4de', 'center', F_TEXT, '500');
-  });
-  text('Streiter: ' + cls.role + ' · Gesammelt ' + CARDS.filter(c => SAVE.owned[c.id] > 0).length + ' / ' + CARDS.length, 290, 128, 17, cls.accent, 'left', F_TEXT, 'italic');
-  L.items.forEach(it => {
-    const c = it.c, ok = compat(c, cls), o = SAVE.owned[c.id] || 0, k = inDeck(cls, c.id), R = RARITY[c.rarity];
-    if (o === 0) {
-      rr(it.x, it.y, it.w, it.h, 10); ctx.fillStyle = '#0c1510'; ctx.fill();
-      ctx.setLineDash([6, 5]); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
-      text('?', it.x + it.w / 2, it.y + 110, 64, '#22332a', 'center', F_TITLE);
-      text('Unentdeckt', it.x + it.w / 2, it.y + 150, 15, '#5a6e60', 'center', F_TITLE);
-      text(R.label, it.x + it.w / 2, it.y + 172, 14, R.c, 'center', F_TEXT, 'italic');
-      return;
-    }
-    ctx.globalAlpha = ok ? 1 : 0.32;
-    drawCard(c, it.x, it.y, 0.664, bookHover && bookHover.t === 'card' && bookHover.c === c && ok);
-    ctx.globalAlpha = 1;
-    // Anzahl
-    rr(it.x + it.w - 22, it.y - 8, 30, 26, 13); ctx.fillStyle = '#f2c14e'; ctx.fill(); ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.stroke();
-    text('×' + o, it.x + it.w - 7, it.y + 10, 14, '#1c140c', 'center', F_TITLE);
-    if (!ok) { rr(it.x + 14, it.y + it.h - 36, it.w - 28, 22, 4); ctx.fillStyle = 'rgba(10,17,13,.92)'; ctx.fill(); text('passt nicht', it.x + it.w / 2, it.y + it.h - 20, 14, '#b8c4d0', 'center', F_TEXT, 'italic'); }
-    else if (k > 0) {
-      rr(it.x + 8, it.y + it.h - 30, 74, 20, 10); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#8ee8ff'; ctx.lineWidth = 1; ctx.stroke();
-      text('Im Buch ' + k + '/' + Math.min(copyLimit(c), o), it.x + 45, it.y + it.h - 16, 12, '#8ee8ff', 'center', F_TEXT, 'bold');
-    }
-  });
-  // Seiten
-  [[L.prev, '‹', hv('prev')], [L.next, '›', hv('next')]].forEach(([r, l, h]) => {
-    rr(r.x, r.y, r.w, r.h, 17); ctx.fillStyle = h ? '#1e2c22' : '#101a14'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
-    text(l, r.x + r.w / 2, r.y + 25, 22, '#e8dcbc', 'center', F_TITLE);
-  });
-  text('Seite ' + (bookPage + 1) + ' / ' + L.pages, 392, 638, 16, '#c8d4de', 'center', F_TEXT);
-  text('Klick: ins Buch  ·  Rechtsklick: entfernen', 40, 680, 15, '#8a9aa0', 'left', F_TEXT, 'italic');
-
-  // Kartenbuch des Streiters
-  rr(860, 100, 380, 590, 16);
-  g = ctx.createLinearGradient(0, 100, 0, 690); g.addColorStop(0, '#1a2a20'); g.addColorStop(1, '#101a14');
-  ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = cls.accent; ctx.lineWidth = 2; ctx.stroke();
-  text('Kartenbuch: ' + cls.name, 880, 134, 22, '#f0e6c8', 'left', F_TITLE);
-  text(d.length + ' / ' + DECK_SIZE, 1222, 134, 20, d.length >= DECK_SIZE ? '#8ee8ff' : '#f2c14e', 'right', F_TITLE);
-  text('Jede Karte höchstens ' + MAX_COPIES + '×  ·  gezogen wird zufällig aus diesem Buch', 880, 156, 14, '#b8c4d0', 'left', F_TEXT);
-  L.rows.forEach(r => {
-    const c = CARD_BY_ID[r.id], R = RARITY[c.rarity];
-    rr(r.x, r.y, r.w, r.h, 15); ctx.fillStyle = '#0c1510'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.fillStyle = R.c; ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(r.x + 16, r.y + 15, 6, 0, 7); ctx.fill(); ctx.stroke();
-    text(c.name, r.x + 32, r.y + 20, 13, '#f0e6c8', 'left', F_TITLE);
-    text(r.n + ' / ' + Math.min(copyLimit(c), SAVE.owned[c.id] || 0), r.x + r.w - 66, r.y + 20, 15, '#c8d4de', 'right', F_TEXT);
-    const m = r.minus, mh = bookHover && bookHover.t === 'minus' && bookHover.id === r.id;
-    rr(m.x, m.y, m.w, m.h, 14); ctx.fillStyle = mh ? '#3a1c1c' : '#101a14'; ctx.fill(); ctx.strokeStyle = mh ? '#ff7a8a' : '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
-    text('−', m.x + 14, m.y + 21, 20, '#e8dcbc', 'center', F_TEXT);
-  });
-  if (!d.length) text('Das Buch ist leer.', 1050, 300, 18, '#7a8a7a', 'center', F_TEXT, 'italic');
-  if (d.length < DECK_SIZE) text(DECK_SIZE - d.length + ' freie Plätze', 1050, Math.min(176 + L.rows.length * 36 + 22, 620), 15, '#6f8274', 'center', F_TEXT, 'italic');
-  btn(L.clear, 'Leeren', false, null, hv('clear')); btn(L.auto, 'Standard', false, null, hv('auto'));
-  // Großansicht der Karte unter dem Mauszeiger
-  if (bookHover && bookHover.t === 'card' && (SAVE.owned[bookHover.c.id] || 0) > 0) {   // unentdeckte Karten bleiben verborgen
-    const px = clamp(mouse.fx + 24, 10, 640), py = clamp(mouse.fy - 150, 90, 380);
-    drawCard(bookHover.c, px, py, 1.0, true);
+function bookPages() {
+  const pages = [];
+  for (const cat of CATS) {
+    const list = CARDS.filter(c => c.kind === cat && (!bookMond || rarIdx(c) >= 2)).sort(byRarity);
+    for (let i = 0; i < list.length; i += 6) pages.push({ cat, cards: list.slice(i, i + 6) });
   }
+  return pages.length ? pages : [{ cat: CATS[0], cards: [] }];
+}
+function drawTopBar(active) {
+  uiButton(40, 18, 120, 42, '‹ Menü', () => { state = 'menu'; });
+  [['book', 'Kartenbuch', 176, 150, () => { bookSpread = 0; state = 'book'; }], ['deck', 'Deck', 342, 100, () => { deckClass = lastClass; deckHoverIdx = -1; state = 'deck'; }], ['shop', 'Bibliothek', 458, 150, () => { state = 'shop'; }]].forEach(([id, label, x, w, go]) => {
+    uiButton(x, 18, w, 42, label, id === active ? null : go, { primary: id === active });
+  });
+}
+function chip(x, y, w, label, active, cb, color) {
+  const hov = inside(x, y, w, 34);
+  rr(x, y, w, 34, 17); ctx.fillStyle = active ? '#1e2c22' : (hov ? '#16231b' : '#101a14'); ctx.fill();
+  ctx.strokeStyle = active ? '#f2c14e' : (color || '#2e3e32'); ctx.lineWidth = 1.5; ctx.stroke();
+  text(label, x + w / 2, y + 23, 16, active ? '#f2c14e' : (color || '#c8d4de'), 'center', F_TEXT, '500');
+  uiHit(x, y, w, 34, cb);
+}
+
+// Kartenbuch: Ringbuch mit Folienseiten. Die Seiten behandeln eine Kategorie nach der anderen, innerhalb davon von häufig zu selten.
+let bookHoverCard = null;
+function drawBookScreen() {
+  uiBtns = []; bookHoverCard = null;
+  screenBackdrop();
+  drawTopBar('book');
+  const pages = bookPages(), spreads = Math.max(1, Math.ceil(pages.length / 2));
+  bookSpread = clamp(bookSpread, 0, spreads - 1);
+  text('Gesammelt: ' + CARDS.filter(c => SAVE.owned[c.id] > 0).length + ' / ' + CARDS.length, 1010, 46, 17, '#c8d4de', 'right', F_TEXT);
+  uiButton(1030, 18, 210, 42, 'Recycling · ' + surplusList().reduce((a, x) => a + x.n, 0), () => { recyclePage = 0; state = 'recycle'; }, { size: 15 });
+
+  // Ledereinband ganz außen
+  const X = 44, Y = 92, Wd = 1104, Ht = 552;
+  rr(X, Y, Wd, Ht, 16);
+  let g = ctx.createLinearGradient(X, Y, X + Wd, Y + Ht); g.addColorStop(0, '#3a2a1a'); g.addColorStop(0.6, '#241a10'); g.addColorStop(1, '#1a120a');
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 18; ctx.fillStyle = g; ctx.fill(); ctx.restore();
+  ctx.strokeStyle = '#5a4a1a'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.setLineDash([6, 5]); rr(X + 9, Y + 9, Wd - 18, Ht - 18, 11); ctx.strokeStyle = 'rgba(242,193,78,.35)'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+  const corner = (cx, cy, sx, sy) => { ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(cx, cy + sy * 28); ctx.lineTo(cx, cy); ctx.lineTo(cx + sx * 28, cy); ctx.stroke(); };
+  corner(X + 8, Y + 8, 1, 1); corner(X + Wd - 8, Y + 8, -1, 1); corner(X + 8, Y + Ht - 8, 1, -1); corner(X + Wd - 8, Y + Ht - 8, -1, -1);
+
+  const ay = Y + 24, ah = Ht - 48, pw = 483, lp = X + 22 + 24, rp = lp + pw + 37;
+  // Seitenkanten: links schon umgeblättert, rechts noch ungelesen
+  const edges = (n, x0, dir) => {
+    for (let k = Math.min(n, 4); k >= 1; k--) {
+      const w = 7, h = ah - k * 10, x = dir < 0 ? x0 - k * w : x0 + (k - 1) * w;
+      rr(x, ay + (ah - h) / 2, w, h, 3); ctx.fillStyle = '#0f1713'; ctx.fill(); ctx.strokeStyle = 'rgba(220,230,240,.42)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+  };
+  edges(bookSpread, lp, -1); edges(spreads - 1 - bookSpread, rp + pw, 1);
+  // Buchrücken
+  g = ctx.createLinearGradient(lp + pw, 0, rp, 0); g.addColorStop(0, '#0a110d'); g.addColorStop(0.5, '#060a08'); g.addColorStop(1, '#0a110d');
+  ctx.fillStyle = g; ctx.fillRect(lp + pw, ay, 37, ah);
+  const ringTops = [80, 250, 420];
+
+  const drawPage = (px, side, page, num) => {
+    rr(px, ay, pw, ah, 6); g = ctx.createLinearGradient(0, ay, 0, ay + ah); g.addColorStop(0, '#141f19'); g.addColorStop(1, '#0d1511');
+    ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.lineWidth = 1.5; ctx.stroke();
+    const sx = side === 'L' ? px + pw - 24 : px;   // Lochstreifen an der Bindekante
+    ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.fillRect(sx, ay + 1, 24, ah - 2);
+    ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fillRect(side === 'L' ? sx : sx + 23, ay + 1, 1, ah - 2);
+    for (const t of ringTops) {
+      ctx.beginPath(); ctx.ellipse(side === 'L' ? px + pw - 12 : px + 12, ay + t + 27, 7, 5, 0, 0, 7); ctx.fillStyle = '#030606'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.stroke();
+    }
+    if (!page) return;
+    const hx = side === 'L' ? px + 14 : px + 34, hw = pw - 48;
+    if (side === 'L') { titleText(page.cat, hx, ay + 32, 26, 'left'); text(CAT_SUB[page.cat] + ' · häufig → selten', hx + hw, ay + 28, 14, '#8a9aa0', 'right', F_TEXT, 'italic'); }
+    else { titleText(page.cat, hx + hw, ay + 32, 26, 'right'); text(CAT_SUB[page.cat] + ' · häufig → selten', hx, ay + 28, 14, '#8a9aa0', 'left', F_TEXT, 'italic'); }
+    for (let i = 0; i < 6; i++) {
+      const cx = hx + (i % 3) * 150, cy = ay + 44 + Math.floor(i / 3) * 214, c = page.cards[i];
+      rr(cx - 2, cy - 2, 140, 202, 7); ctx.fillStyle = 'rgba(255,255,255,.035)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.stroke();
+      if (!c) { ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fillRect(cx - 1, cy - 1, 138, 5); continue; }
+      const o = SAVE.owned[c.id] || 0, R = RARITY[c.rarity];
+      if (o === 0) {
+        drawIcon('crown', cx + 68, cy + 76, 42, '#3e5246', 1.3);
+        text('Unentdeckt', cx + 68, cy + 124, 14, '#5a6e60', 'center', F_TITLE);
+        text(R.label, cx + 68, cy + 146, 14, R.c, 'center', F_TEXT, 'italic');
+      } else {
+        const hov = inside(cx, cy, 136, 198);
+        if (hov) bookHoverCard = c;
+        drawCard(c, cx, cy, 0.62, hov);
+        rr(cx + 136 - 24, cy - 8, 30, 26, 13); ctx.fillStyle = '#f2c14e'; ctx.fill(); ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.stroke();
+        text('×' + o, cx + 136 - 9, cy + 10, 14, '#1c140c', 'center', F_TITLE);
+      }
+      ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fillRect(cx - 1, cy - 1, 138, 5);   // Einstecklippe der Tasche
+    }
+    // Seitenfuß: Zahl und Pfeil
+    const fy = ay + ah - 44;
+    if (side === 'L') {
+      uiButton(hx, fy, 44, 34, '‹', bookSpread > 0 ? () => { bookSpread--; } : null, { size: 20, disabled: bookSpread <= 0 });
+      text(String(num), hx + hw / 2, fy + 24, 17, '#8a9aa0', 'center', F_TITLE);
+    } else {
+      text(String(num), hx + hw / 2, fy + 24, 17, '#8a9aa0', 'center', F_TITLE);
+      uiButton(hx + hw - 44, fy, 44, 34, '›', bookSpread < spreads - 1 ? () => { bookSpread++; } : null, { size: 20, disabled: bookSpread >= spreads - 1 });
+    }
+  };
+  const lpIdx = bookSpread * 2;
+  drawPage(lp, 'L', pages[lpIdx], lpIdx + 1);
+  drawPage(rp, 'R', pages[lpIdx + 1], lpIdx + 2);
+  // Glanz über beiden Seiten
+  for (const px of [lp, rp]) { g = ctx.createLinearGradient(px, ay, px + pw * 0.8, ay + ah * 0.8); g.addColorStop(0, 'rgba(255,255,255,.05)'); g.addColorStop(0.35, 'rgba(255,255,255,0)'); rr(px, ay, pw, ah, 6); ctx.fillStyle = g; ctx.fill(); }
+
+  // Lesezeichen und Ringe (Ringe liegen vor dem Band)
+  const mid = lp + pw + 18.5;
+  g = ctx.createLinearGradient(mid - 12, 0, mid + 12, 0); g.addColorStop(0, '#8a2a30'); g.addColorStop(1, '#c0404a');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(mid - 12, ay - 24); ctx.lineTo(mid + 12, ay - 24); ctx.lineTo(mid + 12, ay + 126); ctx.lineTo(mid, ay + 108); ctx.lineTo(mid - 12, ay + 126); ctx.closePath(); ctx.fill();
+  for (const t of ringTops) {
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 5; ctx.shadowOffsetY = -2;
+    ctx.beginPath(); ctx.arc(mid, ay + t + 29, 30.5, Math.PI, 2 * Math.PI); ctx.strokeStyle = '#aab2bc'; ctx.lineWidth = 5; ctx.lineCap = 'butt'; ctx.stroke(); ctx.restore();
+    ctx.beginPath(); ctx.arc(mid, ay + t + 28, 29, Math.PI * 1.15, Math.PI * 1.85); ctx.strokeStyle = '#f6f8fa'; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  // Reiter am Buchrand: springen zur Kategorie, Mondstein+ filtert
+  const firstOf = cat => Math.max(0, Math.floor(pages.findIndex(p => p.cat === cat) / 2));
+  const curCat = pages[lpIdx] ? pages[lpIdx].cat : CATS[0];
+  const tabs = [
+    { label: 'Alle', y: 130, h: 66, r: 1200, on: !bookMond && bookSpread === 0, go: () => { bookMond = false; bookSpread = 0; } },
+    { label: 'Segen', y: 206, h: 78, r: 1194, on: curCat === 'Segen', go: () => { bookSpread = firstOf('Segen'); } },
+    { label: 'Zauber', y: 294, h: 82, r: 1188, on: curCat === 'Zauber', go: () => { bookSpread = firstOf('Zauber'); } },
+    { label: 'Fähigkeiten', y: 386, h: 122, r: 1182, on: curCat === 'Fähigkeit', go: () => { bookSpread = firstOf('Fähigkeit'); } },
+    { label: 'Mondstein+', y: 518, h: 100, r: 1176, on: bookMond, color: '#bfe3ff', go: () => { bookMond = !bookMond; bookSpread = 0; } }
+  ];
+  tabs.forEach(t => {
+    const x = 1100, w = t.r - x, hov = inside(x, t.y, w, t.h);
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, t.y, w, t.h, [0, 12, 12, 0]) : ctx.rect(x, t.y, w, t.h);
+    if (t.on) { g = ctx.createLinearGradient(x, 0, t.r, 0); g.addColorStop(0, '#d9a636'); g.addColorStop(1, '#f2c14e'); ctx.fillStyle = g; } else ctx.fillStyle = hov ? '#26382c' : '#1e2c22';
+    ctx.fill(); ctx.strokeStyle = t.on ? '#7a5a1a' : (t.color || '#5a4a1a'); ctx.lineWidth = 2; ctx.stroke();
+    ctx.save(); ctx.translate(1148 + (t.r - 1148) / 2, t.y + t.h / 2); ctx.rotate(Math.PI / 2);
+    text(t.label, 0, 5, 15, t.on ? '#1c140c' : (t.color || '#c8d4de'), 'center', F_TITLE); ctx.restore();
+    uiHit(x, t.y, w, t.h, t.go);
+  });
+
+  // Legende
+  const leg = [['Eisen', '#aeb6c0'], ['Smaragd', '#4fd08a'], ['Mondstein', '#bfe3ff'], ['Drachengold', '#f2c14e']];
+  let lx = 640 - 330;
+  text('Sortierung in jeder Kategorie, häufig → selten:', lx, 674, 15, '#8a9aa0', 'left', F_TEXT);
+  lx += 330;
+  leg.forEach(([n, c], i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(lx + 6, 669, 6, 0, 7); ctx.fill(); text(n, lx + 18, 674, 15, c, 'left', F_TEXT); lx += 28 + n.length * 7.6; if (i < 3) { text('→', lx - 6, 674, 15, '#8a9aa0', 'left', F_TEXT); lx += 14; } });
+  text('Die Symbole links an jeder Karte zeigen, wer sie nutzen kann: Schwert = Ritter · Bogen = Waldläufer · Stern = Magier. Reiter springen zur Kategorie, geblättert wird frei weiter.', 640, 698, 14, '#6f8274', 'center', F_TEXT);
+  if (bookHoverCard) drawCard(bookHoverCard, clamp(mouse.fx + 24, 10, 1040), clamp(mouse.fy - 150, 90, 380), 1.0, true);
+}
+
+// ---------- Deck ----------
+function deckPool(cls) {
+  let list = CARDS.filter(c => compat(c, cls) && (SAVE.owned[c.id] || 0) > 0);
+  if (deckFilter === 'mond') list = list.filter(c => rarIdx(c) >= 2);
+  else if (deckFilter !== 'all') list = list.filter(c => c.kind === deckFilter);
+  return list.sort(byRarity);
+}
+function deckAdd(cls, c) {
+  if (addToDeck(cls, c)) { sfx('card_pick'); return; }
+  const d = deckOf(cls);
+  deckMsg = { t: d.length >= DECK_SIZE ? 'Das Deck ist voll.' : 'Mehr Kopien lassen sich nicht ins Deck legen.', until: performance.now() + 2200 };
+}
+function drawDeckScreen() {
+  uiBtns = [];
+  screenBackdrop();
+  drawTopBar('deck');
+  text('Streiter wählen und Deck zusammenstellen', 1240, 46, 17, '#c8d4de', 'right', F_TEXT);
+  const cls = CLASSES[deckClass], d = deckOf(cls).slice().sort((a, b) => cardOrder(a) - cardOrder(b));
+
+  // Linke Spalte: Streiter, Kartenstapel, Regeln
+  CLASSES.forEach((c, i) => {
+    const x = 40 + i * 114, act = i === deckClass, hov = inside(x, 100, 102, 58);
+    rr(x, 100, 102, 58, 12); ctx.fillStyle = act ? '#1e2c22' : (hov ? '#16231b' : '#101a14'); ctx.fill();
+    ctx.strokeStyle = act ? '#f2c14e' : '#2e3e32'; ctx.lineWidth = act ? 2 : 1; ctx.stroke();
+    drawIcon('k_' + c.id, x + 51, 121, 24, act ? '#f2c14e' : '#c8d4de', 1.5);
+    text(c.name, x + 51, 148, 12, act ? '#f2c14e' : '#c8d4de', 'center', F_TITLE);
+    uiHit(x, 100, 102, 58, () => { deckClass = i; deckPage = 0; deckHoverIdx = -1; });
+  });
+  const scx = 205, scy = 300;
+  [[-6, 0.75, 6], [-3, 0.85, 3], [3, 0.9, 0]].forEach(([rot, al, dy]) => {
+    ctx.save(); ctx.translate(scx, scy + dy); ctx.rotate(rot * deg); ctx.globalAlpha = al; drawCardBack(-75, -108, 0.68); ctx.restore();
+  });
+  ctx.save(); ctx.translate(scx, scy - 8);
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 10;
+  rr(-75, -108, 150, 216, 9); g = ctx.createRadialGradient(0, -20, 10, 0, 0, 140); g.addColorStop(0, '#2f5a44'); g.addColorStop(1, '#10211a'); ctx.fillStyle = g; ctx.fill();
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 3; ctx.stroke();
+  rr(-68, -101, 136, 202, 6); ctx.strokeStyle = '#5a4a1a'; ctx.lineWidth = 1; ctx.stroke();
+  drawIcon('k_' + cls.id, 0, -34, 64, '#f2c14e', 1.2);
+  text('DECK DES', 0, 28, 15, '#f0e6c8', 'center', F_TITLE); text((cls.name + 's').toUpperCase(), 0, 50, 15, '#f0e6c8', 'center', F_TITLE);
+  ctx.restore();
+  rr(scx - 42, 410, 84, 40, 20); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#8ee8ff'; ctx.lineWidth = 2; ctx.stroke();
+  text(d.length + ' / ' + DECK_SIZE, scx, 437, 20, '#8ee8ff', 'center', F_TITLE);
+  uiButton(40, 470, 156, 36, 'Leeren', () => { SAVE.decks[cls.id] = []; persist(); }, { size: 15 });
+  uiButton(208, 470, 162, 36, 'Startdeck', () => { SAVE.decks[cls.id] = defaultDeck(cls, SAVE.owned); persist(); }, { size: 15 });
+  rr(40, 522, 330, 140, 12); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
+  text('WIE OFT EINE KARTE INS DECK DARF', 56, 546, 12, '#8a9aa0', 'left', F_TEXT, 'bold');
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  [['legendaer', 'Drachengold'], ['episch', 'Mondstein'], ['selten', 'Smaragd'], ['gewoehnlich', 'Eisen']].forEach(([k, n], i) => {
+    const y = 574 + i * 24;
+    ctx.fillStyle = RARITY[k].c; ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(64, y - 5, 6, 0, 7); ctx.fill(); ctx.stroke();
+    text(n, 80, y, 14, '#f0e6c8', 'left', F_TITLE); text('höchstens ' + DECK_LIMIT[k] + '×', 354, y, 16, '#c8d4de', 'right', F_TEXT);
+  });
+  text('Auch ein leeres Deck ist erlaubt.', 40, 690, 14, '#8a9aa0', 'left', F_TEXT, 'italic');
+
+  // Das Deck als Fächer
+  titleText('Dein Deck', 400, 130, 30, 'left');
+  text('Karten überlappen wie auf der Hand. Klick auf eine Karte nimmt sie heraus.', 1240, 126, 15, '#c8d4de', 'right', F_TEXT);
+  const fanTop = 142, H0 = deckHoverIdx;
+  const fanLeft = (i, h) => h < 0 ? i * 66 : (i < h ? i * 61 : i === h ? h * 61 : h * 61 + 108 + (i - h - 1) * 61);
+  let h = -1;
+  if (H0 >= 0 && H0 < d.length && inside(400 + fanLeft(H0, H0), fanTop - 14, 118, 214)) h = H0;
+  if (h < 0 && inside(400, fanTop, 844, 200)) {
+    for (let i = DECK_SIZE - 1; i >= 0; i--) { if (i < d.length && inside(400 + i * 66, fanTop, i === DECK_SIZE - 1 ? 118 : 66, 200)) { h = i; break; } }
+  }
+  deckHoverIdx = h;
+  for (let i = 0; i < DECK_SIZE; i++) {
+    const hv = i === h, dd = i - 5.5, left = 400 + fanLeft(i, h), top = fanTop + (hv ? 0 : 14 + Math.round(dd * dd * 0.5));
+    ctx.save(); ctx.translate(left + 59, top + 86); ctx.rotate(dd * 1.6 * deg);
+    if (i < d.length) {
+      const c = CARD_BY_ID[d[i]];
+      drawCard(c, -59, -86, 0.5375, hv);
+      if (hv) { rr(-62, -89, 124, 178, 12); ctx.strokeStyle = '#8ee8ff'; ctx.lineWidth = 3; ctx.stroke(); ctx.beginPath(); ctx.arc(53, -80, 13, 0, 7); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#ff7a8a'; ctx.lineWidth = 1.5; ctx.stroke(); text('×', 53, -73, 20, '#e8dcbc', 'center', F_TEXT); }
+    } else {
+      rr(-59, -86, 118, 172, 9); ctx.fillStyle = 'rgba(10,17,13,.6)'; ctx.fill(); ctx.setLineDash([6, 5]); ctx.strokeStyle = '#3e5246'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+      text('+', 0, 10, 30, '#5a6e60', 'center', F_TEXT);
+    }
+    ctx.restore();
+    if (i < d.length) uiHit(left, top, (i < DECK_SIZE - 1 ? fanLeft(i + 1, h) - fanLeft(i, h) : 118), 172, () => { removeFromDeck(cls, d[i]); deckHoverIdx = -1; });
+  }
+
+  // Auswahl aus dem Kartenbuch
+  text('Aus dem Kartenbuch', 400, 374, 20, '#f0e6c8', 'left', F_TITLE);
+  const pool = deckPool(cls), per = 18, pages = Math.max(1, Math.ceil(pool.length / per));
+  deckPage = clamp(deckPage, 0, pages - 1);
+  text('nur Karten, die der ' + cls.name + ' nutzen kann', pages > 1 ? 1130 : 1240, 374, 14, '#8a9aa0', 'right', F_TEXT);
+  if (pages > 1) { uiButton(1146, 354, 40, 30, '‹', deckPage > 0 ? () => { deckPage--; } : null, { size: 18, disabled: deckPage <= 0 }); uiButton(1196, 354, 40, 30, '›', deckPage < pages - 1 ? () => { deckPage++; } : null, { size: 18, disabled: deckPage >= pages - 1 }); }
+  [['Alle', 'all', 66], ['Segen', 'Segen', 78], ['Zauber', 'Zauber', 84], ['Fähigkeiten', 'Fähigkeit', 118]].reduce((x, [l, id, w]) => { chip(x, 386, w, l, deckFilter === id, () => { deckFilter = id; deckPage = 0; }); return x + w + 8; }, 400);
+  chip(1114, 386, 126, 'Mondstein+', deckFilter === 'mond', () => { deckFilter = 'mond'; deckPage = 0; }, '#bfe3ff');
+  let hovCard = null;
+  pool.slice(deckPage * per, deckPage * per + per).forEach((c, i) => {
+    const x = 400 + (i % 9) * 94.5, y = 436 + Math.floor(i / 9) * 146, o = SAVE.owned[c.id] || 0, k = inDeck(cls, c.id), lim = copyLimit(c), full = k >= Math.min(lim, o);
+    const hov = inside(x, y, 84, 122);
+    if (hov) hovCard = c;
+    ctx.globalAlpha = full ? 0.5 : 1; drawCard(c, x, y, 0.382, hov && !full); ctx.globalAlpha = 1;
+    rr(x + 84 - 20, y - 7, 26, 22, 11); ctx.fillStyle = '#f2c14e'; ctx.fill(); ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.stroke();
+    text('×' + o, x + 84 - 7, y + 9, 12, '#1c140c', 'center', F_TITLE);
+    const lab = k >= lim ? 'voll ' + k + '/' + lim : full ? 'alle im Deck' : 'im Deck ' + k + '/' + lim, col = full ? '#6f8274' : '#8ee8ff';
+    ctx.font = 'bold 12px ' + F_TEXT; const lw = ctx.measureText(lab).width + 18;
+    rr(x + 42 - lw / 2, y + 113, lw, 18, 9); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.stroke();
+    text(lab, x + 42, y + 126, 12, col, 'center', F_TEXT, 'bold');
+    uiHit(x, y, 84, 122, () => deckAdd(cls, c));
+  });
+  if (!pool.length) text(deckFilter === 'all' ? 'Du besitzt noch keine Karten für diesen Streiter.' : 'Keine Karten in dieser Auswahl.', 820, 500, 18, '#7a8a7a', 'center', F_TEXT, 'italic');
+  if (deckMsg && performance.now() < deckMsg.until) text(deckMsg.t, 820, 358, 17, '#ff7a8a', 'center', F_TEXT, 'italic');
+  if (hovCard && h < 0) drawCard(hovCard, clamp(mouse.fx + 22, 10, 1040), clamp(mouse.fy - 330, 90, 370), 1.0, true);
 }
 
 // ---------- Bibliothek (Kartenpacks), Packöffnung, Recycling ----------
@@ -2221,8 +2355,7 @@ function buyPack(p) {
 function drawShopScreen() {
   uiBtns = [];
   screenBackdrop();
-  uiButton(40, 18, 120, 42, '‹ Menü', () => { state = 'menu'; });
-  uiButton(176, 18, 180, 42, 'Kartenbuch', () => { bookClass = lastClass; bookPage = 0; bookHover = null; state = 'book'; });
+  drawTopBar('shop');
   drawSilver(1240, 20);
   titleText('Die Bibliothek', 40, 130, 42);
   text('Gebundene Karten aus den Resten des Reiches. Jedes Buch birgt fünf Seiten.', 40, 158, 19, '#c8d4de', 'left', F_TEXT, 'italic');
@@ -2294,10 +2427,10 @@ function recycleCard(c, n) {
 function drawRecycleScreen() {
   uiBtns = [];
   screenBackdrop();
-  uiButton(40, 18, 120, 42, '‹ Buch', () => { state = 'book'; });
+  uiButton(40, 18, 150, 42, '‹ Kartenbuch', () => { state = 'book'; });
   drawSilver(1240, 20);
   titleText('Recycling', 40, 130, 42);
-  text('Karten über dem Limit von ' + MAX_COPIES + ' Kopien tauschst du selbst gegen Mondsilber.', 40, 158, 19, '#c8d4de', 'left', F_TEXT, 'italic');
+  text('Kopien über dem Deck-Limit ihrer Seltenheit tauschst du gegen Mondsilber.', 40, 158, 19, '#c8d4de', 'left', F_TEXT, 'italic');
   const list = surplusList(), per = 8, pages = Math.max(1, Math.ceil(list.length / per));
   recyclePage = clamp(recyclePage, 0, pages - 1);
   if (!list.length) text('Keine Doppelten vorhanden.', 640, 360, 24, '#7a8a7a', 'center', F_TEXT, 'italic');
@@ -2394,11 +2527,12 @@ function drawSilverTotal(rx, y) {
 const stars = Array.from({ length: 120 }, () => [Math.random() * FRAME_W, Math.random() * 420, Math.random() * 1.4 + 0.4, Math.random() * 0.6 + 0.3]);
 const pines = Array.from({ length: 40 }, (_, i) => [i * 34 - 10, 540 + Math.random() * 60, 70 + Math.random() * 70]);
 const menuButtons = [
-  { label: 'Neuer Durchlauf', main: true, x: 80, y: 420, w: 330, h: 56, action: () => { selectHover = lastClass; state = 'select'; } },
-  { label: 'Kartenbuch', x: 80, y: 490, w: 330, h: 56, action: () => { bookClass = lastClass; bookPage = 0; bookHover = null; state = 'book'; } },
-  { label: 'Bibliothek', x: 80, y: 560, w: 330, h: 56, action: () => { state = 'shop'; } },
-  { label: 'Optionen', small: true, x: 80, y: 632, w: 160, h: 38, action: () => openOptions('menu') },
-  { label: 'Feedback', small: true, x: 250, y: 632, w: 160, h: 38, action: () => openFeedback('menu') }
+  { label: 'Neuer Durchlauf', main: true, x: 80, y: 392, w: 330, h: 56, action: () => { selectHover = lastClass; state = 'select'; } },
+  { label: 'Kartenbuch', x: 80, y: 458, w: 330, h: 56, action: () => { bookSpread = 0; state = 'book'; } },
+  { label: 'Deck', x: 80, y: 524, w: 330, h: 56, action: () => { deckClass = lastClass; deckHoverIdx = -1; state = 'deck'; } },
+  { label: 'Bibliothek', x: 80, y: 590, w: 330, h: 56, action: () => { state = 'shop'; } },
+  { label: 'Optionen', small: true, x: 80, y: 654, w: 160, h: 36, action: () => openOptions('menu') },
+  { label: 'Feedback', small: true, x: 250, y: 654, w: 160, h: 36, action: () => openFeedback('menu') }
 ];
 function drawMenu() {
   let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
@@ -2462,8 +2596,8 @@ function drawMenu() {
     text(b.label, b.x + b.w / 2, b.y + 36, 19, b.main ? '#1c140c' : (b.action ? '#e8dcbc' : '#7a8a7a'), 'center', F_TITLE);
     if (b.note) text(b.note, b.x + b.w - 22, b.y + 34, 14, '#7a8a7a', 'right', F_TEXT, 'italic');
   });
-  text('Prototyp ' + VERSION + ' · ' + keyLabel(bind('music')) + ' Musik · ' + keyLabel(bind('sfx')) + ' Effekte', 80, 704, 16, '#b8c4d0', 'left', F_TEXT);
-  text('Klick oder Enter zum Starten', 440, 456, 17, '#f2c14e', 'left', F_TEXT, 'italic');
+  text('Prototyp ' + VERSION + ' · ' + keyLabel(bind('music')) + ' Musik · ' + keyLabel(bind('sfx')) + ' Effekte', 80, 708, 16, '#b8c4d0', 'left', F_TEXT);
+  text('Klick oder Enter zum Starten', 440, 426, 17, '#f2c14e', 'left', F_TEXT, 'italic');
   drawBoard();
 }
 
@@ -2472,6 +2606,7 @@ function draw() {
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.fillStyle = '#0a110d'; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
   if (state === 'book') { drawBookScreen(); drawCursor(); return; }
+  if (state === 'deck') { drawDeckScreen(); drawCursor(); return; }
   if (state === 'shop') { drawShopScreen(); drawCursor(); return; }
   if (state === 'open') { drawOpenScreen(); drawCursor(); return; }
   if (state === 'recycle') { drawRecycleScreen(); drawCursor(); return; }
@@ -2508,7 +2643,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.13';
+const VERSION = 'v0.14';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -2641,7 +2776,7 @@ function drawPauseScreen() {
   if (groups.length > maxChips) text('… und ' + (groups.length - maxChips) + ' weitere', cx + cw, Y + 204 + 5 * 54 + 8, 14, '#8a9aa0', 'right', F_TEXT, 'italic');
   if (!groups.length) text('Noch keine Karten gewählt.', cx, Y + 232, 17, '#7a8a7a', 'left', F_TEXT, 'italic');
   ctx.fillStyle = '#2e3e32'; ctx.fillRect(cx, Y + Ht - 58, cw, 1);
-  text('Im Kartenbuch: ' + G.library.length + ' Karten', cx, Y + Ht - 30, 15, '#8a9aa0', 'left', F_TEXT);
+  text('Im Deck: ' + G.library.length + ' Karten', cx, Y + Ht - 30, 15, '#8a9aa0', 'left', F_TEXT);
   const kn = keycap(cx + cw, Y + Ht - 36, keyLabel(bind('sfx')));
   text('Effekte', kn - 8, Y + Ht - 30, 15, '#8a9aa0', 'right', F_TEXT);
   const km = keycap(kn - 78, Y + Ht - 36, keyLabel(bind('music')));
@@ -3048,9 +3183,15 @@ addEventListener('keydown', e => {
   if (state === 'open') { if (e.code === 'Escape' && packOpen && packOpen.cards.every(it => it.t)) { state = 'shop'; packOpen = null; } return; }
   if (state === 'book') {
     if (e.code === 'Escape') state = 'menu';
-    if (/^Digit[1-3]$/.test(e.code)) { bookClass = Number(e.code.slice(5)) - 1; bookPage = 0; }
-    if (e.code === 'ArrowRight') bookPage++;
-    if (e.code === 'ArrowLeft') bookPage--;
+    if (e.code === 'ArrowRight') bookSpread++;
+    if (e.code === 'ArrowLeft') bookSpread--;
+    return;
+  }
+  if (state === 'deck') {
+    if (e.code === 'Escape') state = 'menu';
+    if (/^Digit[1-3]$/.test(e.code)) { deckClass = Number(e.code.slice(5)) - 1; deckPage = 0; deckHoverIdx = -1; }
+    if (e.code === 'ArrowRight') deckPage++;
+    if (e.code === 'ArrowLeft') deckPage--;
     return;
   }
   if (state === 'select') {
@@ -3081,7 +3222,6 @@ function setMouse(e) {
   mouse.fy = (e.clientY - r.top) / r.height * FRAME_H;
   mouse.x = mouse.fx - FIELD_X;
   mouse.y = mouse.fy;
-  if (state === 'book') bookHover = bookHit(mouse.fx, mouse.fy);
   if (state === 'menu') menuHover = menuButtons.findIndex(b => mouse.fx >= b.x && mouse.fx <= b.x + b.w && mouse.fy >= b.y && mouse.fy <= b.y + b.h);
   if (state === 'pick') pickHover = pickLayout().findIndex(L => mouse.fx >= L.x && mouse.fx <= L.x + L.w && mouse.fy >= L.y && mouse.fy <= L.y + L.h);
   if (state === 'select') {
@@ -3105,8 +3245,7 @@ canvas.addEventListener('mousedown', e => {
   if (state === 'play') {
     if (e.button === 2) mouse.rdown = true;
   }
-  if (state === 'book') { bookClick(bookHit(mouse.fx, mouse.fy), e.button === 2); return; }
-  if (state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant') { if (e.button === 0) uiClick(); return; }
+  if (state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant') { if (e.button === 0) uiClick(); return; }
   if (e.button !== 0) return;
   if (state === 'menu') { const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
   if (state === 'select') {
@@ -3121,7 +3260,8 @@ canvas.addEventListener('mousedown', e => {
 addEventListener('mouseup', e => { if (e.button === 0) { mouse.down = false; mouse.pressed = false; dragSlider = null; } if (e.button === 2) mouse.rdown = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('wheel', e => {
-  if (state === 'book') { bookPage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
+  if (state === 'book') { bookSpread += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
+  if (state === 'deck') { deckPage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'recycle') { recyclePage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
 }, { passive: false });
 
