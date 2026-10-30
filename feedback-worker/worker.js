@@ -56,7 +56,10 @@ async function addScore(request, env, reply) {
   if (!name) return reply(400, { error: 'Name fehlt.' });
   if (!CLASSES.includes(d.cls)) return reply(400, { error: 'Unbekannter Streiter.' });
   if (!(dist >= 0 && dist <= MAX_DIST && kills >= 0 && kills <= MAX_KILLS)) return reply(400, { error: 'Ungültiges Ergebnis.' });
-  const entry = { name, cls: d.cls, dist, kills, won, score: dist + kills * 3 + (won ? 500 : 0), at: Date.now() };
+  // Punkte kommen vom Spiel (je Gegnertyp unterschiedlich); ohne Angabe gilt die alte Rechnung. Obergrenze: 100 je Gefallenem plus Boss.
+  const points = Number.isFinite(Number(d.points)) ? Math.floor(Number(d.points)) : kills * 3 + (won ? 500 : 0);
+  if (!(points >= 0 && points <= kills * 100 + 600)) return reply(400, { error: 'Ungültiges Ergebnis.' });
+  const entry = { name, cls: d.cls, dist, kills, won, score: dist + points, at: Date.now() };
   let list = await load(env);
   const i = list.findIndex(e => e.name.toLowerCase() === name.toLowerCase());
   if (i >= 0) { if (list[i].score >= entry.score) return reply(200, { rank: i + 1, best: false, scores: list.slice(0, SHOW) }); list.splice(i, 1); }
