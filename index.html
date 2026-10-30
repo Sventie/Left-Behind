@@ -2114,7 +2114,7 @@ function drawBookScreen() {
     { label: 'Fähigkeiten', y: 450, h: 168, on: curCat === 'Fähigkeit', go: () => { bookSpread = firstOf('Fähigkeit'); } }
   ];
   tabs.forEach(t => {
-    t.r = 1196;
+    t.r = 1200 - tabs.indexOf(t) * 6;   // gestaffelte Breite wie Register
     const x = 1100, w = t.r - x, hov = inside(x, t.y, w, t.h);
     ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, t.y, w, t.h, [0, 12, 12, 0]) : ctx.rect(x, t.y, w, t.h);
     if (t.on) { g = ctx.createLinearGradient(x, 0, t.r, 0); g.addColorStop(0, '#d9a636'); g.addColorStop(1, '#f2c14e'); ctx.fillStyle = g; } else ctx.fillStyle = hov ? '#26382c' : '#1e2c22';
