@@ -1982,7 +1982,7 @@ function drawSelectScreen() {
 // ---------- Kartenbuch (Sammlung) und Deck ----------
 const CATS = ['Segen', 'Zauber', 'Fähigkeit'];
 const CAT_SUB = { Segen: 'Statuswerte', Zauber: 'Wirkungen', Fähigkeit: 'Aktionen' };
-let deckClass = 0, bookSpread = 0, bookMond = false, deckFilter = 'all', deckPage = 0, deckHoverIdx = -1, deckMsg = null;
+let deckClass = 0, bookSpread = 0, deckFilter = 'all', deckPage = 0, deckHoverIdx = -1, deckMsg = null;
 const rarIdx = c => RARITY_KEYS.indexOf(c.rarity);
 const byRarity = (a, b) => CATS.indexOf(a.kind) - CATS.indexOf(b.kind) || rarIdx(a) - rarIdx(b) || cardOrder(a.id) - cardOrder(b.id);
 function cardUsers(c) { return CLASSES.filter(cl => compat(c, cl)); }
@@ -1990,8 +1990,9 @@ function cardUsers(c) { return CLASSES.filter(cl => compat(c, cl)); }
 function bookPages() {
   const pages = [];
   for (const cat of CATS) {
-    const list = CARDS.filter(c => c.kind === cat && (!bookMond || rarIdx(c) >= 2)).sort(byRarity);
+    const list = CARDS.filter(c => c.kind === cat).sort(byRarity);
     for (let i = 0; i < list.length; i += 6) pages.push({ cat, cards: list.slice(i, i + 6) });
+    if (pages.length % 2) pages.push({ blank: true });   // jede Kategorie beginnt auf einer neuen Doppelseite
   }
   return pages.length ? pages : [{ cat: CATS[0], cards: [] }];
 }
@@ -2055,6 +2056,17 @@ function drawBookScreen() {
     }
     if (!page) return;
     const hx = side === 'L' ? px + 14 : px + 34, hw = pw - 48;
+    const footer = () => {   // Seitenfuß: Zahl und Pfeil
+      const fy = ay + ah - 44;
+      if (side === 'L') {
+        uiButton(hx, fy, 44, 34, '‹', bookSpread > 0 ? () => { bookSpread--; } : null, { size: 20, disabled: bookSpread <= 0 });
+        text(String(num), hx + hw / 2, fy + 24, 17, '#8a9aa0', 'center', F_TITLE);
+      } else {
+        text(String(num), hx + hw / 2, fy + 24, 17, '#8a9aa0', 'center', F_TITLE);
+        uiButton(hx + hw - 44, fy, 44, 34, '›', bookSpread < spreads - 1 ? () => { bookSpread++; } : null, { size: 20, disabled: bookSpread >= spreads - 1 });
+      }
+    };
+    if (page.blank) { footer(); return; }
     if (side === 'L') { titleText(page.cat, hx, ay + 32, 26, 'left'); text(CAT_SUB[page.cat] + ' · häufig → selten', hx + hw, ay + 28, 14, '#8a9aa0', 'right', F_TEXT, 'italic'); }
     else { titleText(page.cat, hx + hw, ay + 32, 26, 'right'); text(CAT_SUB[page.cat] + ' · häufig → selten', hx, ay + 28, 14, '#8a9aa0', 'left', F_TEXT, 'italic'); }
     for (let i = 0; i < 6; i++) {
@@ -2075,15 +2087,7 @@ function drawBookScreen() {
       }
       ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fillRect(cx - 1, cy - 1, 138, 5);   // Einstecklippe der Tasche
     }
-    // Seitenfuß: Zahl und Pfeil
-    const fy = ay + ah - 44;
-    if (side === 'L') {
-      uiButton(hx, fy, 44, 34, '‹', bookSpread > 0 ? () => { bookSpread--; } : null, { size: 20, disabled: bookSpread <= 0 });
-      text(String(num), hx + hw / 2, fy + 24, 17, '#8a9aa0', 'center', F_TITLE);
-    } else {
-      text(String(num), hx + hw / 2, fy + 24, 17, '#8a9aa0', 'center', F_TITLE);
-      uiButton(hx + hw - 44, fy, 44, 34, '›', bookSpread < spreads - 1 ? () => { bookSpread++; } : null, { size: 20, disabled: bookSpread >= spreads - 1 });
-    }
+    footer();
   };
   const lpIdx = bookSpread * 2;
   drawPage(lp, 'L', pages[lpIdx], lpIdx + 1);
@@ -2105,19 +2109,18 @@ function drawBookScreen() {
   const firstOf = cat => Math.max(0, Math.floor(pages.findIndex(p => p.cat === cat) / 2));
   const curCat = pages[lpIdx] ? pages[lpIdx].cat : CATS[0];
   const tabs = [
-    { label: 'Alle', y: 130, h: 66, r: 1200, on: !bookMond && bookSpread === 0, go: () => { bookMond = false; bookSpread = 0; } },
-    { label: 'Segen', y: 206, h: 78, r: 1194, on: curCat === 'Segen', go: () => { bookSpread = firstOf('Segen'); } },
-    { label: 'Zauber', y: 294, h: 82, r: 1188, on: curCat === 'Zauber', go: () => { bookSpread = firstOf('Zauber'); } },
-    { label: 'Fähigkeiten', y: 386, h: 122, r: 1182, on: curCat === 'Fähigkeit', go: () => { bookSpread = firstOf('Fähigkeit'); } },
-    { label: 'Mondstein+', y: 518, h: 100, r: 1176, on: bookMond, color: '#bfe3ff', go: () => { bookMond = !bookMond; bookSpread = 0; } }
+    { label: 'Segen', y: 130, h: 150, on: curCat === 'Segen', go: () => { bookSpread = firstOf('Segen'); } },
+    { label: 'Zauber', y: 290, h: 150, on: curCat === 'Zauber', go: () => { bookSpread = firstOf('Zauber'); } },
+    { label: 'Fähigkeiten', y: 450, h: 168, on: curCat === 'Fähigkeit', go: () => { bookSpread = firstOf('Fähigkeit'); } }
   ];
   tabs.forEach(t => {
+    t.r = 1196;
     const x = 1100, w = t.r - x, hov = inside(x, t.y, w, t.h);
     ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, t.y, w, t.h, [0, 12, 12, 0]) : ctx.rect(x, t.y, w, t.h);
     if (t.on) { g = ctx.createLinearGradient(x, 0, t.r, 0); g.addColorStop(0, '#d9a636'); g.addColorStop(1, '#f2c14e'); ctx.fillStyle = g; } else ctx.fillStyle = hov ? '#26382c' : '#1e2c22';
-    ctx.fill(); ctx.strokeStyle = t.on ? '#7a5a1a' : (t.color || '#5a4a1a'); ctx.lineWidth = 2; ctx.stroke();
-    ctx.save(); ctx.translate(1148 + (t.r - 1148) / 2, t.y + t.h / 2); ctx.rotate(Math.PI / 2);
-    text(t.label, 0, 5, 15, t.on ? '#1c140c' : (t.color || '#c8d4de'), 'center', F_TITLE); ctx.restore();
+    ctx.fill(); ctx.strokeStyle = t.on ? '#7a5a1a' : '#5a4a1a'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.save(); ctx.translate(x + w / 2, t.y + t.h / 2); ctx.rotate(Math.PI / 2);
+    text(t.label, 0, 5, 16, t.on ? '#1c140c' : '#c8d4de', 'center', F_TITLE); ctx.restore();
     uiHit(x, t.y, w, t.h, t.go);
   });
 
@@ -2127,7 +2130,7 @@ function drawBookScreen() {
   text('Sortierung in jeder Kategorie, häufig → selten:', lx, 674, 15, '#8a9aa0', 'left', F_TEXT);
   lx += 330;
   leg.forEach(([n, c], i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(lx + 6, 669, 6, 0, 7); ctx.fill(); text(n, lx + 18, 674, 15, c, 'left', F_TEXT); lx += 28 + n.length * 7.6; if (i < 3) { text('→', lx - 6, 674, 15, '#8a9aa0', 'left', F_TEXT); lx += 14; } });
-  text('Die Symbole links an jeder Karte zeigen, wer sie nutzen kann: Schwert = Ritter · Bogen = Waldläufer · Stern = Magier. Reiter springen zur Kategorie, geblättert wird frei weiter.', 640, 698, 14, '#6f8274', 'center', F_TEXT);
+  text('Die Symbole links an jeder Karte zeigen, wer sie nutzen kann: Schwert = Ritter · Bogen = Waldläufer · Stern = Magier. Die Reiter springen zur Kategorie, geblättert wird frei weiter.', 640, 698, 14, '#6f8274', 'center', F_TEXT);
   if (bookHoverCard) drawCard(bookHoverCard, clamp(mouse.fx + 24, 10, 1040), clamp(mouse.fy - 150, 90, 380), 1.0, true);
 }
 
