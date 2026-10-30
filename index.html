@@ -171,8 +171,9 @@ const STARTER = { stiefel: 2, schild: 2, falke: 2 };
 const START_SILVER = 150;
 const MERCHANT_PRICE = { gewoehnlich: 40, selten: 100, episch: 260, legendaer: 600 };
 const MERCHANT_DISCOUNT = 0.7;        // 30 % Rabatt
-const MERCHANT_CHANCE = 0.22;         // pro Abschnitt, frühestens ab Abschnitt 2
-const MERCHANT_MIN_GAP = 5;           // mindestens so viele Abschnitte dazwischen
+const MERCHANT_CHANCE = 0.05;         // jeder weitere Händler: seltene Chance pro Abschnitt (16 m)
+const MERCHANT_MIN_GAP = 6;           // mindestens so viele Abschnitte nach dem letzten Händler
+const MERCHANT_FIRST = [9, 16];       // der erste Händler kommt sicher, bei Abschnitt 9 bis 16 (ca. 140 bis 260 m)
 const SAVE_KEY = 'left-behind-save-v2';
 // Test: index.html?cheat gibt alle Karten und viel Mondsilber
 const CHEAT = /[?&]cheat/.test(location.search);
@@ -207,6 +208,7 @@ function loadSave() {
   for (const c of CARDS) if (sv.owned[c.id] === undefined) sv.owned[c.id] = STARTER[c.id] || 0;
   if (typeof sv.silver !== 'number') sv.silver = START_SILVER;
   sv.maxStage = sv.maxStage || 1;
+  sv.seen = sv.seen || {};   // beim Händler gesehene Karten: im Kartenbuch sichtbar, aber nicht im Besitz
   if (CHEAT) {
     for (const c of CARDS) sv.owned[c.id] = Math.max(sv.owned[c.id], CHEAT_COUNT[c.rarity]);
     sv.silver = Math.max(sv.silver, 5000); sv.maxStage = Math.max(sv.maxStage, 5);
@@ -582,7 +584,7 @@ function newGame(cls) {
     time: 0, camTop: 0, genTop: 0,
     obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
     kills: 0, dist: 0,
-    merchants: [], buffs: [], spent: 0, chunkSinceMerchant: MERCHANT_MIN_GAP,
+    merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
     stage: 1, stageStart: 0, nextPick: stageLength(1),
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
@@ -670,15 +672,18 @@ function generate() {
       if (s) G.pickups.push({ x: s.x, y: s.y, heal: 30 });
     }
     // Wanderhändler: zufällig, nicht zu oft
-    if (k >= 2 && G.chunkSinceMerchant >= MERCHANT_MIN_GAP && Math.random() < MERCHANT_CHANCE) {
+    // Händler: einer pro Lauf ist sicher, weitere sind selten (nicht kurz vor dem Boss)
+    const due = !G.merchantDone ? k >= G.firstMerchantK
+      : k - G.lastMerchantK >= MERCHANT_MIN_GAP && (k * CHUNK_H / PX_PER_M < BOSS_DIST - 48 || G.endless) && Math.random() < MERCHANT_CHANCE;
+    if (due) {
       for (let t = 0; t < 40; t++) {
         const mx = rand(330, 630), my = rand(y0 + 80, y1 - 80);
         if (G.obstacles.some(o => mx > o.x - 70 && mx < o.x + o.w + 70 && my > o.y - 70 && my < o.y + o.h + 70)) continue;
         G.merchants.push({ x: mx, y: my, offers: null, quote: Math.floor(Math.random() * MERCHANT_QUOTES.length) });
-        G.chunkSinceMerchant = 0;
+        G.merchantDone = true; G.lastMerchantK = k;
         break;
       }
-    } else G.chunkSinceMerchant++;
+    }
     G.genTop = y0;
   }
 }
@@ -759,6 +764,8 @@ function nearMerchant() {
 let merchantNow = null;
 function openMerchant(m) {
   if (!m.offers) m.offers = makeMerchantOffers();
+  for (const o of m.offers) if (o.kind === 'card' && !SAVE.seen[o.item.id]) SAVE.seen[o.item.id] = true;   // im Kartenbuch sichtbar, aber nicht im Besitz
+  persist();
   merchantNow = m;
   mouse.down = false; mouse.rdown = false;
   sfx('merchant_open');
@@ -768,18 +775,14 @@ function buyOffer(o) {
   if (o.sold || totalSilver() < o.price) return;
   spendSilver(o.price); o.sold = true;
   sfx('coin');
-  if (o.kind === 'card') {
-    SAVE.owned[o.item.id] = (SAVE.owned[o.item.id] || 0) + 1; persist();
-    say(o.item.name + ' liegt jetzt in deiner Sammlung');
-  } else {
-    const p = G.player, oldMag = S.magSize, oldHp = S.maxHp;
-    G.buffs.push(o.item.id); recomputeStats();
-    if (S.magSize > oldMag) p.mag += S.magSize - oldMag;
-    if (S.maxHp > oldHp) p.hp += S.maxHp - oldHp;
-    if (o.item.instant) o.item.instant(p);
-    sfx('buff_drink');
-    say(o.item.name + ': ' + o.item.stat);
-  }
+  // Karten und Tränke vom Händler gelten nur für diesen Lauf und sind sofort aktiv; in deinen Besitz kommen Karten nur über Kartenpacks
+  const p = G.player, oldMag = S.magSize, oldHp = S.maxHp;
+  (o.kind === 'card' ? G.cards : G.buffs).push(o.item.id); recomputeStats();
+  if (S.magSize > oldMag) p.mag += S.magSize - oldMag;
+  if (S.maxHp > oldHp) p.hp += S.maxHp - oldHp;
+  if (o.kind === 'buff' && o.item.instant) o.item.instant(p);
+  sfx(o.kind === 'card' ? 'card_pick' : 'buff_drink');
+  say(o.item.name + ': ' + o.item.stat);
 }
 
 // ---------- Kollision ----------
@@ -922,6 +925,14 @@ function tryDash() {
 function update(dt) {
   if (state !== 'play') return;
   const p = G.player, w = W();
+  if (G.countT > 0) {
+    const prev = Math.ceil(G.countT);
+    G.countT -= dt;
+    if (G.countT <= 0) { G.countT = 0; G.goT = 0.7; sfx('reload_done'); }
+    else if (Math.ceil(G.countT) !== prev) sfx('ui_click');
+    return;
+  }
+  if (G.goT > 0) G.goT -= dt;
   G.time += dt;
 
   // Bewegung (WASD) oder Windstoß
@@ -940,7 +951,6 @@ function update(dt) {
   }
   p.speed = Math.min(moved / dt, S.moveSpeed * 1.3);
   p.dashCd = Math.max(0, p.dashCd - dt);
-  p.invuln = Math.max(0, (p.invuln || 0) - dt);
   p.swingT = Math.max(0, p.swingT - dt);
   p.y = clamp(p.y, G.camTop + p.r, G.camTop + VIEW_H - p.r);   // nicht aus dem Bild zurück
 
@@ -1018,6 +1028,13 @@ function winRun() {
   G.won = true; G.endless = true; G.camLock = false;
   G.nextPick = G.dist; G.pickDelay = 3;   // Belohnung: Kartenwahl nach dem Banner
   G.banner = { t: 3, head: 'BOGENMEISTER BESIEGT', sub: 'Der Wald hört nicht auf … Endlosmodus' }; sfx('stage_up');
+}
+// Nach dem Händler: 2 Sekunden Pause mit Countdown, dann „Go“
+function startCountdown() {
+  G.countT = 2; G.goT = 0;
+  mouse.down = false; mouse.rdown = false; mouse.pressed = false;
+  for (const k in keys) keys[k] = false;
+  sfx('ui_click');
 }
 function say(t) { G.msg = t; G.msgT = 2.2; }
 
@@ -1187,7 +1204,6 @@ function spawnReinforcements() {
 function hurtPlayer(d, srcAngle) {
   const p = G.player;
   if (godMode) { G.cheated = true; return; }
-  if (p.invuln > 0) return;
   if (isBlocking() && srcAngle !== undefined && Math.abs(normAngle(srcAngle - p.angle)) < S.blockArc * deg) {
     d *= (1 - S.block);
     sfx('block');
@@ -1835,6 +1851,14 @@ function drawFieldHUD() {
     rr(VIEW_W / 2 - 200, 32, 400, 12, 6); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
     rr(VIEW_W / 2 - 198, 34, Math.max(8, 396 * f), 8, 4); ctx.fillStyle = '#d9473f'; ctx.fill();
   }
+  if (G.countT > 0 || G.goT > 0) {   // Countdown in der Mitte
+    const go = G.countT <= 0, t = go ? G.goT / 0.7 : G.countT % 1 || 1;
+    ctx.save(); ctx.translate(VIEW_W / 2, VIEW_H / 2); ctx.scale(1 + (go ? 0.25 * (1 - t) : 0.2 * (1 - t)), 1 + (go ? 0.25 * (1 - t) : 0.2 * (1 - t)));
+    ctx.globalAlpha = go ? Math.min(1, t * 2) : 1;
+    ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 16;
+    titleText(go ? 'Go!' : String(Math.ceil(G.countT)), 0, 40, 120, 'center');
+    ctx.restore();
+  }
   if (godMode) text('UNVERWUNDBAR', VIEW_W - 16, 24, 14, '#f2c14e', 'right', F_TITLE);
   if (G.banner) {
     ctx.globalAlpha = Math.min(1, G.banner.t * 2);
@@ -2094,17 +2118,22 @@ function drawBookScreen() {
       const cx = hx + (i % 3) * 150, cy = ay + 44 + Math.floor(i / 3) * 214, c = page.cards[i];
       rr(cx - 2, cy - 2, 140, 202, 7); ctx.fillStyle = 'rgba(255,255,255,.035)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.stroke();
       if (!c) { ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fillRect(cx - 1, cy - 1, 138, 5); continue; }
-      const o = SAVE.owned[c.id] || 0, R = RARITY[c.rarity];
-      if (o === 0) {
+      const o = SAVE.owned[c.id] || 0, R = RARITY[c.rarity], seen = !!SAVE.seen[c.id];
+      if (o === 0 && !seen) {
         drawIcon('crown', cx + 68, cy + 76, 42, '#3e5246', 1.3);
         text('Unentdeckt', cx + 68, cy + 124, 14, '#5a6e60', 'center', F_TITLE);
         text(R.label, cx + 68, cy + 146, 14, R.c, 'center', F_TEXT, 'italic');
       } else {
         const hov = inside(cx, cy, 136, 198);
         if (hov) bookHoverCard = c;
-        drawCard(c, cx, cy, 0.62, hov);
-        rr(cx + 136 - 24, cy - 8, 30, 26, 13); ctx.fillStyle = '#f2c14e'; ctx.fill(); ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.stroke();
-        text('×' + o, cx + 136 - 9, cy + 10, 14, '#1c140c', 'center', F_TITLE);
+        ctx.globalAlpha = o > 0 ? 1 : 0.5; drawCard(c, cx, cy, 0.62, hov); ctx.globalAlpha = 1;
+        if (o > 0) {
+          rr(cx + 136 - 24, cy - 8, 30, 26, 13); ctx.fillStyle = '#f2c14e'; ctx.fill(); ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.stroke();
+          text('×' + o, cx + 136 - 9, cy + 10, 14, '#1c140c', 'center', F_TITLE);
+        } else {   // beim Händler gesehen, aber nicht im Besitz
+          rr(cx + 14, cy + 90, 108, 24, 12); ctx.fillStyle = 'rgba(10,17,13,.92)'; ctx.fill(); ctx.strokeStyle = '#8a9aa0'; ctx.lineWidth = 1; ctx.stroke();
+          text('nicht im Besitz', cx + 68, cy + 107, 13, '#c8d4de', 'center', F_TEXT, 'italic');
+        }
       }
       ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fillRect(cx - 1, cy - 1, 138, 5);   // Einstecklippe der Tasche
     }
@@ -2493,7 +2522,7 @@ function drawMerchantScreen() {
   drawSilverTotal(X + W - 22, Y + 20);
   // Angebote
   const cw = 136, ch = 198, k = 0.62, gap = 14, gx = [X + 270, X + 270 + 3 * cw + 2 * gap + 22], gy = Y + 168;
-  const heads = ['KARTEN · kommen in deine Sammlung', 'TRÄNKE · wirken nur in diesem Lauf'];
+  const heads = ['KARTEN · gelten nur in diesem Lauf', 'TRÄNKE · wirken nur in diesem Lauf'];
   heads.forEach((h, i) => { text(h, gx[i], Y + 144, 14, i ? '#8ee8ff' : '#f2c14e', 'left', F_TEXT, 'bold'); ctx.fillStyle = i ? '#2a6a7a' : '#7a5a1a'; ctx.fillRect(gx[i], Y + 152, 3 * cw + 2 * gap, 2); });
   let hovered = null;
   const counts = { card: 0, buff: 0 };
@@ -2513,7 +2542,7 @@ function drawMerchantScreen() {
     if (o.old && !o.sold) text('statt ' + o.old, x + cw / 2, y + ch + 90, 13, '#8a9aa0', 'center', F_TEXT, 'italic');
     if (!o.sold && !afford) text('zu wenig Mondsilber', x + cw / 2, y + ch + 108, 13, '#ff9a9a', 'center', F_TEXT, 'italic');
   });
-  uiButton(X + W - 200, Y + H - 60, 170, 42, 'Weiterziehen', () => { state = 'play'; merchantNow = null; G.player.invuln = 0.5; });
+  uiButton(X + W - 200, Y + H - 60, 170, 42, 'Weiterziehen', () => { state = 'play'; merchantNow = null; startCountdown(); });
   text('Bezahlt wird mit deinem gesamten Mondsilber.', X + 270, Y + H - 28, 14, '#8a9aa0', 'left', F_TEXT, 'italic');
   if (hovered) drawCard(hovered, clamp(mouse.fx + 22, 20, 1040), clamp(mouse.fy - 170, 20, 380), 1.0, true);
 }
@@ -2648,7 +2677,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.14';
+const VERSION = 'v0.15';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -3207,7 +3236,7 @@ addEventListener('keydown', e => {
     if (e.code === 'Escape') state = 'menu';
     return;
   }
-  if (state === 'merchant') { if (e.code === 'Escape' || e.code === bind('interact')) { state = 'play'; merchantNow = null; G.player.invuln = 0.5; } return; }
+  if (state === 'merchant') { if (e.code === 'Escape' || e.code === bind('interact')) { state = 'play'; merchantNow = null; startCountdown(); } return; }
   if (state === 'play') {
     if (e.code === bind('interact')) { const nm = nearMerchant(); if (nm) { openMerchant(nm); return; } }
     if (e.code === bind('reload')) startReload();
