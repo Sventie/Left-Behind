@@ -159,6 +159,7 @@ const ICONS = {
   arc:    'M3 17c0-7 4-12 9-12s9 5 9 12M12 5v8M7 8l2.5 4M17 8l-2.5 4',
   flask:  'M9 2h6M10 2v6l-5 10a2.5 2.5 0 0 0 2.2 3.5h9.6A2.5 2.5 0 0 0 19 18l-5-10V2M7.5 15h9',
   moon:   'M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z',
+  lock:   'M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5z',
   book:   'M4 5h9a3 3 0 0 1 3 3v12H7a3 3 0 0 1-3-3V5zM16 8h4v12h-4',
   blast:  'M12 4v3M12 17v3M4 12h3M17 12h3M6.3 6.3l2.1 2.1M15.6 15.6l2.1 2.1M6.3 17.7l2.1-2.1M15.6 8.4l2.1-2.1M14.5 12A2.5 2.5 0 1 1 9.5 12 2.5 2.5 0 0 1 14.5 12z'
 };
@@ -391,7 +392,7 @@ const MUSIC_DEFS = {
 function musicFor(st) {
   if (!gestureDone) return;
   if (['options', 'controls', 'feedback'].includes(st)) return;
-  const want = ['menu', 'select', 'intro', 'book', 'deck', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
+  const want = ['menu', 'select', 'intro', 'book', 'deck', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause', 'victory'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
   if (MUSIC.name === want) return;
   stopMusic(); MUSIC.name = want;
   if (!want) return;
@@ -1002,9 +1003,9 @@ function update(dt) {
   if (G.banner) { G.banner.t -= dt; if (G.banner.t <= 0) G.banner = null; }
   if (G.pickDelay > 0) G.pickDelay -= dt;
   G.deltaT = Math.max(0, G.deltaT - dt);
-  for (const q of G.pops) { q.y -= 34 * dt; q.t -= dt; }
+  for (const q of G.pops) { q.y -= 34 * dt; q.x += (q.vx || 0) * dt; q.t -= dt; }
   G.pops = G.pops.filter(q => q.t > 0);
-  for (const f of G.floats) { f.y -= 38 * dt; f.t -= dt; }
+  for (const f of G.floats) { f.y -= 38 * dt; f.x += (f.vx || 0) * dt; f.t -= dt; }
   G.floats = G.floats.filter(f => f.t > 0);
   G.msgT = Math.max(0, G.msgT - dt);
 
@@ -1031,9 +1032,56 @@ function spawnBoss() {
 }
 // Boss besiegt: der Lauf geht im Endlosmodus weiter, bis man fällt
 function winRun() {
+  const first = !SAVE.bossDown;
   G.won = true; SAVE.bossDown = true; persist(); G.endless = true; G.camLock = false;
-  G.nextPick = G.dist; G.pickDelay = 3;   // Belohnung: Kartenwahl nach dem Banner
-  G.banner = { t: 3, head: 'BOGENMEISTER BESIEGT', sub: 'Der Wald hört nicht auf … Endlosmodus' }; sfx('stage_up');
+  G.nextPick = G.dist; G.pickDelay = 0;
+  sfx('stage_up');
+  // Belohnungsliste für den Siegbildschirm; weitere Freischaltungen (Karten, Mondsilber …) kommen hier hinein
+  const rewards = [{ icon: 'crown', title: '+' + ENEMY_POINTS.boss + ' Punkte', sub: 'Für den Sieg über den Boss.' }];
+  if (first) rewards.push({ icon: 'book', title: 'Drachen-Grimoire', sub: 'Neues Kartenpack in der Bibliothek.', fresh: true });
+  rewards.push({ icon: 'lock', title: 'Nächstes Level', sub: 'Folgt später: hier erscheint das freigeschaltete Level.', locked: true });
+  G.victory = { rewards, scroll: 0 };
+  mouse.down = false; mouse.rdown = false; mouse.pressed = false;
+  state = 'victory';
+}
+function victoryContinue() { state = 'play'; G.victory = null; G.pickDelay = 0; openPick(); }
+function victoryEnd() { G.victory = null; finishRun(); state = 'dead'; }
+function drawVictoryScreen() {
+  uiBtns = [];
+  overlay(0.82);
+  const X = 190, Y = 80, Wd = 900, Ht = 560, V = G.victory;
+  windowFrame(X, Y, Wd, Ht);
+  kicker('Sieg', 640, Y + 50, 'center');
+  titleText('Boss besiegt', 640, Y + 112, 56, 'center');
+  text('Du hast den Boss des Waldes getötet. Doch seine Schergen sind noch zahlreich …', 640, Y + 148, 19, '#c8d4de', 'center', F_TEXT, 'italic');
+  const n = V.rewards.length, rowH = 56, gap = 8, vis = Math.min(n, 3), lh = vis * rowH + (vis - 1) * gap;
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '3px';
+  text(n > 3 ? n + ' BELOHNUNGEN · SCROLLEN' : 'DEINE BELOHNUNGEN', 640, Y + 190, 13, '#b8c4d0', 'center', F_TITLE);
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  const lx = 360, lw = 560, ly = Y + 204;
+  V.scroll = clamp(V.scroll, 0, Math.max(0, n - vis));
+  ctx.save(); ctx.beginPath(); ctx.rect(lx, ly, lw, lh); ctx.clip();
+  V.rewards.forEach((r, i) => {
+    const y = ly + (i - V.scroll) * (rowH + gap), col = r.locked ? '#8a9aa0' : '#f2c14e';
+    rr(lx, y, lw, rowH, 12); ctx.fillStyle = '#0c1510'; ctx.fill(); ctx.strokeStyle = r.fresh ? '#f2c14e' : '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+    drawIcon(r.icon, lx + 32, y + rowH / 2, 32, col, 1.4);
+    text(r.title, lx + 64, y + 24, 17, col, 'left', F_TITLE);
+    if (r.fresh) {
+      ctx.font = '17px ' + F_TITLE; const tw = ctx.measureText(r.title).width;
+      rr(lx + 64 + tw + 10, y + 9, 40, 20, 10); ctx.fillStyle = '#f2c14e'; ctx.fill();
+      text('NEU', lx + 64 + tw + 30, y + 24, 12, '#1c140c', 'center', F_TEXT, 'bold');
+    }
+    text(r.sub, lx + 64, y + 45, 15, '#c8d4de', 'left', F_TEXT);
+  });
+  ctx.restore();
+  if (n > vis) {
+    const th = Math.max(20, lh * vis / n), ty = ly + (lh - th) * (V.scroll / (n - vis));
+    rr(lx + lw + 8, ly, 6, lh, 3); ctx.fillStyle = '#101a14'; ctx.fill();
+    rr(lx + lw + 8, ty, 6, th, 3); ctx.fillStyle = '#9a7a3a'; ctx.fill();
+  }
+  text('Im Endlosmodus wird es immer härter. Jeder weitere Meter und jeder Gegner zählt für deine Punkte.', 640, Y + 440, 17, '#e8dcbc', 'center', F_TEXT);
+  uiButton(260, 564, 300, 52, 'Lauf beenden und eintragen', victoryEnd, { size: 18 });
+  uiButton(600, 564, 420, 52, 'Weiterkämpfen (Endlosmodus)', victoryContinue, { primary: true, size: 18 });
 }
 // Nach dem Händler: 2 Sekunden Pause mit Countdown, dann „Go“
 function startCountdown() {
@@ -1173,7 +1221,7 @@ function updateEnemies(dt) {
       const ox = e.x - o.x, oy = e.y - o.y, od = Math.hypot(ox, oy);
       if (od > 0 && od < e.r + o.r) moveCircle(e, ox / od * 40 * dt, oy / od * 40 * dt);
     }
-    if (e.in) { e.x = clamp(e.x, e.r, WORLD_W - e.r); e.y = clamp(e.y, G.camTop + e.r, G.camTop + VIEW_H - e.r); }
+    if (e.in) { e.x = clamp(e.x, e.r, WORLD_W - e.r); e.y = clamp(e.y, G.camTop + e.r + 24, G.camTop + VIEW_H - e.r); }   // oben bleibt Platz für die Lebensleiste
     if (e.lostT > 6 && e.type === 'grunt') { e.state = 'idle'; e.reaction = 0.7; }
   }
 }
@@ -1279,7 +1327,7 @@ function explode(x, y, dmg, R, target) {
 function damageEnemy(e, dmg) {
   if (e.hp <= 0) return;
   e.hp -= dmg; e.hit = 0.12;
-  if (settings.dmgnums) G.floats.push({ x: e.x + rand(-8, 8), y: e.y - e.r - 14, t: 0.8, v: Math.max(1, Math.round(dmg)) });
+  if (settings.dmgnums) G.floats.push({ x: e.x + e.r + 4, y: e.y - e.r * 0.4, vx: 30, t: 0.8, v: Math.max(1, Math.round(dmg)) });
   sfx(e.hp > 0 ? 'hit_enemy' : 'enemy_die', clamp(1 - Math.hypot(e.x - G.player.x, e.y - G.player.y) / 900, 0.3, 1));
   if (e.state === 'idle') alertEnemy(e);
   if (e.hp <= 0) {
@@ -1287,7 +1335,7 @@ function damageEnemy(e, dmg) {
     const pts = ENEMY_POINTS[e.type] !== undefined ? ENEMY_POINTS[e.type] : 3;
     G.points += pts;
     G.delta = (G.deltaT > 0 ? G.delta : 0) + pts; G.deltaT = 1.2;
-    G.pops.push({ x: e.x, y: e.y - e.r - 6, t: 1.1, v: pts });
+    G.pops.push({ x: e.x - e.r - 4, y: e.y - e.r * 0.4, vx: -34, t: 1.1, v: pts });
   }
 }
 function chainLightning(from, dmg) {
@@ -1537,16 +1585,16 @@ function drawEntities() {
   }
   for (const f of G.floats) {
     ctx.globalAlpha = Math.min(1, f.t * 3);
-    ctx.font = 'bold 16px ' + F_TEXT; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = '#0a110d'; ctx.strokeText(String(f.v), f.x, f.y);
-    ctx.fillStyle = '#fff3c8'; ctx.fillText(String(f.v), f.x, f.y);
+    ctx.font = 'bold 15px ' + F_TEXT; ctx.textAlign = 'left'; ctx.lineWidth = 3; ctx.strokeStyle = '#0a110d'; ctx.strokeText(String(f.v), f.x, f.y);
+    ctx.fillStyle = '#ff8c7a'; ctx.fillText(String(f.v), f.x, f.y);   // Schaden: rot, rechts vom Gegner
     ctx.globalAlpha = 1;
   }
   for (const q of G.pops) {   // Punkte beim Töten: je mehr Punkte, desto größer und goldener
     const big = q.v >= 100, mid = q.v >= 10, size = big ? 54 : mid ? 30 : 22 + (1 - q.t / 1.1) * 4;
     ctx.globalAlpha = Math.min(1, q.t * 2.5);
-    ctx.font = size + 'px ' + F_TITLE; ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = '#0a110d';
+    ctx.font = size + 'px ' + F_TITLE; ctx.textAlign = 'right'; ctx.lineWidth = 4; ctx.strokeStyle = '#0a110d';   // Punkte: gelb, links vom Gegner
     if (big) { ctx.shadowColor = 'rgba(242,193,78,.9)'; ctx.shadowBlur = 20; }
-    ctx.strokeText('+' + q.v, q.x, q.y); ctx.fillStyle = mid ? '#f2c14e' : '#fff3c8'; ctx.fillText('+' + q.v, q.x, q.y);
+    ctx.strokeText('+' + q.v, q.x, q.y); ctx.fillStyle = '#f2c14e'; ctx.fillText('+' + q.v, q.x, q.y);
     ctx.shadowBlur = 0; ctx.globalAlpha = 1;
   }
   // Geschosse
@@ -2694,6 +2742,7 @@ function draw() {
   if (isPanel(state)) { overlay(0.86); drawPanelScreen(); if (state !== 'feedback') drawCursor(); }
   if (state === 'pick') { drawPickScreen(); drawCursor(); }
   if (state === 'merchant') { drawMerchantScreen(); drawCursor(); }
+  if (state === 'victory') { drawVictoryScreen(); drawCursor(); }
   if (state === 'dead') drawDeadScreen();
   drawToast();
 }
@@ -2703,7 +2752,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.20';
+const VERSION = 'v0.22';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -3476,6 +3525,7 @@ addEventListener('keydown', e => {
     if (e.code === 'Escape') state = 'menu';
     return;
   }
+  if (state === 'victory') { if (e.code === 'Enter' || e.code === 'Space') victoryContinue(); else if (G.victory && (e.code === 'ArrowDown' || e.code === 'ArrowUp')) G.victory.scroll += e.code === 'ArrowDown' ? 1 : -1; return; }
   if (state === 'merchant') { if (e.code === 'Escape' || e.code === bind('interact')) { state = 'play'; merchantNow = null; startCountdown(); } return; }
   if (state === 'play') {
     if (e.code === bind('interact')) { const nm = nearMerchant(); if (nm) { openMerchant(nm); return; } }
@@ -3519,7 +3569,7 @@ canvas.addEventListener('mousedown', e => {
   if (state === 'play') {
     if (e.button === 2) mouse.rdown = true;
   }
-  if (state === 'intro' || state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant') { if (e.button === 0) uiClick(); return; }
+  if (state === 'intro' || state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant' || state === 'victory') { if (e.button === 0) uiClick(); return; }
   if (e.button !== 0) return;
   if (state === 'menu') { const bt = boardTabRects.find(r => mouse.fx >= r.x && mouse.fx <= r.x + r.w && mouse.fy >= r.y && mouse.fy <= r.y + r.h); if (bt) { boardTab = bt.id; sfx('ui_click'); return; } const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
   if (state === 'select') {
@@ -3535,6 +3585,7 @@ addEventListener('mouseup', e => { if (e.button === 0) { mouse.down = false; mou
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('wheel', e => {
   if (state === 'book') { bookSpread += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
+  if (state === 'victory' && G.victory) { G.victory.scroll += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'deck') { deckPage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'recycle') { recyclePage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
 }, { passive: false });
