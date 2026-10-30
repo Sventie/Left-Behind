@@ -2099,7 +2099,7 @@ function drawBookScreen() {
   if (d.length < DECK_SIZE) text(DECK_SIZE - d.length + ' freie Plätze', 1050, Math.min(176 + L.rows.length * 36 + 22, 620), 15, '#6f8274', 'center', F_TEXT, 'italic');
   btn(L.clear, 'Leeren', false, null, hv('clear')); btn(L.auto, 'Standard', false, null, hv('auto'));
   // Großansicht der Karte unter dem Mauszeiger
-  if (bookHover && bookHover.t === 'card') {
+  if (bookHover && bookHover.t === 'card' && (SAVE.owned[bookHover.c.id] || 0) > 0) {   // unentdeckte Karten bleiben verborgen
     const px = clamp(mouse.fx + 24, 10, 640), py = clamp(mouse.fy - 150, 90, 380);
     drawCard(bookHover.c, px, py, 1.0, true);
   }
