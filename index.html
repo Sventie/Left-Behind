@@ -159,6 +159,7 @@ const ICONS = {
   arc:    'M3 17c0-7 4-12 9-12s9 5 9 12M12 5v8M7 8l2.5 4M17 8l-2.5 4',
   flask:  'M9 2h6M10 2v6l-5 10a2.5 2.5 0 0 0 2.2 3.5h9.6A2.5 2.5 0 0 0 19 18l-5-10V2M7.5 15h9',
   moon:   'M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z',
+  book:   'M4 5h9a3 3 0 0 1 3 3v12H7a3 3 0 0 1-3-3V5zM16 8h4v12h-4',
   blast:  'M12 4v3M12 17v3M4 12h3M17 12h3M6.3 6.3l2.1 2.1M15.6 15.6l2.1 2.1M6.3 17.7l2.1-2.1M15.6 8.4l2.1-2.1M14.5 12A2.5 2.5 0 1 1 9.5 12 2.5 2.5 0 0 1 14.5 12z'
 };
 const ICON_PATHS = {};
@@ -390,7 +391,7 @@ const MUSIC_DEFS = {
 function musicFor(st) {
   if (!gestureDone) return;
   if (['options', 'controls', 'feedback'].includes(st)) return;
-  const want = ['menu', 'select', 'book', 'deck', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
+  const want = ['menu', 'select', 'intro', 'book', 'deck', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
   if (MUSIC.name === want) return;
   stopMusic(); MUSIC.name = want;
   if (!want) return;
@@ -2592,8 +2593,9 @@ const menuButtons = [
   { label: 'Kartenbuch', x: 80, y: 458, w: 330, h: 56, action: () => { bookSpread = 0; state = 'book'; } },
   { label: 'Deck', x: 80, y: 524, w: 330, h: 56, action: () => { deckClass = lastClass; deckHoverIdx = -1; state = 'deck'; } },
   { label: 'Bibliothek', x: 80, y: 590, w: 330, h: 56, action: () => { state = 'shop'; } },
-  { label: 'Optionen', small: true, x: 80, y: 654, w: 160, h: 36, action: () => openOptions('menu') },
-  { label: 'Feedback', small: true, x: 250, y: 654, w: 160, h: 36, action: () => openFeedback('menu') }
+  { label: 'Optionen', small: true, x: 80, y: 654, w: 104, h: 36, action: () => openOptions('menu') },
+  { label: 'Feedback', small: true, x: 193, y: 654, w: 104, h: 36, action: () => openFeedback('menu') },
+  { label: 'Spielhilfe', small: true, x: 306, y: 654, w: 104, h: 36, action: () => openIntro() }
 ];
 function drawMenu() {
   let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
@@ -2671,7 +2673,8 @@ function draw() {
   if (state === 'shop') { drawShopScreen(); drawCursor(); return; }
   if (state === 'open') { drawOpenScreen(); drawCursor(); return; }
   if (state === 'recycle') { drawRecycleScreen(); drawCursor(); return; }
-  if (isPanel(state) && (panelFrom === 'menu' || !G)) { drawMenu(); overlay(0.8); drawPanelScreen(); if (state !== 'feedback') drawCursor(); return; }
+  if (state === 'intro') { drawIntroScreen(); drawCursor(); return; }
+  if (isPanel(state) && (panelFrom === 'menu' || !G)) { drawMenu(); overlay(0.8); drawPanelScreen(); drawToast(); if (state !== 'feedback') drawCursor(); return; }
   if (state === 'menu' || !G && state !== 'select') { drawMenu(); drawCursor(); return; }
   if (state === 'select') { drawSelectScreen(); drawCursor(); return; }
 
@@ -2704,7 +2707,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.16';
+const VERSION = 'v0.18';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -2753,10 +2756,22 @@ function drawToast() {
   titleText(toast.text, 640, 360, 44, 'center');
   ctx.globalAlpha = 1;
 }
+// Fortschritt zurücksetzen (Optionen): löscht Karten, Decks, Mondsilber, Rekord und Freischaltungen; Einstellungen, Name und Intro bleiben
+let resetAsk = false, introPending = false;
+function resetProgress() {
+  try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem('left-behind-best'); localStorage.removeItem(INTRO_KEY); } catch (e) {}
+  introPending = true;   // beim Zurückkehren ins Hauptmenü erscheint das Intro wieder
+  SAVE = loadSave(); persist(); best = 0;
+  deckClass = 0; deckHoverIdx = -1; bookSpread = 0; recyclePage = 0; deckFilter = 'all'; deckPage = 0;
+  toast = { text: 'Fortschritt zurückgesetzt', until: performance.now() + 2600 };
+}
 // Pause
 function resumeRun() { state = 'play'; armedAct = null; mouse.down = false; mouse.rdown = false; mouse.pressed = false; }
-function openOptions(from) { panelFrom = from; state = 'options'; dragSlider = null; }
-function closePanel() { state = panelFrom === 'pause' && G ? 'pause' : 'menu'; }
+function openOptions(from) { panelFrom = from; state = 'options'; dragSlider = null; resetAsk = false; }
+function closePanel() {
+  if (introPending && !(panelFrom === 'pause' && G)) { introPending = false; openIntro(); return; }
+  state = panelFrom === 'pause' && G ? 'pause' : 'menu';
+}
 function armed(id) { return armedAct === id && performance.now() - armedAt < 4000; }
 function confirmed(id, go) {
   if (armed(id)) { armedAct = null; go(); } else { armedAct = id; armedAt = performance.now(); }
@@ -2950,7 +2965,18 @@ function drawOptionsScreen() {
   // Fuß
   uiButton(110, 620, 210, 48, 'Steuerung ändern', () => { state = 'controls'; listenAct = null; controlsMsg = ''; }, { size: 17 });
   uiButton(334, 620, 190, 48, 'Standardwerte', () => { const b = settings.binds; Object.assign(settings, DEFAULT_SETTINGS, { binds: b }); saveSettings(); applySettings(); }, { size: 17 });
+  if (!fromPause) uiButton(540, 620, 270, 48, 'Fortschritt zurücksetzen', () => { resetAsk = true; }, { size: 15, danger: true });
   uiButton(1170 - 270, 620, 270, 48, fromPause ? 'Zurück zur Pause' : 'Zurück zum Menü', closePanel, { primary: true, size: 17 });
+  if (resetAsk) {   // Sicherheitsabfrage
+    uiBtns = []; uiSliders = [];
+    overlay(0.7);
+    const dx = 380, dy = 210, dw = 520, dh = 305;
+    windowFrame(dx, dy, dw, dh);
+    titleText('Wirklich zurücksetzen?', dx + dw / 2, dy + 62, 30, 'center');
+    wrap('Alle Karten, Decks, dein Mondsilber, der Rekord und die Freischaltungen werden gelöscht. Das lässt sich nicht rückgängig machen. Einstellungen, Name und die Rangliste bleiben. Das Intro erscheint danach noch einmal.', dw - 70, '500 18px ' + F_TEXT).forEach((l, i) => text(l, dx + dw / 2, dy + 104 + i * 25, 18, '#e8dcbc', 'center', F_TEXT, '500'));
+    uiButton(dx + 36, dy + dh - 76, 200, 48, 'Abbrechen', () => { resetAsk = false; }, { size: 17 });
+    uiButton(dx + dw - 36 - 236, dy + dh - 76, 236, 48, 'Ja, zurücksetzen', () => { resetAsk = false; resetProgress(); }, { size: 17, danger: true });
+  }
 }
 
 // Steuerung
@@ -3213,6 +3239,167 @@ function drawBoard() {
   });
 }
 
+// ---------- Intro / Spielhilfe ----------
+const INTRO_KEY = 'left-behind-intro';
+const INTRO_STORY = ['Das Königreich fiel in einer Nacht.',
+  'Die Tore brachen, die Glocken verstummten, und aus dem Wald kamen die Toten. Wer nicht fiel, floh. Oder ist verschollen. Niemand weiß es.',
+  'Du bist geblieben. Du bist alles, was vom Reich noch übrig ist.',
+  'Kämpfe dich durch das Land, Meter um Meter, und hole dir zurück, was dir genommen wurde.'];
+let introPage = 0;
+function openIntro() { introPage = 0; state = 'intro'; }
+function closeIntro() { try { localStorage.setItem(INTRO_KEY, '1'); } catch (e) {} state = 'menu'; }
+function para(str, x, y, maxW, size, color, lh, font) {
+  const lines = wrap(str, maxW, font || ('500 ' + size + 'px ' + F_TEXT));
+  lines.forEach((l, i) => text(l, x, y + i * lh, size, color, 'left', F_TEXT, '500'));
+  return y + lines.length * lh;
+}
+function drawCastle(x, y, w, h) {
+  ctx.save(); rr(x, y, w, h, 14); ctx.clip(); ctx.translate(x, y);
+  let g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0a1424'); g.addColorStop(0.45, '#12283a'); g.addColorStop(0.78, '#1c3a40'); g.addColorStop(1, '#0a110d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = 'rgba(255,255,255,.35)';
+  for (let i = 0; i < 40; i++) { const sx = (i * 97) % w, sy = (i * 53) % 230; ctx.fillRect(sx, sy, 1.5, 1.5); }
+  g = ctx.createRadialGradient(334, 98, 10, 334, 98, 150); g.addColorStop(0, 'rgba(200,225,255,.5)'); g.addColorStop(1, 'rgba(200,225,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(150, -50, 400, 300);
+  g = ctx.createRadialGradient(320, 85, 6, 334, 98, 62); g.addColorStop(0, '#fff'); g.addColorStop(0.6, '#dce8f2'); g.addColorStop(1, '#aab8c6');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(334, 98, 62, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(120,140,160,.28)'; ctx.beginPath(); ctx.arc(323, 81, 11, 0, 7); ctx.fill();
+  ctx.fillStyle = '#0d1a1a'; ctx.beginPath(); ctx.moveTo(-40, 480);
+  [[-40, 330], [30, 270], [100, 345], [180, 250], [260, 338], [330, 270], [400, 345], [480, 300], [480, 480]].forEach(p => ctx.lineTo(p[0], p[1])); ctx.fill();
+  ctx.fillStyle = '#0a120e'; ctx.beginPath(); ctx.ellipse(220, 480, 280, 130, 0, Math.PI, 2 * Math.PI); ctx.fill();
+  const col = '#070d09'; ctx.fillStyle = col;
+  const keep = (bx, by, bw, bh, n) => {
+    ctx.fillRect(bx, by, bw, bh);
+    const cw = bw / (2 * n - 1); for (let i = 0; i < n; i++) ctx.fillRect(bx + i * 2 * cw, by - 14, cw, 14);
+  };
+  keep(96, 300, 250, 62, 10); keep(150, 222, 92, 140, 5); keep(92, 262, 52, 100, 3);
+  ctx.fillRect(272, 196, 64, 166);
+  ctx.beginPath(); ctx.moveTo(304, 128); ctx.lineTo(346, 200); ctx.lineTo(262, 200); ctx.closePath(); ctx.fill(); ctx.fillRect(303, 112, 2, 22);
+  ctx.shadowColor = 'rgba(233,196,106,.8)'; ctx.shadowBlur = 12; ctx.fillStyle = '#e9c46a';
+  [[190, 250, 9, 18], [298, 226, 8, 16], [112, 290, 7, 14]].forEach(([wx, wy, ww, wh]) => ctx.fillRect(wx, wy, ww, wh));
+  ctx.shadowBlur = 0; ctx.fillStyle = '#0a1210'; rr(182, 326, 26, 36, [13, 13, 0, 0]); ctx.fill();
+  ctx.fillStyle = '#050a07';
+  [[-10, 330, 70, 150], [40, 370, 60, 110], [350, 320, 70, 160], [396, 360, 70, 120], [300, 390, 56, 90], [70, 400, 50, 80], [14, 300, 50, 110]].forEach(([tx, ty, tw, th]) => { ctx.beginPath(); ctx.moveTo(tx + tw / 2, ty); ctx.lineTo(tx + tw, ty + th); ctx.lineTo(tx, ty + th); ctx.closePath(); ctx.fill(); });
+  g = ctx.createLinearGradient(0, h - 90, 0, h); g.addColorStop(0, 'rgba(5,10,7,0)'); g.addColorStop(1, '#050a07'); ctx.fillStyle = g; ctx.fillRect(0, h - 90, w, 90);
+  ctx.restore();
+}
+// Verkleinerte Nachbildung der Spielansicht mit Sichtkegel und Beispielgegnern
+function drawIntroScene(ox, oy, Z) {
+  ctx.save(); ctx.translate(ox, oy); ctx.scale(Z, Z); rr(0, 0, 1280, 720, 6); ctx.clip();
+  ctx.fillStyle = '#0a110d'; ctx.fillRect(0, 0, 1280, 720);
+  // Rahmen
+  let g = ctx.createLinearGradient(0, 0, 120, 0); g.addColorStop(0, '#0a110d'); g.addColorStop(1, '#14201a'); ctx.fillStyle = g; ctx.fillRect(0, 0, 120, 720);
+  ctx.fillStyle = '#9a7a3a'; ctx.fillRect(117, 0, 3, 720);
+  text('PUNKTE', 12, 24, 11, '#b8c4d0', 'left', F_TITLE);
+  ctx.font = '36px ' + F_TITLE; ctx.textAlign = 'center'; ctx.fillStyle = silverGrad(30, 62); ctx.fillText('1.234', 58, 60);
+  text('148 m', 58, 88, 22, '#f0e6c8', 'center', F_TITLE); text('27 Gefallene', 58, 114, 15, '#c8d4de', 'center', F_TEXT);
+  ctx.fillStyle = '#2e3e32'; ctx.fillRect(14, 130, 92, 1);
+  rr(49, 146, 22, 428, 11); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
+  rr(53, 146 + 428 - 4 - 150, 14, 150, 7); ctx.fillStyle = '#3ea6c4'; ctx.fill();
+  for (let i = 0; i <= 4; i++) text('— ' + i * 100, 78, 146 + 428 - 2 - i / 4 * 424 + 5, 14, i === 4 ? '#ff9aa4' : '#b8c4d0', 'left', F_TEXT);
+  rr(4, 146 + 428 - 4 - 150 - 10, 42, 20, 10); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 1; ctx.stroke(); text('148', 25, 146 + 428 - 4 - 150 + 4, 12, '#f0e6c8', 'center', F_TITLE);
+  text('NÄCHSTE KARTE', 60, 606, 10, '#b8c4d0', 'center', F_TITLE); text('bei 180 m', 60, 630, 17, '#8ee8ff', 'center', F_TITLE); text('Rekord 412 m', 60, 664, 15, '#b8c4d0', 'center', F_TEXT);
+  g = ctx.createLinearGradient(1080, 0, 1280, 0); g.addColorStop(0, '#14201a'); g.addColorStop(1, '#0a110d'); ctx.fillStyle = g; ctx.fillRect(1080, 0, 200, 720); ctx.fillStyle = '#9a7a3a'; ctx.fillRect(1080, 0, 3, 720);
+  rr(1092, 12, 176, 38, 19); ctx.fillStyle = 'rgba(10,17,13,.9)'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 1.5; ctx.stroke();
+  drawIcon('moon', 1112, 31, 20, '#c8d0d8', 1.6); text('208', 1128, 38, 18, '#f0e6c8', 'left', F_TITLE); text('Mondsilber', 1262, 37, 13, '#b8c4d0', 'right', F_TEXT);
+  text('AKTIVE KARTEN', 1094, 76, 12, '#b8c4d0', 'left', F_TITLE); text('3', 1270, 76, 13, '#f0e6c8', 'right', F_TITLE);
+  [['Wanderstiefel', '+10 % Lauftempo', '#aeb6c0'], ['Eichenschild', '+30 Leben', '#aeb6c0'], ['Falkenauge', 'Sichtkegel +25°', '#bfe3ff']].forEach(([n, s, c], i) => {
+    const y = 90 + i * 63; rr(1092, y, 176, 56, 6); ctx.fillStyle = '#16231b'; ctx.fill(); ctx.strokeStyle = c; ctx.lineWidth = 2; ctx.stroke();
+    rr(1100, y + 8, 40, 40, [20, 20, 4, 4]); ctx.fillStyle = '#0a110d'; ctx.fill(); text(n, 1148, y + 22, 12, '#f0e6c8', 'left', F_TITLE); text(s, 1148, y + 40, 13, '#f2c14e', 'left', F_TEXT);
+  });
+  text('Im Deck: 6 Karten', 1180, 700, 14, '#b8c4d0', 'center', F_TEXT);
+  g = ctx.createLinearGradient(0, 640, 0, 720); g.addColorStop(0, '#14201a'); g.addColorStop(1, '#0a110d'); ctx.fillStyle = g; ctx.fillRect(120, 640, 960, 80); ctx.fillStyle = '#9a7a3a'; ctx.fillRect(120, 640, 960, 3);
+  text('LEBENSKRAFT', 152, 664, 12, '#b8c4d0', 'left', F_TITLE); text('140 / 140', 452, 668, 14, '#f0e6c8', 'right', F_TITLE);
+  rr(152, 680, 300, 10, 5); ctx.fillStyle = '#050a07'; ctx.fill(); rr(152, 680, 300, 10, 5); ctx.fillStyle = '#c0453d'; ctx.fill();
+  rr(460, 653, 240, 54, 27); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 2; ctx.stroke(); text('Keine Fähigkeit', 580, 686, 15, '#6f8274', 'center', F_TEXT, 'italic');
+  text('RITTER · LANGSCHWERT', 1054, 664, 12, '#b8c4d0', 'right', F_TITLE); text('BLOCK 160°', 1054, 686, 14, '#e8eef4', 'right', F_TITLE);
+  // Spielfeld
+  ctx.save(); ctx.translate(120, 0); ctx.beginPath(); ctx.rect(0, 0, 960, 640); ctx.clip();
+  g = ctx.createLinearGradient(0, 0, 960, 640); g.addColorStop(0, '#25402b'); g.addColorStop(1, '#16281c'); ctx.fillStyle = g; ctx.fillRect(0, 0, 960, 640);
+  ctx.fillStyle = '#4a5258'; ctx.fillRect(180, 300, 125, 80); ctx.strokeStyle = '#1c2226'; ctx.lineWidth = 3; ctx.strokeRect(180, 300, 125, 80);
+  ctx.fillStyle = '#235a30'; ctx.beginPath(); ctx.arc(690, 260, 50, 0, 7); ctx.fill(); ctx.strokeStyle = '#0c2414'; ctx.stroke();
+  const ax = 480, ay = 470, dx = ay * Math.tan(40 * deg), enemy = (x, y) => { ctx.beginPath(); ctx.arc(x, y, 15, 0, 7); ctx.fillStyle = '#e8dfc4'; ctx.fill(); ctx.strokeStyle = '#3a3426'; ctx.lineWidth = 3; ctx.stroke(); };
+  enemy(470, 230); enemy(ax + (ay - 330) * Math.tan(40 * deg) + 2, 330);
+  // Dunkelheit außerhalb von Kegel und Nahbereich
+  const aL = Math.atan2(-ay, -dx), aR = Math.atan2(-ay, dx), r = 85, dl = Math.hypot(dx, ay);
+  ctx.fillStyle = 'rgba(2,6,4,.7)'; ctx.beginPath(); ctx.rect(0, 0, 960, 640);
+  ctx.moveTo(ax - dx, 0); ctx.lineTo(ax + Math.cos(aL) * r, ay + Math.sin(aL) * r); ctx.arc(ax, ay, r, aL, aR, true); ctx.lineTo(ax + dx, 0); ctx.closePath(); ctx.fill('evenodd');
+  g = ctx.createRadialGradient(ax, ay, 0, ax, ay, r); g.addColorStop(0, 'rgba(255,236,170,.2)'); g.addColorStop(1, 'rgba(255,236,170,.05)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ax, ay, r, 0, 7); ctx.fill();
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = '#8a9aa0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(790, 200, 15, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+  ctx.beginPath(); ctx.arc(ax, ay, 18, 0, 7); ctx.fillStyle = '#b8c0c8'; ctx.fill(); ctx.strokeStyle = '#1c2226'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.restore();
+  ctx.restore();
+}
+function drawIntroScreen() {
+  uiBtns = [];
+  drawMenu(); overlay(0.82);
+  const X = 100, Y = 40, Wd = 1080, Ht = 640, P = introPage;
+  windowFrame(X, Y, Wd, Ht);
+  const kick = ['WILLKOMMEN', 'DER LAUF', 'DER BILDSCHIRM', 'KARTEN UND MONDSILBER'][P], title = ['Left Behind', 'So funktioniert ein Lauf', 'Das ist dein Spielfeld', 'Wie du stärker wirst'][P];
+  kicker(kick, X + 44, Y + 46); titleText(title, X + 44, Y + 94, P === 2 ? 38 : 42, 'left');
+  if (P === 0) {
+    let y = Y + 150;
+    text(INTRO_STORY[0], X + 44, y, 28, '#f0e6c8', 'left', F_TEXT, 'italic'); y += 46;
+    for (const t of INTRO_STORY.slice(1)) { const lines = wrap(t, 460, 'italic 22px ' + F_TEXT); lines.forEach((l, i) => text(l, X + 44, y + i * 33, 22, '#e8dcbc', 'left', F_TEXT, 'italic')); y += lines.length * 33 + 20; }
+    drawCastle(X + 576, Y + 80, 440, 480);
+  } else if (P === 1) {
+    const cards = [['boot', '#8ee8ff', '1 · Kämpfe dich hoch', 'Lauf nach oben. Jeder Meter bringt Punkte und Mondsilber.'], ['target', '#ff9aa4', '2 · Besiege Gegner', 'Besiege sie mit Waffe oder Zauber. Sie bringen Punkte und Mondsilber. Alle paar Meter wählst du eine Karte.'], ['crown', '#f2c14e', '3 · Besiege den Boss', 'Bei 400 m wartet der Boss. Danach geht es endlos weiter.']];
+    cards.forEach(([ic, c, t, d], i) => {
+      const x = X + 60 + i * 330, y = Y + 140;
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 12;
+      rr(x, y, 300, 350, 14); g = ctx.createLinearGradient(0, y, 0, y + 350); g.addColorStop(0, '#ece1c2'); g.addColorStop(1, '#d8c89b'); ctx.fillStyle = g; ctx.fill(); ctx.restore();
+      rr(x, y, 300, 350, 14); ctx.strokeStyle = c; ctx.lineWidth = 3; ctx.stroke();
+      drawIcon(ic, x + 150, y + 70, 64, '#2a1f14', 1.3);
+      text(t, x + 150, y + 150, 22, '#2a1f14', 'center', F_TITLE);
+      wrap(d, 252, '500 19px ' + F_TEXT).forEach((l, j) => text(l, x + 150, y + 190 + j * 26, 19, '#3a2a18', 'center', F_TEXT, '500'));
+    });
+    text('Stirbst du, ist der Lauf vorbei. Punkte und Mondsilber behältst du. Trage dich in die Rangliste ein.', X + Wd / 2, Y + 545, 19, '#c8d4de', 'center', F_TEXT);
+  } else if (P === 2) {
+    const Z = 0.56, tx = X + 44, ty = Y + 104, SW = 1280 * Z;
+    drawIntroScene(tx, ty, Z);
+    rr(tx - 1, ty - 1, SW + 2, 720 * Z + 2, 6); ctx.strokeStyle = '#3e5246'; ctx.lineWidth = 2; ctx.stroke();
+    const items = [['1', 0, 0, 120, 130, 'Punkte, Meter und Gefallene. Die Punkte kommen in die Rangliste.'], ['2', 4, 138, 112, 452, 'Dein Weg bis zum Boss bei 400 m.'], ['3', 1088, 8, 188, 46, 'Mondsilber, das du in diesem Lauf verdienst.'], ['4', 1084, 62, 196, 280, 'Aktive Karten und Tränke dieses Laufs.'], ['5', 146, 646, 316, 54, 'Lebenskraft. Bei 0 ist der Lauf vorbei.'], ['6', 458, 648, 246, 60, 'Fähigkeit mit Abklingzeit, wenn du eine besitzt.'], ['7', 780, 646, 282, 64, 'Waffe, Munition oder Mana und Schild.'], ['8', 180, 4, 840, 574, 'Dein Sichtkegel: Gegner siehst du nur im Kegel und in der Nähe.']];
+    items.forEach(([n, x, y, w, h]) => {
+      rr(tx + x * Z, ty + y * Z, w * Z, h * Z, 6); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.stroke();
+      const bx = n === '8' ? tx + x * Z + 16 : tx + (n === '2' ? 0 : x * Z) + 6, by = n === '8' ? ty + y * Z + 16 : ty + y * Z;
+      ctx.beginPath(); ctx.arc(bx, by, 10, 0, 7); ctx.fillStyle = '#f2c14e'; ctx.fill(); text(n, bx, by + 4, 12, '#1c140c', 'center', F_TITLE);
+    });
+    const lab = (fx, fy, t, c) => { ctx.font = '13px ' + F_TEXT; const w = ctx.measureText(t).width + 18, x = tx + (120 + fx) * Z, y = ty + fy * Z; rr(x, y, w, 20, 10); ctx.fillStyle = 'rgba(10,17,13,.92)'; ctx.fill(); ctx.strokeStyle = c; ctx.lineWidth = 1; ctx.stroke(); text(t, x + 9, y + 14, 13, c, 'left', F_TEXT); };
+    const edge = 480 + 140 * Math.tan(40 * deg);
+    lab(420, 196, 'sichtbar', '#8ee8ff'); lab(edge + 34, 322, 'halb sichtbar', '#f2c14e'); lab(700, 150, 'im Dunkeln unsichtbar', '#b8c4d0');
+    let ly = ty + 4; const lx = tx + SW + 24, lw = X + Wd - 44 - lx;
+    items.forEach(([n, , , , , d]) => {
+      ctx.beginPath(); ctx.arc(lx + 11, ly + 8, 11, 0, 7); ctx.fillStyle = '#f2c14e'; ctx.fill(); text(n, lx + 11, ly + 12, 12, '#1c140c', 'center', F_TITLE);
+      const lines = wrap(d, lw - 30, '500 16px ' + F_TEXT); lines.forEach((l, i) => text(l, lx + 30, ly + 13 + i * 19, 16, '#e8dcbc', 'left', F_TEXT, '500')); ly += Math.max(30, lines.length * 19 + 10);
+    });
+    text(settings.binds ? moveLabel() + ' bewegen · Maus zielen · Linksklick angreifen · Rechtsklick Schild, Fokus oder Meditieren · ' + keyLabel(bind('interact')) + ' beim Händler · Esc Pause' : '', tx + SW / 2, ty + 720 * Z + 26, 15, '#8a9aa0', 'center', F_TEXT);
+  } else {
+    const cols = [
+      { ic: 'moon', c: '#f0e6c8', ic2: '#c8d0d8', t: '1 · Mondsilber verdienen', d: 'Jeder Meter und jeder besiegte Gegner bringt Mondsilber. Du siehst es oben rechts. Was du nicht in diesem Run ausgibst, behältst du auch nach dem Lauf.' },
+      { ic: 'book', c: '#f2c14e', ic2: '#f2c14e', t: '2 · Ausgeben', d: 'In der Bibliothek kaufst du Kartenpacks. Nur so kommen Karten in deinen Besitz. Der Händler im Lauf verkauft Karten und Tränke nur für diesen Lauf.' },
+      { ic: 'shield', c: '#8ee8ff', ic2: '#8ee8ff', t: '3 · Deck zusammenstellen', d: 'Das Kartenbuch zeigt alles, was du besitzt. Im Deck legst du bis zu 12 Karten für deinen Streiter fest. Je seltener eine Karte, desto seltener darf sie im Deck liegen.' }];
+    cols.forEach((c, i) => {
+      const x = X + 36 + i * 344, y = Y + 128;
+      rr(x, y, 320, 370, 14); ctx.fillStyle = '#0c1510'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+      drawIcon(c.ic, x + 42, y + 44, 44, c.ic2, 1.5);
+      let ts = 20; ctx.font = ts + 'px ' + F_TITLE; while (ts > 12 && ctx.measureText(c.t).width > 232) { ts--; ctx.font = ts + 'px ' + F_TITLE; }
+      text(c.t, x + 76, y + 50, ts, c.c, 'left', F_TITLE);
+      wrap(c.d, 276, '500 18px ' + F_TEXT).forEach((l, j) => text(l, x + 22, y + 100 + j * 25, 18, '#e8dcbc', 'left', F_TEXT, '500'));
+      if (i === 2) [['#aeb6c0', 0, -8], ['#aeb6c0', 30, -4], ['#4fd08a', 60, 0], ['#bfe3ff', 90, 4], ['#f2c14e', 120, 8]].forEach(([cc, dx, rot]) => {
+        ctx.save(); ctx.translate(x + 82 + dx + 22, y + 300 + 32); ctx.rotate(rot * deg); rr(-22, -32, 44, 64, 5); ctx.fillStyle = '#e4d6ae'; ctx.fill(); ctx.strokeStyle = cc; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+      });
+    });
+    text('Du startest mit einem Standarddeck. Alles Weitere erspielst du dir.', X + Wd / 2, Y + 535, 18, '#c8d4de', 'center', F_TEXT);
+  }
+  // Fuß
+  const fy = Y + Ht - 70, last = P === 3;
+  if (!last) uiButton(X + 44, fy, 160, 44, 'Überspringen', closeIntro, { size: 15 });
+  if (P > 0) uiButton(X + 44 + (last ? 0 : 172), fy, 130, 44, '‹ Zurück', () => { introPage--; }, { size: 16 });
+  for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(X + Wd / 2 - 36 + i * 24, fy + 22, 6, 0, 7); ctx.fillStyle = i === P ? '#f2c14e' : '#3e5246'; ctx.fill(); }
+  text((P + 1) + ' / 4', X + Wd / 2 + 78, fy + 28, 15, '#8a9aa0', 'left', F_TEXT);
+  uiButton(X + Wd - 44 - 180, fy - 2, 180, 48, last ? 'Los geht\'s' : 'Weiter ›', last ? closeIntro : () => { introPage++; }, { primary: true, size: 18 });
+}
+
 // ---------- Eingabe ----------
 function toSelect() { selectHover = lastClass; state = 'select'; }
 addEventListener('keydown', e => {
@@ -3236,10 +3423,16 @@ addEventListener('keydown', e => {
     }
     return;
   }
-  if (state === 'options') { if (e.code === 'Escape') closePanel(); return; }
+  if (state === 'options') { if (e.code === 'Escape') { if (resetAsk) resetAsk = false; else closePanel(); } return; }
   if (state === 'controls') { if (e.code === 'Escape') state = 'options'; return; }
   if (state === 'feedback') { if (e.code === 'Escape') closeFeedback(); return; }
   if (state === 'shop') { if (e.code === 'Escape') state = 'menu'; return; }
+  if (state === 'intro') {
+    if (e.code === 'Escape') closeIntro();
+    else if (e.code === 'ArrowRight' || e.code === 'Enter' || e.code === 'Space') { if (introPage < 3) introPage++; else closeIntro(); }
+    else if (e.code === 'ArrowLeft' && introPage > 0) introPage--;
+    return;
+  }
   if (state === 'recycle') { if (e.code === 'Escape') state = 'book'; if (e.code === 'ArrowRight') recyclePage++; if (e.code === 'ArrowLeft') recyclePage--; return; }
   if (state === 'open') { if (e.code === 'Escape' && packOpen && packOpen.cards.every(it => it.t)) { state = 'shop'; packOpen = null; } return; }
   if (state === 'book') {
@@ -3306,7 +3499,7 @@ canvas.addEventListener('mousedown', e => {
   if (state === 'play') {
     if (e.button === 2) mouse.rdown = true;
   }
-  if (state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant') { if (e.button === 0) uiClick(); return; }
+  if (state === 'intro' || state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant') { if (e.button === 0) uiClick(); return; }
   if (e.button !== 0) return;
   if (state === 'menu') { const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
   if (state === 'select') {
@@ -3337,6 +3530,7 @@ function loop(t) {
   draw();
   requestAnimationFrame(loop);
 }
+try { if (!localStorage.getItem(INTRO_KEY)) openIntro(); } catch (e) {}   // beim ersten Start
 requestAnimationFrame(loop);
 </script>
 </body>
