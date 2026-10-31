@@ -2311,6 +2311,26 @@ function chip(x, y, w, label, active, cb, color) {
 
 // Kartenbuch: Ringbuch mit Folienseiten. Die Seiten behandeln eine Kategorie nach der anderen, innerhalb davon von häufig zu selten.
 let bookHoverCard = null;
+// Folienseiten: Lichtbänder und Knicke je Seite. Die Taschen fangen dasselbe Licht leicht versetzt und in minimal anderem Winkel auf.
+const FOIL_CREASES = {
+  L: ['M60 0 q14 90 -6 180 q-14 80 8 160', 'M96 0 q-8 100 10 200', 'M400 504 q-12 -90 6 -170 q8 -60 -4 -130'],
+  R: ['M330 0 q-18 70 4 150 q16 90 -10 190', 'M296 0 q10 60 -6 130', 'M130 504 q16 -80 -4 -150 q-10 -50 6 -120', 'M200 504 q-6 -50 12 -110']
+};
+const FOIL_PATHS = {}; for (const k in FOIL_CREASES) FOIL_PATHS[k] = FOIL_CREASES[k].map(d => new Path2D(d));
+const FOIL_BANDS = [[0.08, 0], [0.14, 0.07], [0.17, 0.14], [0.21, 0.04], [0.26, 0], [0.58, 0], [0.62, 0.05], [0.64, 0.1], [0.69, 0]];
+function foilShine(ox, oy, w, h, side, deg) {
+  const a = deg * deg , dx = Math.sin(a), dy = -Math.cos(a), len = Math.abs(w * dx) + Math.abs(h * dy), cx = ox + w / 2, cy = oy + h / 2;
+  let g = ctx.createLinearGradient(cx - dx * len / 2, cy - dy * len / 2, cx + dx * len / 2, cy + dy * len / 2);
+  g.addColorStop(0, 'rgba(255,255,255,0)');
+  for (const [t, al] of FOIL_BANDS) g.addColorStop(t, 'rgba(255,255,255,' + al + ')');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(ox, oy, w, h);
+  g = ctx.createLinearGradient(ox, 0, ox + 26, 0); g.addColorStop(0, 'rgba(255,255,255,.14)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(ox, oy, 26, h);
+  ctx.save(); ctx.translate(ox, oy); ctx.lineWidth = 1.4;
+  FOIL_PATHS[side].forEach((p, i) => { ctx.strokeStyle = i % 2 ? 'rgba(0,0,0,.2)' : 'rgba(255,255,255,.09)'; ctx.stroke(p); });
+  ctx.restore();
+}
 function drawBookScreen() {
   uiBtns = []; bookHoverCard = null;
   screenBackdrop();
@@ -2365,7 +2385,7 @@ function drawBookScreen() {
   ctx.fillStyle = g; ctx.fillRect(lp + pw, ay, 37, ah);
   const ringTops = [80, 250, 420];
 
-  const drawPage = (px, side, page, num) => {
+  const drawPage = (px, side, page, num) => {   // px/side werden auch von den Taschen (pocketGlare) gebraucht
     rr(px, ay, pw, ah, 6); g = ctx.createLinearGradient(0, ay, 0, ay + ah); g.addColorStop(0, '#141f19'); g.addColorStop(1, '#0d1511');
     ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.lineWidth = 1.5; ctx.stroke();
     const sx = side === 'L' ? px + pw - 24 : px;   // Lochstreifen an der Bindekante
@@ -2391,8 +2411,19 @@ function drawBookScreen() {
     else { titleText(page.cat, hx + hw, ay + 32, 26, 'right'); text(CAT_SUB[page.cat] + ' · häufig → selten', hx, ay + 28, 14, '#8a9aa0', 'left', F_TEXT, 'italic'); }
     for (let i = 0; i < 6; i++) {
       const cx = hx + (i % 3) * 150, cy = ay + 44 + Math.floor(i / 3) * 214, c = page.cards[i];
-      rr(cx - 2, cy - 2, 140, 202, 7); ctx.fillStyle = 'rgba(255,255,255,.035)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.stroke();
-      if (!c) { ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fillRect(cx - 1, cy - 1, 138, 5); continue; }
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 2; rr(cx - 2, cy - 2, 140, 202, 7); ctx.fillStyle = 'rgba(255,255,255,.04)'; ctx.fill(); ctx.restore();
+      rr(cx - 2, cy - 2, 140, 202, 7); ctx.strokeStyle = 'rgba(255,255,255,.34)'; ctx.lineWidth = 1; ctx.stroke();
+      const pocketGlare = () => {   // Folientasche: Siegelkante, Kantenlicht und der Lichtreflex der Seite, etwas versetzt
+        ctx.save(); rr(cx - 2, cy - 2, 140, 202, 7); ctx.clip();
+        foilShine(px + 17, ay + 10, pw, ah, side, 103);
+        let pg = ctx.createLinearGradient(0, cy - 2, 0, cy + 7); pg.addColorStop(0, 'rgba(255,255,255,.32)'); pg.addColorStop(1, 'rgba(255,255,255,.05)');
+        ctx.fillStyle = pg; ctx.fillRect(cx - 2, cy - 2, 140, 9); ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.fillRect(cx - 2, cy + 6, 140, 1);
+        pg = ctx.createLinearGradient(0, cy + 193, 0, cy + 200); pg.addColorStop(0, 'rgba(0,0,0,0)'); pg.addColorStop(1, 'rgba(0,0,0,.35)'); ctx.fillStyle = pg; ctx.fillRect(cx - 2, cy + 193, 140, 7);
+        ctx.restore();
+        rr(cx - 1, cy - 1, 138, 200, 6); pg = ctx.createLinearGradient(cx, cy, cx + 136, cy + 198); pg.addColorStop(0, 'rgba(255,255,255,.28)'); pg.addColorStop(0.5, 'rgba(255,255,255,0)'); pg.addColorStop(1, 'rgba(0,0,0,.45)');
+        ctx.strokeStyle = pg; ctx.lineWidth = 1.5; ctx.stroke();
+      };
+      if (!c) { pocketGlare(); continue; }
       const o = SAVE.owned[c.id] || 0, R = RARITY[c.rarity], seen = !!SAVE.seen[c.id];
       if (o === 0 && !seen) {
         drawIcon('crown', cx + 68, cy + 76, 42, '#3e5246', 1.3);
@@ -2410,15 +2441,15 @@ function drawBookScreen() {
           text('nicht im Besitz', cx + 68, cy + 107, 13, '#c8d4de', 'center', F_TEXT, 'italic');
         }
       }
-      ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fillRect(cx - 1, cy - 1, 138, 5);   // Einstecklippe der Tasche
+      pocketGlare();
     }
     footer();
   };
   const lpIdx = bookSpread * 2;
   drawPage(lp, 'L', pages[lpIdx], lpIdx + 1);
   drawPage(rp, 'R', pages[lpIdx + 1], lpIdx + 2);
-  // Glanz über beiden Seiten
-  for (const px of [lp, rp]) { g = ctx.createLinearGradient(px, ay, px + pw * 0.8, ay + ah * 0.8); g.addColorStop(0, 'rgba(255,255,255,.05)'); g.addColorStop(0.35, 'rgba(255,255,255,0)'); rr(px, ay, pw, ah, 6); ctx.fillStyle = g; ctx.fill(); }
+  // Folienglanz über beiden Seiten: Lichtbänder und je Seite eigene Knicke
+  for (const [px, sd] of [[lp, 'L'], [rp, 'R']]) { ctx.save(); rr(px, ay, pw, ah, 6); ctx.clip(); foilShine(px, ay, pw, ah, sd, 100); ctx.restore(); }
 
   // Lesezeichen und Ringe (Ringe liegen vor dem Band)
   const mid = lp + pw + 18.5;
@@ -2598,22 +2629,86 @@ function titleText(str, x, y, size, align) {
 }
 function packUnlocked(p) { return !p.unlockBoss || !!SAVE.bossDown || (SAVE.maxStage || 1) >= 5; }   // Boss besiegt (oder früher schon Stufe 5 erreicht)
 
-function drawPackBook(x, y, p, locked) {
-  ctx.save(); ctx.translate(x, y);
-  if (locked) ctx.globalAlpha = 0.5;
-  ctx.shadowColor = 'rgba(0,0,0,.65)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 8;
-  const g = ctx.createLinearGradient(0, 0, 150, 210); g.addColorStop(0, p.cover[0]); g.addColorStop(1, p.cover[1]);
-  rr(0, 0, 150, 210, [4, 10, 10, 4]); ctx.fillStyle = g; ctx.fill();
-  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-  ctx.strokeStyle = '#0c0a06'; ctx.lineWidth = 2; ctx.stroke();
-  rr(0, 0, 20, 210, [4, 0, 0, 4]); ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fill();
-  ctx.strokeStyle = p.ink; ctx.globalAlpha *= 0.7; ctx.lineWidth = 2; ctx.strokeRect(30, 14, 108, 182); ctx.globalAlpha = locked ? 0.5 : 1;
-  wrap(p.name.replace('-', '- '), 96, '15px ' + F_TITLE).forEach((l, i) => text(l.replace('- ', '-'), 84, 40 + i * 18, 15, p.ink, 'center', F_TITLE));
-  drawIcon('crown', 84, 106, 60, p.ink, 1.1);
-  rr(146, 90, 12, 34, 3); ctx.fillStyle = '#9aa2a8'; ctx.fill(); ctx.strokeStyle = '#1c2226'; ctx.lineWidth = 1; ctx.stroke();
-  ctx.fillStyle = p.seal; ctx.shadowColor = p.seal; ctx.shadowBlur = 12;
-  ctx.beginPath(); ctx.arc(84, 168, 17, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
-  ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 2; ctx.stroke();
+// ---------- Folienpacks ----------
+const PACK_W = 150, PACK_H = 232, PACK_PAD = 20, OPEN_SC = 1.9, PACK_RES = 2;   // PACK_RES: Auflösung des Pack-Bildes, damit es groß scharf bleibt
+const packSprites = {};
+// Das Pack wird einmal in ein eigenes Bild gezeichnet (mit Schrift der Seite) und dann nur noch verschoben
+function packSprite(p, locked) {
+  const key = p.id + (locked ? 'L' : '') + (document.fonts && document.fonts.status === 'loaded' ? 'F' : '');
+  if (packSprites[key]) return packSprites[key];
+  const W = PACK_W, H = PACK_H, cv = document.createElement('canvas');
+  cv.width = (W + PACK_PAD * 2) * PACK_RES; cv.height = (H + PACK_PAD * 2) * PACK_RES;
+  const c = cv.getContext('2d');
+  c.scale(PACK_RES, PACK_RES); c.translate(PACK_PAD, PACK_PAD); c.lineJoin = 'round'; c.lineCap = 'round';
+  const body = () => { c.beginPath(); c.moveTo(0, 0); c.lineTo(W, 0); c.quadraticCurveTo(W + 10, H / 2, W, H); c.lineTo(0, H); c.quadraticCurveTo(-10, H / 2, 0, 0); c.closePath(); };
+  const ink = p.ink, T = (str, x, y, size, col, weight, ls) => { c.font = (weight || '') + ' ' + size + 'px ' + F_TITLE; c.textAlign = 'center'; if ('letterSpacing' in c) c.letterSpacing = (ls || 0) + 'px'; c.fillStyle = col; c.fillText(str, x, y); if ('letterSpacing' in c) c.letterSpacing = '0px'; };
+  // Schatten
+  c.save(); c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 14; c.shadowOffsetY = 7; body(); c.fillStyle = '#000'; c.fill(); c.restore();
+  c.save(); body(); c.clip();
+  let g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, p.cover[0]); g.addColorStop(1, p.cover[1]);
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  // Druck
+  c.strokeStyle = ink; c.globalAlpha = 0.55; c.lineWidth = 1.4; rr0(c, 12, 34, W - 24, H - 68, 4); c.stroke(); c.globalAlpha = 1;
+  T('LEFT BEHIND', W / 2, 52, 9.5, ink, '', 2);
+  const nm = p.name.split('-');
+  for (const [str, y] of [[nm[0] + '-', 80], [nm[1], 101]]) { c.font = '18px ' + F_TITLE; c.textAlign = 'center'; c.lineWidth = 2.2; c.strokeStyle = 'rgba(0,0,0,.35)'; c.strokeText(str, W / 2, y); c.fillStyle = ink; c.fillText(str, W / 2, y); }
+  c.beginPath(); c.arc(W / 2, 146, 33, 0, 7); c.fillStyle = 'rgba(0,0,0,.25)'; c.fill(); c.strokeStyle = ink; c.globalAlpha = 0.7; c.lineWidth = 1.5; c.stroke();
+  c.globalAlpha = 0.4; c.setLineDash([3, 4]); c.beginPath(); c.arc(W / 2, 146, 27, 0, 7); c.stroke(); c.setLineDash([]); c.globalAlpha = 1;
+  const isz = locked ? 34 : 38.4, ico = locked ? 'lock' : 'crown';   // Krone sitzt im Icon-Feld 1 Einheit tiefer, daher angehoben
+  c.save(); c.translate(W / 2 - isz / 2, 146 - isz / 2 - (locked ? 0 : isz / 24)); c.scale(isz / 24, isz / 24); c.strokeStyle = ink; c.lineWidth = locked ? 1.5 : 1.3; c.stroke(ICON_PATHS[ico]); c.restore();
+  rr0(c, 40, 188, 70, 17, 8.5); c.fillStyle = 'rgba(0,0,0,.35)'; c.fill();
+  T('5 KARTEN', W / 2, 200.5, 11, ink, 'bold', 1);
+  c.beginPath(); c.arc(W - 26, H - 44, 6, 0, 7); c.fillStyle = p.seal; c.fill(); c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 1; c.stroke();
+  // Falten von den Siegelnähten
+  for (const [x, dx] of [[22, -6], [46, 4], [74, -3], [100, 5], [128, -4]]) {
+    for (const [y0, dir] of [[16, 1], [H - 16, -1]]) {
+      c.strokeStyle = 'rgba(255,255,255,.22)'; c.lineWidth = 1.2; c.beginPath(); c.moveTo(x, y0); c.quadraticCurveTo(x + dx * dir * 0 + dx, y0 + dir * 14, x + dx * 1.6, y0 + dir * 30); c.stroke();
+      c.strokeStyle = 'rgba(0,0,0,.2)'; c.lineWidth = 1; c.beginPath(); c.moveTo(x + 3, y0); c.quadraticCurveTo(x + 3 + dx, y0 + dir * 14, x + 3 + dx * 1.6, y0 + dir * 30); c.stroke();
+    }
+  }
+  // geschweißte, geriffelte Nähte oben und unten
+  for (const y of [0, H - 16]) {
+    c.globalAlpha = 0.9; c.fillStyle = y ? p.cover[1] : p.cover[0]; c.fillRect(0, y, W, 16); c.globalAlpha = 1;
+    for (let x = 0; x < W; x += 4) { c.fillStyle = 'rgba(255,255,255,.34)'; c.fillRect(x, y, 2, 16); c.fillStyle = 'rgba(0,0,0,.34)'; c.fillRect(x + 2, y, 2, 16); }
+    c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(0, y ? y : 14, W, 2);
+    c.fillStyle = 'rgba(255,255,255,.3)'; c.fillRect(0, y ? y + 14 : 0, W, 2);
+  }
+  // Perforation und Einkerbungen zum Aufreißen
+  c.strokeStyle = ink; c.globalAlpha = 0.75; c.lineWidth = 1.2; c.setLineDash([2, 3]); c.beginPath(); c.moveTo(6, 20); c.lineTo(W - 6, 20); c.stroke(); c.setLineDash([]); c.globalAlpha = 1;
+  c.fillStyle = 'rgba(0,0,0,.55)'; c.beginPath(); c.moveTo(0, 17); c.lineTo(9, 20); c.lineTo(0, 23); c.moveTo(W, 17); c.lineTo(W - 9, 20); c.lineTo(W, 23); c.fill();
+  // Seitenschatten und Glanz
+  g = c.createLinearGradient(0, 0, W, 0); g.addColorStop(0, 'rgba(0,0,0,.45)'); g.addColorStop(.18, 'rgba(255,255,255,.16)'); g.addColorStop(.5, 'rgba(255,255,255,0)'); g.addColorStop(.82, 'rgba(0,0,0,.12)'); g.addColorStop(1, 'rgba(0,0,0,.5)');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0.22, 'rgba(255,255,255,0)'); g.addColorStop(0.3, 'rgba(255,255,255,.42)'); g.addColorStop(0.36, 'rgba(255,255,255,0)'); g.addColorStop(0.55, 'rgba(255,255,255,.14)'); g.addColorStop(0.62, 'rgba(255,255,255,0)');
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  c.restore();
+  body(); c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1.6; c.stroke();
+  for (const [y, sg] of [[0, -1], [H, 1]]) { c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = 1; c.beginPath(); for (let x = 0; x <= W; x += 4) { const yy = y + (((x / 4) | 0) % 2 ? 2 * sg : 0); if (x) c.lineTo(x, yy); else c.moveTo(x, yy); } c.stroke(); }
+  return (packSprites[key] = cv);
+}
+function rr0(c, x, y, w, h, r) { c.beginPath(); if (c.roundRect) c.roundRect(x, y, w, h, r); else c.rect(x, y, w, h); }
+// Pack zeichnen. tear 0..1: wie weit die Aufreißkante von links nach rechts schon offen ist. fly: 0..1 Flug des Streifens nach dem Aufreißen
+function drawFoilPack(x, y, p, locked, sc, tear, fly, alpha) {
+  const sp = packSprite(p, locked), W = PACK_W, H = PACK_H;
+  ctx.save(); ctx.translate(x, y); ctx.scale(sc || 1, sc || 1);
+  ctx.globalAlpha = (alpha === undefined ? 1 : alpha) * (locked ? 0.5 : 1);
+  const img = () => ctx.drawImage(sp, -PACK_PAD, -PACK_PAD, W + PACK_PAD * 2, H + PACK_PAD * 2);
+  if (!tear) { img(); ctx.restore(); return; }
+  const hx = clamp(tear, 0, 1) * W;
+  // Karten schauen nur dort heraus, wo die Folie schon offen ist
+  if (hx > 18) { rr0(ctx, 16, 9, hx - 16, 40, 5); ctx.fillStyle = '#f2c14e'; ctx.fill(); rr0(ctx, 20, 13, hx - 20, 40, 3); ctx.fillStyle = '#1e3a2a'; ctx.fill(); }
+  ctx.save();   // Restpack mit Zackenkante
+  ctx.beginPath(); ctx.moveTo(-30, H + 30); ctx.lineTo(-30, 20);
+  for (let xx = 0, i = 0; xx <= hx; xx += 6, i++) ctx.lineTo(xx, 20 + (i % 2 ? 3 : -3));
+  ctx.lineTo(hx, 20); ctx.lineTo(hx, -40); ctx.lineTo(W + 30, -40); ctx.lineTo(W + 30, H + 30); ctx.closePath(); ctx.clip();
+  img(); ctx.restore();
+  // abgerissener Streifen: klappt um den Riss nach oben, nach dem Aufreißen fliegt er weg
+  ctx.save();
+  const f = fly || 0;
+  ctx.translate(hx + f * 160, 20 - f * 140); ctx.rotate((38 + f * 40) * deg); ctx.translate(-hx, -20);
+  ctx.globalAlpha *= 1 - f;
+  ctx.beginPath(); ctx.rect(-10, -10, hx + 10, 30); ctx.clip();
+  img(); ctx.restore();
   ctx.restore();
 }
 function drawCardBack(x, y, k) {
@@ -2627,7 +2722,7 @@ function drawCardBack(x, y, k) {
   ctx.strokeStyle = 'rgba(242,193,78,.35)'; ctx.lineWidth = 1.5;
   rr(20, 20, 180, 280, 4); ctx.stroke();
   ctx.beginPath(); ctx.arc(110, 160, 62, 0, 7); ctx.stroke(); ctx.beginPath(); ctx.arc(110, 160, 48, 0, 7); ctx.setLineDash([5, 6]); ctx.stroke(); ctx.setLineDash([]);
-  drawIcon('crown', 110, 160, 64, '#f2c14e', 1.2);
+  drawIcon('crown', 110, 160 - 64 / 24, 64, '#f2c14e', 1.2);   // Krone sitzt im Icon-Feld 1 Einheit tiefer, daher angehoben
   text('LEFT BEHIND', 110, 270, 15, '#c8b070', 'center', F_TITLE);
   ctx.restore();
 }
@@ -2657,7 +2752,7 @@ function buyPack(p) {
   for (const it of cards) SAVE.owned[it.c.id] = (SAVE.owned[it.c.id] || 0) + 1;
   persist();
   sfx('pack_buy');
-  packOpen = { pack: p, cards };
+  packOpen = { pack: p, cards, phase: 'tear', tear: 0, drag: false, dx0: 0, doneT: 0, riseT: 0 };
   state = 'open';
 }
 
@@ -2674,8 +2769,8 @@ function drawShopScreen() {
     rr(x, y, pw, 440, 14);
     const g = ctx.createLinearGradient(0, y, 0, y + 440); g.addColorStop(0, '#1a2a20'); g.addColorStop(1, '#101a14');
     ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = unlocked ? p.seal : '#3a4a3e'; ctx.lineWidth = 2; ctx.stroke();
-    drawPackBook(x + 56, y + 20, p, !unlocked);
-    if (!unlocked) { rr(x + pw / 2 - 52, y + 98, 104, 32, 16); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.stroke(); text('Versiegelt', x + pw / 2, y + 120, 15, '#f2c14e', 'center', F_TITLE); }
+    drawFoilPack(x + 56, y + 14, p, !unlocked);
+    if (!unlocked) { rr(x + pw / 2 - 52, y + 186, 104, 32, 16); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.stroke(); text('Versiegelt', x + pw / 2, y + 208, 15, '#f2c14e', 'center', F_TITLE); }
     text(p.name, x + pw / 2, y + 266, 19, '#f0e6c8', 'center', F_TITLE);
     text(p.content, x + pw / 2, y + 292, 17, '#c8d4de', 'center', F_TEXT);
     // Wahrscheinlichkeiten
@@ -2696,22 +2791,49 @@ function drawOpenScreen() {
   const P = packOpen;
   screenBackdrop();
   titleText(P.pack.name, 640, 66, 38, 'center');
-  const now = performance.now(), k = 0.9, w = 220 * k, h = 320 * k, gap = 24, x0 = (FRAME_W - (5 * w + 4 * gap)) / 2, y = 150;
+  const now = performance.now();
+  if (P.phase === 'tear' || P.phase === 'wait') {   // Aufreißen: Maustaste halten und nach rechts ziehen
+    const SC = OPEN_SC, px = 640 - PACK_W * SC / 2, py = 140;
+    if (P.phase === 'tear') {
+      if (P.drag && mouse.down) P.tear = Math.max(P.tear, clamp((mouse.fx - P.dx0) / (PACK_W * SC), 0, 1));
+      if (P.tear >= 1) { P.tear = 1; P.phase = 'wait'; P.doneT = now; sfx('stage_up'); }
+    } else if (now - P.doneT >= 500) { P.phase = 'cards'; P.riseT = now; }   // kurze Pause, dann kommen die Karten
+    drawFoilPack(px, py, P.pack, false, SC, P.tear, P.phase === 'tear' ? 0 : clamp((now - P.doneT) / 450, 0, 1));
+    if (P.phase === 'tear') {
+      if (!P.tear) {
+        ctx.save(); ctx.translate(px, py); ctx.scale(SC, SC); ctx.strokeStyle = '#f2c14e'; ctx.globalAlpha = 0.5 + 0.5 * Math.sin(now / 220); ctx.lineWidth = 2.4; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(6, 20); ctx.lineTo(PACK_W - 6, 20); ctx.stroke(); ctx.restore();
+        ctx.save(); ctx.strokeStyle = '#8ee8ff'; ctx.lineWidth = 3; ctx.setLineDash([6, 6]); ctx.lineDashOffset = -now / 40;
+        ctx.beginPath(); ctx.moveTo(px + 10, py - 14); ctx.quadraticCurveTo(px + PACK_W * SC / 2, py - 50, px + PACK_W * SC - 20, py - 14); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = '#8ee8ff'; ctx.beginPath(); ctx.moveTo(px + PACK_W * SC - 8, py - 14); ctx.lineTo(px + PACK_W * SC - 24, py - 24); ctx.lineTo(px + PACK_W * SC - 24, py - 4); ctx.closePath(); ctx.fill(); ctx.restore();
+      }
+      text('Maustaste halten und nach rechts ziehen', 640, 612, 20, '#c8d4de', 'center', F_TEXT, 'italic');
+      text('oder Leertaste', 640, 638, 15, '#8a9aa0', 'center', F_TEXT);
+    }
+    drawSilver(1240, 20);
+    return;
+  }
+  const rise = clamp((now - P.riseT) / 500, 0, 1), eRise = 1 - Math.pow(1 - rise, 3);
+  if (rise < 1) drawFoilPack(640 - PACK_W * OPEN_SC / 2, 140, P.pack, false, OPEN_SC, 1, 1, 1 - rise);
+  const k = 0.9, w = 220 * k, h = 320 * k, gap = 24, x0 = (FRAME_W - (5 * w + 4 * gap)) / 2, y = 150;
   let done = true;
   P.cards.forEach((it, i) => {
     const x = x0 + i * (w + gap);
     const f = it.t ? clamp((now - it.t) / 380, 0, 1) : 0;
     if (!it.t || f < 1) done = false;
     ctx.save();
-    ctx.translate(x + w / 2, y + h / 2); ctx.scale(Math.abs(Math.cos(f * Math.PI)), 1); ctx.translate(-w / 2, -h / 2);
+    const cx = 640 + (x + w / 2 - 640) * eRise, cy = 330 + (y + h / 2 - 330) * eRise, sz = 0.35 + 0.65 * eRise;   // Karten steigen aus dem Pack auf
+    ctx.globalAlpha = Math.min(1, rise * 2.5);
+    ctx.translate(cx, cy); ctx.scale(sz * Math.abs(Math.cos(f * Math.PI)), sz); ctx.translate(-w / 2, -h / 2);
     if (f >= 0.5) drawCard(it.c, 0, 0, k, it.c.rarity !== 'gewoehnlich'); else drawCardBack(0, 0, k);
     ctx.restore();
-    if (!it.t) uiHit(x, y, w, h, () => { it.t = performance.now(); flipSfx(it, 0); });
+    if (!it.t && rise >= 1) uiHit(x, y, w, h, () => { it.t = performance.now(); flipSfx(it, 0); });
     if (f >= 1) {
       if (it.isNew) { rr(x + 8, y - 10, 62, 26, 13); ctx.fillStyle = '#f2c14e'; ctx.fill(); ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.stroke(); text('NEU!', x + 39, y + 8, 15, '#1c140c', 'center', F_TITLE); }
       text('Besitz: ×' + SAVE.owned[it.c.id], x + w / 2, y + h + 30, 16, '#c8d4de', 'center', F_TEXT);
     }
   });
+  if (rise < 1) { drawSilver(1240, 20); return; }
   if (!done) {
     text('Klick auf eine Karte deckt sie auf', 640, 560, 18, '#c8d4de', 'center', F_TEXT, 'italic');
     uiButton(540, 590, 200, 44, 'Alle aufdecken', () => { const t = performance.now(); P.cards.forEach((it, i) => { if (!it.t) { it.t = t + i * 140; flipSfx(it, i * 140); } }); });
@@ -2951,7 +3073,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.28';
+const VERSION = 'v0.31';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -3702,6 +3824,7 @@ addEventListener('keydown', e => {
     return;
   }
   if (state === 'recycle') { if (e.code === 'Escape') state = 'book'; if (e.code === 'ArrowRight') recyclePage++; if (e.code === 'ArrowLeft') recyclePage--; return; }
+  if (state === 'open' && packOpen && packOpen.phase === 'tear' && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { packOpen.tear = 1; return; }
   if (state === 'open') { if (e.code === 'Escape' && packOpen && packOpen.cards.every(it => it.t)) { state = 'shop'; packOpen = null; } return; }
   if (state === 'book') {
     if (e.code === 'Escape') state = 'menu';
@@ -3768,6 +3891,11 @@ canvas.addEventListener('mousedown', e => {
   if (state === 'play') {
     if (e.button === 2) mouse.rdown = true;
   }
+  if (state === 'open' && packOpen && packOpen.phase === 'tear' && e.button === 0) {
+    const bx = 640 - PACK_W * OPEN_SC / 2;
+    if (mouse.fx >= bx - 20 && mouse.fx <= bx + PACK_W * OPEN_SC + 40 && mouse.fy >= 90 && mouse.fy <= 600) { packOpen.drag = true; packOpen.dx0 = mouse.fx - packOpen.tear * PACK_W * OPEN_SC; mouse.down = true; }
+    return;
+  }
   if (state === 'intro' || state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant' || state === 'victory') { if (e.button === 0) uiClick(); return; }
   if (e.button !== 0) return;
   if (state === 'menu') { const bt = boardTabRects.find(r => mouse.fx >= r.x && mouse.fx <= r.x + r.w && mouse.fy >= r.y && mouse.fy <= r.y + r.h); if (bt) { boardTab = bt.id; sfx('ui_click'); return; } const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
@@ -3780,7 +3908,7 @@ canvas.addEventListener('mousedown', e => {
   if (state === 'pick') { if (pickHover >= 0) choosePick(pickHover); return; }
   mouse.down = true; mouse.pressed = true;
 });
-addEventListener('mouseup', e => { if (e.button === 0) { mouse.down = false; mouse.pressed = false; dragSlider = null; } if (e.button === 2) mouse.rdown = false; });
+addEventListener('mouseup', e => { if (e.button === 0) { if (packOpen) packOpen.drag = false; mouse.down = false; mouse.pressed = false; dragSlider = null; } if (e.button === 2) mouse.rdown = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('wheel', e => {
   if (state === 'book') { bookSpread += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
