@@ -1,5 +1,6 @@
 // Cloudflare Worker für Left Behind:
 //   POST /          Feedback als GitHub-Issue anlegen (Secret GITHUB_TOKEN)
+//   (Rangliste zurückgesetzt: Schlüssel scores-2 statt scores)
 //   GET  /scores    Ranglisten lesen (Alle + je Streiter, je Name und Streiter das beste Ergebnis)  (KV-Namespace SCORES)
 //   POST /scores    Ergebnis eintragen         (KV-Namespace SCORES)
 // Der GitHub-Token liegt nur hier als Secret, nie im Spiel.
@@ -51,7 +52,7 @@ function boards(list) {
   return { scores: lists.all, lists };
 }
 async function load(env) {
-  try { return JSON.parse(await env.SCORES.get('scores')) || []; } catch (e) { return []; }
+  try { return JSON.parse(await env.SCORES.get('scores-2')) || []; } catch (e) { return []; }
 }
 
 async function addScore(request, env, reply) {
@@ -74,7 +75,7 @@ async function addScore(request, env, reply) {
   list.push(entry);
   list.sort((a, b) => b.score - a.score || a.at - b.at);
   list = list.slice(0, KEEP);
-  await env.SCORES.put('scores', JSON.stringify(list));
+  await env.SCORES.put('scores-2', JSON.stringify(list));
   return reply(200, { rank: rankOf(entry), best: true, ...boards(list) });
 }
 
