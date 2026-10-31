@@ -99,8 +99,8 @@ const DASH = { dist: 160, time: 0.2, cooldown: 12 };
 const STAGE_STEP = 10;                  // alle 3 Kartenwahlen wird der Abstand um 10 m länger (30, 30, 30, 40, 40, 40, …)
 const BOSS_DIST = 400;                  // hier endet der Lauf mit dem Boss
 // Punkte pro besiegtem Gegner (Rangliste); später je Gegner anders
-const ENEMY_POINTS = { grunt: 3, rusher: 3, wolf: 4, schild: 8, magier: 10, heiler: 12, boss: 500 };
-const ELITE_POINTS = 25, ELITE_SILVER = 30;
+const ENEMY_POINTS = { grunt: 3, rusher: 3, wolf: 2, schild: 5, magier: 5, heiler: 6, boss: 500 };
+const ELITE_POINTS = 15, ELITE_SILVER = 30;
 const ENEMY_TYPES = {
   grunt:  { hp: 50, speed: 80,  chase: 95,  r: 14 },
   rusher: { hp: 40, speed: 125, chase: 135, r: 13, mdmg: 12 },   // Ghul
@@ -1259,7 +1259,7 @@ function updateEnemies(dt) {
       else if (near && nd > 130) { dirx = (near.x - e.x) / nd; diry = (near.y - e.y) / nd; }   // bleibt bei den anderen
       e.cooldown -= dt;
       if (e.cooldown <= 0) {
-        const hurt = G.enemies.filter(o => o !== e && o.hp > 0 && o.hp < o.maxHp && Math.hypot(o.x - e.x, o.y - e.y) < 260 && !ENEMY_TYPES[o.type].boss)
+        const hurt = G.enemies.filter(o => o !== e && o.hp > 0 && o.hp < o.maxHp && Math.hypot(o.x - e.x, o.y - e.y) < 260)
           .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp).slice(0, 2);
         const amt = Math.round(8 * e.dmgMul);
         for (const o of hurt) {
@@ -2938,7 +2938,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.23';
+const VERSION = 'v0.24';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
