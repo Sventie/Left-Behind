@@ -264,7 +264,7 @@ const SFX_IDS = ['ui_click', 'card_pick', 'card_flip', 'rare_reveal', 'pack_buy'
   'shoot_crossbow', 'reload_start', 'reload_done', 'empty_click', 'shoot_spell', 'spell_explode', 'sword_swing', 'sword_hit', 'block',
   'hit_enemy', 'enemy_die', 'enemy_shoot', 'player_hurt', 'player_die', 'dash', 'pickup_heal', 'horde_horn'];
 const DEFAULT_BINDS = { up: 'KeyW', left: 'KeyA', down: 'KeyS', right: 'KeyD', dash: 'Space', reload: 'KeyR', interact: 'KeyE', music: 'KeyM', sfx: 'KeyN' };
-const DEFAULT_SETTINGS = { master: 0.8, music: 0.5, sfx: 0.7, bgMute: true, bright: 100, hitfx: 2, hpbars: true, dmgnums: false, xhair: 0, xcol: '#fff3c8', autoPause: true, hints: true, autofire: true };
+const DEFAULT_SETTINGS = { master: 0.8, music: 0.5, sfx: 0.7, bgMute: true, bright: 100, hitfx: 2, hpbars: true, dmgnums: false, fps30: false, showfps: false, xhair: 0, xcol: '#fff3c8', autoPause: true, hints: true, autofire: true };
 const settings = (() => {
   let s = {}; try { s = JSON.parse(localStorage.getItem('left-behind-settings')) || {}; } catch (e) {}
   return Object.assign({}, DEFAULT_SETTINGS, s, { binds: Object.assign({}, DEFAULT_BINDS, s.binds) });
@@ -3073,7 +3073,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.31';
+const VERSION = 'v0.32';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -3319,7 +3319,8 @@ function drawOptionsScreen() {
   y += rowSlider(x, y, colW, 'Helligkeit', 'hebt das ganze Bild an', settings.bright, 60, 140, 1, v => v + ' %', v => chg('bright', v));
   y += rowSeg(x, y, colW, 'Treffer-Effekte', ['Aus', 'Schwach', 'Normal'], settings.hitfx, i => chg('hitfx', i), 'Rotfärbung und Wackeln');
   y += rowToggle(x, y, colW, 'Lebensbalken der Gegner', '', settings.hpbars, v => chg('hpbars', v)) - 6;
-  rowToggle(x, y, colW, 'Schadenszahlen', '', settings.dmgnums, v => chg('dmgnums', v));
+  y += rowToggle(x, y, colW, 'Schadenszahlen', '', settings.dmgnums, v => chg('dmgnums', v));
+  rowToggle(x, y, colW, 'Bildrate auf 30 begrenzen', 'schont Rechner und Grafikkarte', settings.fps30, v => chg('fps30', v));
   // Spiel
   x = cx(2); y = 214;
   secHead('Spiel', x, 190, colW);
@@ -3327,7 +3328,8 @@ function drawOptionsScreen() {
   y += rowSwatch(x, y, 'Fadenkreuz-Farbe');
   y += rowToggle(x, y, colW, 'Automatisch pausieren', 'wenn das Fenster den Fokus verliert', settings.autoPause, v => chg('autoPause', v));
   y += rowToggle(x, y, colW, 'Hinweise einblenden', 'z. B. „E · Handeln“ am Händler', settings.hints, v => chg('hints', v));
-  rowToggle(x, y, colW, 'Dauerfeuer mit gedrückter Taste', 'aus: ein Klick, ein Schuss', settings.autofire, v => chg('autofire', v));
+  y += rowToggle(x, y, colW, 'Dauerfeuer mit gedrückter Taste', 'aus: ein Klick, ein Schuss', settings.autofire, v => chg('autofire', v));
+  rowToggle(x, y, colW, 'Bildrate anzeigen', 'unten rechts, zum Prüfen der Leistung', settings.showfps, v => chg('showfps', v));
   // Fuß
   uiButton(110, 620, 210, 48, 'Steuerung ändern', () => { state = 'controls'; listenAct = null; controlsMsg = ''; }, { size: 17 });
   uiButton(334, 620, 190, 48, 'Standardwerte', () => { const b = settings.binds; Object.assign(settings, DEFAULT_SETTINGS, { binds: b }); saveSettings(); applySettings(); }, { size: 17 });
@@ -3919,13 +3921,23 @@ canvas.addEventListener('wheel', e => {
 
 // ---------- Hauptschleife ----------
 let last = 0;
+let fpsN = 0, fpsT = 0, fpsShow = 0, drawMs = 0;
 function loop(t) {
+  if (settings.fps30 && last && t - last < 28) { requestAnimationFrame(loop); return; }   // 30 Bilder pro Sekunde: jedes zweite Bild auslassen
   const dt = Math.min((t - (last || t)) / 1000, 0.05);
   last = t;
   update(dt);
   updateMusicIntensity(dt);
   musicFor(state);
+  const d0 = performance.now();
   draw();
+  if (settings.showfps) {
+    drawMs = drawMs * 0.9 + (performance.now() - d0) * 0.1; fpsN++;
+    if (t - fpsT >= 500) { fpsShow = Math.round(fpsN * 1000 / (t - fpsT)); fpsN = 0; fpsT = t; }
+    ctx.save(); ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    text(fpsShow + ' FPS · Zeichnen ' + drawMs.toFixed(1) + ' ms', FRAME_W - 12, FRAME_H - 8, 13, '#8ee8ff', 'right', F_TEXT);
+    ctx.restore();
+  }
   requestAnimationFrame(loop);
 }
 try { if (!localStorage.getItem(INTRO_KEY)) openIntro(); } catch (e) {}   // beim ersten Start
