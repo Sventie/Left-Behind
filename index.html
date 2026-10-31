@@ -3073,7 +3073,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.32';
+const VERSION = 'v0.33';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -3320,7 +3320,7 @@ function drawOptionsScreen() {
   y += rowSeg(x, y, colW, 'Treffer-Effekte', ['Aus', 'Schwach', 'Normal'], settings.hitfx, i => chg('hitfx', i), 'Rotfärbung und Wackeln');
   y += rowToggle(x, y, colW, 'Lebensbalken der Gegner', '', settings.hpbars, v => chg('hpbars', v)) - 6;
   y += rowToggle(x, y, colW, 'Schadenszahlen', '', settings.dmgnums, v => chg('dmgnums', v));
-  rowToggle(x, y, colW, 'Bildrate auf 30 begrenzen', 'schont Rechner und Grafikkarte', settings.fps30, v => chg('fps30', v));
+  rowToggle(x, y, colW, 'Bildrate auf 30 begrenzen', 'sonst höchstens 60 Bilder pro Sekunde', settings.fps30, v => chg('fps30', v));
   // Spiel
   x = cx(2); y = 214;
   secHead('Spiel', x, 190, colW);
@@ -3921,22 +3921,26 @@ canvas.addEventListener('wheel', e => {
 
 // ---------- Hauptschleife ----------
 let last = 0;
-let fpsN = 0, fpsT = 0, fpsShow = 0, drawMs = 0;
+let fpsN = 0, fpsT = 0, fpsShow = 0, drawMs = 0, nextDrawT = 0;
 function loop(t) {
-  if (settings.fps30 && last && t - last < 28) { requestAnimationFrame(loop); return; }   // 30 Bilder pro Sekunde: jedes zweite Bild auslassen
+  // Die Spielrechnung läuft bei jedem Bildschirmtakt, gezeichnet wird höchstens 60 (oder 30) mal pro Sekunde. So bleibt die Bewegung gleichmäßig und Monitore mit 144 Hz werden nicht überfordert.
   const dt = Math.min((t - (last || t)) / 1000, 0.05);
   last = t;
   update(dt);
   updateMusicIntensity(dt);
   musicFor(state);
-  const d0 = performance.now();
-  draw();
-  if (settings.showfps) {
-    drawMs = drawMs * 0.9 + (performance.now() - d0) * 0.1; fpsN++;
-    if (t - fpsT >= 500) { fpsShow = Math.round(fpsN * 1000 / (t - fpsT)); fpsN = 0; fpsT = t; }
-    ctx.save(); ctx.setTransform(scale, 0, 0, scale, 0, 0);
-    text(fpsShow + ' FPS · Zeichnen ' + drawMs.toFixed(1) + ' ms', FRAME_W - 12, FRAME_H - 8, 13, '#8ee8ff', 'right', F_TEXT);
-    ctx.restore();
+  const iv = 1000 / (settings.fps30 ? 30 : 60);
+  if (t + 3.5 >= nextDrawT) {
+    nextDrawT = Math.max(nextDrawT + iv, t - iv);
+    const d0 = performance.now();
+    draw();
+    if (settings.showfps) {
+      drawMs = drawMs * 0.9 + (performance.now() - d0) * 0.1; fpsN++;
+      if (t - fpsT >= 500) { fpsShow = Math.round(fpsN * 1000 / (t - fpsT)); fpsN = 0; fpsT = t; }
+      ctx.save(); ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      text(fpsShow + ' FPS · Zeichnen ' + drawMs.toFixed(1) + ' ms', FRAME_W - 12, FRAME_H - 8, 13, '#8ee8ff', 'right', F_TEXT);
+      ctx.restore();
+    }
   }
   requestAnimationFrame(loop);
 }
