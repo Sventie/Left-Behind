@@ -99,8 +99,9 @@ const DASH = { dist: 160, time: 0.2, cooldown: 12 };
 const STAGE_STEP = 10;                  // alle 3 Kartenwahlen wird der Abstand um 10 m länger (30, 30, 30, 40, 40, 40, …)
 const BOSS_DIST = 400;                  // hier endet der Lauf mit dem Boss
 // Punkte pro besiegtem Gegner (Rangliste); später je Gegner anders
-const ENEMY_POINTS = { grunt: 3, rusher: 3, wolf: 2, schild: 5, magier: 5, heiler: 6, boss: 500 };
-const ELITE_POINTS = 15, ELITE_SILVER = 30;
+// Punkte und Mondsilber pro Gefallenem sind gleich
+const ENEMY_POINTS = { grunt: 1, rusher: 1, wolf: 1, schild: 2, magier: 2, heiler: 2, boss: 20 };
+const ELITE_POINTS = 5;
 const ENEMY_TYPES = {
   grunt:  { hp: 50, speed: 80,  chase: 95,  r: 14 },
   rusher: { hp: 40, speed: 125, chase: 135, r: 13, mdmg: 12 },   // Ghul
@@ -595,7 +596,7 @@ function newGame(cls) {
     kills: 0, dist: 0,
     merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
-    stage: 1, stageStart: 0, nextPick: stageLength(1), zones: [], beams: [], bonusSilver: 0,
+    stage: 1, stageStart: 0, nextPick: stageLength(1), zones: [], beams: [], killSilver: 0,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
       x: WORLD_W / 2, y: -60, r: 14, hp: 1, angle: -Math.PI / 2,
@@ -715,7 +716,7 @@ const MERCHANT_QUOTES = [
   '„Nur hier draußen, nur jetzt – und nur für dich, mein Freund.“',
   '„Alles, was ich verkaufe, hat schon einmal jemanden gerettet. Meistens.“'
 ];
-function runSilver() { return Math.max(0, Math.floor(G.dist) + G.kills + G.bonusSilver - G.spent); }
+function runSilver() { return Math.max(0, Math.floor(G.dist) + G.killSilver - G.spent); }
 // Tränke: gelten nur für den laufenden Durchlauf
 const BUFFS = [
   { id: 'heiltrank',   name: 'Heiltrank',            kind: 'Trank', rarity: 'gewoehnlich', icon: 'flask', stat: '+40 Leben sofort',     text: 'Ein bitterer Schluck, der Wunden schließt.',         flavor: '„Schmeckt nach Eisen und Hoffnung.“',  apply: S => {}, instant: p => { p.hp = Math.min(S.maxHp, p.hp + 40); } },
@@ -1057,7 +1058,7 @@ function winRun() {
   G.nextPick = G.dist; G.pickDelay = 0;
   sfx('stage_up');
   // Belohnungsliste für den Siegbildschirm; weitere Freischaltungen (Karten, Mondsilber …) kommen hier hinein
-  const rewards = [{ icon: 'crown', title: '+' + ENEMY_POINTS.boss + ' Punkte', sub: 'Für den Sieg über den Boss.' }];
+  const rewards = [{ icon: 'crown', title: '+' + ENEMY_POINTS.boss + ' Punkte', sub: 'Für den Sieg über den Boss.' }, { icon: 'moon', title: '+' + ENEMY_POINTS.boss + ' Mondsilber', sub: 'Beute vom Boss.' }];
   if (first) rewards.push({ icon: 'book', title: 'Drachen-Grimoire', sub: 'Neues Kartenpack in der Bibliothek.', fresh: true });
   rewards.push({ icon: 'lock', title: 'Nächstes Level', sub: 'Folgt später: hier erscheint das freigeschaltete Level.', locked: true });
   G.victory = { rewards, scroll: 0 };
@@ -1432,7 +1433,7 @@ function damageEnemy(e, dmg) {
   if (e.hp <= 0) {
     G.kills++;
     const pts = e.elite ? ELITE_POINTS : ENEMY_POINTS[e.type] !== undefined ? ENEMY_POINTS[e.type] : 3;
-    if (e.elite) { G.bonusSilver += ELITE_SILVER; G.floats.push({ x: e.x - 30, y: e.y - e.r - 10, vx: 0, t: 1.4, v: '+' + ELITE_SILVER + ' Mondsilber', c: '#c8d0d8' }); }
+    G.killSilver += pts;
     G.points += pts;
     G.delta = (G.deltaT > 0 ? G.delta : 0) + pts; G.deltaT = 1.2;
     G.pops.push({ x: e.x - e.r - 4, y: e.y - e.r * 0.4, vx: -34, t: 1.1, v: pts });
@@ -1461,7 +1462,7 @@ function die() {
 function finishRun() {
   if (G.finished) return;
   G.finished = true;
-  G.earned = Math.max(0, Math.round(G.dist + G.kills + G.bonusSilver) - G.spent);   // 1 Mondsilber pro Meter, 1 pro Gefallenem, abzüglich Händler
+  G.earned = Math.max(0, Math.round(G.dist + G.killSilver) - G.spent);   // 1 Mondsilber pro Meter, je Gefallenem wie die Punkte, abzüglich Händler
   SAVE.silver += G.earned;
   SAVE.maxStage = Math.max(SAVE.maxStage || 1, G.stage);
   persist();
@@ -2674,7 +2675,7 @@ function drawShopScreen() {
     uiButton(x + 20, y + 388, pw - 40, 42, unlocked ? 'Öffnen · ' + p.price.toLocaleString('de-DE') : 'Gesperrt', () => buyPack(p), { primary: true, disabled: !unlocked || !afford });
     if (unlocked && !afford) text('Zu wenig Mondsilber', x + pw / 2, y + 380, 14, '#ff9a9a', 'center', F_TEXT, 'italic');
   });
-  text('1 Mondsilber pro Meter, 1 pro Gefallenem · Doppelte Karten tauschst du im Recycling-Menü', 640, 668, 16, '#b8c4d0', 'center', F_TEXT);
+  text('1 Mondsilber pro Meter, 1 bis 5 pro Gefallenem · Doppelte Karten tauschst du im Recycling-Menü', 640, 668, 16, '#b8c4d0', 'center', F_TEXT);
   text('Wer den Bogenmeister besiegt, schaltet bessere Bücher frei', 640, 692, 15, '#8a9aa0', 'center', F_TEXT, 'italic');
 }
 
@@ -2938,7 +2939,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.25';
+const VERSION = 'v0.26';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -3439,7 +3440,7 @@ function drawDeadScreen() {
   text(G.cls.name + ' · ' + Math.floor(G.dist) + ' m · ' + G.kills + ' Gefallene · ' + G.cards.length + ' Karten', 640, 252, 24, '#f0e6c8', 'center', F_TEXT);
   text('Rekord: ' + Math.floor(best) + ' m   ·   + ' + G.earned + ' Mondsilber', 640, 290, 19, '#b8c4d0', 'center', F_TEXT);
   titleText(runScore() + ' Punkte', 640, 352, 40, 'center');
-  if (G.won) text('Weg + Punkte der besiegten Gegner (Boss 500)', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
+  if (G.won) text('Weg + Punkte der besiegten Gegner (Boss 20)', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
   else text('Weg + Punkte der Gefallenen', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
   if (SCORES_URL && (CHEAT || G.cheated)) text('Testmodus: kein Eintrag in die Rangliste', 640, 470, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
   if (form) {
