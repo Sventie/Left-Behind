@@ -715,7 +715,7 @@ const MERCHANT_QUOTES = [
   '„Nur hier draußen, nur jetzt – und nur für dich, mein Freund.“',
   '„Alles, was ich verkaufe, hat schon einmal jemanden gerettet. Meistens.“'
 ];
-function runSilver() { return Math.max(0, Math.floor(G.dist) + G.kills * 3 + G.bonusSilver - G.spent); }
+function runSilver() { return Math.max(0, Math.floor(G.dist) + G.kills + G.bonusSilver - G.spent); }
 // Tränke: gelten nur für den laufenden Durchlauf
 const BUFFS = [
   { id: 'heiltrank',   name: 'Heiltrank',            kind: 'Trank', rarity: 'gewoehnlich', icon: 'flask', stat: '+40 Leben sofort',     text: 'Ein bitterer Schluck, der Wunden schließt.',         flavor: '„Schmeckt nach Eisen und Hoffnung.“',  apply: S => {}, instant: p => { p.hp = Math.min(S.maxHp, p.hp + 40); } },
@@ -1461,7 +1461,7 @@ function die() {
 function finishRun() {
   if (G.finished) return;
   G.finished = true;
-  G.earned = Math.max(0, Math.round(G.dist + G.kills * 3 + G.bonusSilver) - G.spent);   // 1 Mondsilber pro Meter, 3 pro Gefallenem, abzüglich Händler
+  G.earned = Math.max(0, Math.round(G.dist + G.kills + G.bonusSilver) - G.spent);   // 1 Mondsilber pro Meter, 1 pro Gefallenem, abzüglich Händler
   SAVE.silver += G.earned;
   SAVE.maxStage = Math.max(SAVE.maxStage || 1, G.stage);
   persist();
@@ -2674,7 +2674,7 @@ function drawShopScreen() {
     uiButton(x + 20, y + 388, pw - 40, 42, unlocked ? 'Öffnen · ' + p.price.toLocaleString('de-DE') : 'Gesperrt', () => buyPack(p), { primary: true, disabled: !unlocked || !afford });
     if (unlocked && !afford) text('Zu wenig Mondsilber', x + pw / 2, y + 380, 14, '#ff9a9a', 'center', F_TEXT, 'italic');
   });
-  text('1 Mondsilber pro Meter, 3 pro Gefallenem · Doppelte Karten tauschst du im Recycling-Menü', 640, 668, 16, '#b8c4d0', 'center', F_TEXT);
+  text('1 Mondsilber pro Meter, 1 pro Gefallenem · Doppelte Karten tauschst du im Recycling-Menü', 640, 668, 16, '#b8c4d0', 'center', F_TEXT);
   text('Wer den Bogenmeister besiegt, schaltet bessere Bücher frei', 640, 692, 15, '#8a9aa0', 'center', F_TEXT, 'italic');
 }
 
@@ -2938,7 +2938,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.24';
+const VERSION = 'v0.25';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -3440,7 +3440,7 @@ function drawDeadScreen() {
   text('Rekord: ' + Math.floor(best) + ' m   ·   + ' + G.earned + ' Mondsilber', 640, 290, 19, '#b8c4d0', 'center', F_TEXT);
   titleText(runScore() + ' Punkte', 640, 352, 40, 'center');
   if (G.won) text('Weg + Punkte der besiegten Gegner (Boss 500)', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
-  else text('Weg + 3 je Gefallenem', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
+  else text('Weg + Punkte der Gefallenen', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
   if (SCORES_URL && (CHEAT || G.cheated)) text('Testmodus: kein Eintrag in die Rangliste', 640, 470, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
   if (form) {
     text('Dein Name für die Rangliste', 640, 446, 18, '#f0e6c8', 'center', F_TEXT);
