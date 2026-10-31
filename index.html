@@ -2311,6 +2311,26 @@ function chip(x, y, w, label, active, cb, color) {
 
 // Kartenbuch: Ringbuch mit Folienseiten. Die Seiten behandeln eine Kategorie nach der anderen, innerhalb davon von häufig zu selten.
 let bookHoverCard = null;
+// Folienseiten: Lichtbänder und Knicke je Seite. Die Taschen fangen dasselbe Licht leicht versetzt und in minimal anderem Winkel auf.
+const FOIL_CREASES = {
+  L: ['M60 0 q14 90 -6 180 q-14 80 8 160', 'M96 0 q-8 100 10 200', 'M400 504 q-12 -90 6 -170 q8 -60 -4 -130'],
+  R: ['M330 0 q-18 70 4 150 q16 90 -10 190', 'M296 0 q10 60 -6 130', 'M130 504 q16 -80 -4 -150 q-10 -50 6 -120', 'M200 504 q-6 -50 12 -110']
+};
+const FOIL_PATHS = {}; for (const k in FOIL_CREASES) FOIL_PATHS[k] = FOIL_CREASES[k].map(d => new Path2D(d));
+const FOIL_BANDS = [[0.08, 0], [0.14, 0.07], [0.17, 0.14], [0.21, 0.04], [0.26, 0], [0.58, 0], [0.62, 0.05], [0.64, 0.1], [0.69, 0]];
+function foilShine(ox, oy, w, h, side, deg) {
+  const a = deg * deg , dx = Math.sin(a), dy = -Math.cos(a), len = Math.abs(w * dx) + Math.abs(h * dy), cx = ox + w / 2, cy = oy + h / 2;
+  let g = ctx.createLinearGradient(cx - dx * len / 2, cy - dy * len / 2, cx + dx * len / 2, cy + dy * len / 2);
+  g.addColorStop(0, 'rgba(255,255,255,0)');
+  for (const [t, al] of FOIL_BANDS) g.addColorStop(t, 'rgba(255,255,255,' + al + ')');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(ox, oy, w, h);
+  g = ctx.createLinearGradient(ox, 0, ox + 26, 0); g.addColorStop(0, 'rgba(255,255,255,.14)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(ox, oy, 26, h);
+  ctx.save(); ctx.translate(ox, oy); ctx.lineWidth = 1.4;
+  FOIL_PATHS[side].forEach((p, i) => { ctx.strokeStyle = i % 2 ? 'rgba(0,0,0,.2)' : 'rgba(255,255,255,.09)'; ctx.stroke(p); });
+  ctx.restore();
+}
 function drawBookScreen() {
   uiBtns = []; bookHoverCard = null;
   screenBackdrop();
@@ -2365,7 +2385,7 @@ function drawBookScreen() {
   ctx.fillStyle = g; ctx.fillRect(lp + pw, ay, 37, ah);
   const ringTops = [80, 250, 420];
 
-  const drawPage = (px, side, page, num) => {
+  const drawPage = (px, side, page, num) => {   // px/side werden auch von den Taschen (pocketGlare) gebraucht
     rr(px, ay, pw, ah, 6); g = ctx.createLinearGradient(0, ay, 0, ay + ah); g.addColorStop(0, '#141f19'); g.addColorStop(1, '#0d1511');
     ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.lineWidth = 1.5; ctx.stroke();
     const sx = side === 'L' ? px + pw - 24 : px;   // Lochstreifen an der Bindekante
@@ -2391,8 +2411,19 @@ function drawBookScreen() {
     else { titleText(page.cat, hx + hw, ay + 32, 26, 'right'); text(CAT_SUB[page.cat] + ' · häufig → selten', hx, ay + 28, 14, '#8a9aa0', 'left', F_TEXT, 'italic'); }
     for (let i = 0; i < 6; i++) {
       const cx = hx + (i % 3) * 150, cy = ay + 44 + Math.floor(i / 3) * 214, c = page.cards[i];
-      rr(cx - 2, cy - 2, 140, 202, 7); ctx.fillStyle = 'rgba(255,255,255,.035)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1; ctx.stroke();
-      if (!c) { ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fillRect(cx - 1, cy - 1, 138, 5); continue; }
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 2; rr(cx - 2, cy - 2, 140, 202, 7); ctx.fillStyle = 'rgba(255,255,255,.04)'; ctx.fill(); ctx.restore();
+      rr(cx - 2, cy - 2, 140, 202, 7); ctx.strokeStyle = 'rgba(255,255,255,.34)'; ctx.lineWidth = 1; ctx.stroke();
+      const pocketGlare = () => {   // Folientasche: Siegelkante, Kantenlicht und der Lichtreflex der Seite, etwas versetzt
+        ctx.save(); rr(cx - 2, cy - 2, 140, 202, 7); ctx.clip();
+        foilShine(px + 17, ay + 10, pw, ah, side, 103);
+        let pg = ctx.createLinearGradient(0, cy - 2, 0, cy + 7); pg.addColorStop(0, 'rgba(255,255,255,.32)'); pg.addColorStop(1, 'rgba(255,255,255,.05)');
+        ctx.fillStyle = pg; ctx.fillRect(cx - 2, cy - 2, 140, 9); ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.fillRect(cx - 2, cy + 6, 140, 1);
+        pg = ctx.createLinearGradient(0, cy + 193, 0, cy + 200); pg.addColorStop(0, 'rgba(0,0,0,0)'); pg.addColorStop(1, 'rgba(0,0,0,.35)'); ctx.fillStyle = pg; ctx.fillRect(cx - 2, cy + 193, 140, 7);
+        ctx.restore();
+        rr(cx - 1, cy - 1, 138, 200, 6); pg = ctx.createLinearGradient(cx, cy, cx + 136, cy + 198); pg.addColorStop(0, 'rgba(255,255,255,.28)'); pg.addColorStop(0.5, 'rgba(255,255,255,0)'); pg.addColorStop(1, 'rgba(0,0,0,.45)');
+        ctx.strokeStyle = pg; ctx.lineWidth = 1.5; ctx.stroke();
+      };
+      if (!c) { pocketGlare(); continue; }
       const o = SAVE.owned[c.id] || 0, R = RARITY[c.rarity], seen = !!SAVE.seen[c.id];
       if (o === 0 && !seen) {
         drawIcon('crown', cx + 68, cy + 76, 42, '#3e5246', 1.3);
@@ -2410,15 +2441,15 @@ function drawBookScreen() {
           text('nicht im Besitz', cx + 68, cy + 107, 13, '#c8d4de', 'center', F_TEXT, 'italic');
         }
       }
-      ctx.fillStyle = 'rgba(255,255,255,.22)'; ctx.fillRect(cx - 1, cy - 1, 138, 5);   // Einstecklippe der Tasche
+      pocketGlare();
     }
     footer();
   };
   const lpIdx = bookSpread * 2;
   drawPage(lp, 'L', pages[lpIdx], lpIdx + 1);
   drawPage(rp, 'R', pages[lpIdx + 1], lpIdx + 2);
-  // Glanz über beiden Seiten
-  for (const px of [lp, rp]) { g = ctx.createLinearGradient(px, ay, px + pw * 0.8, ay + ah * 0.8); g.addColorStop(0, 'rgba(255,255,255,.05)'); g.addColorStop(0.35, 'rgba(255,255,255,0)'); rr(px, ay, pw, ah, 6); ctx.fillStyle = g; ctx.fill(); }
+  // Folienglanz über beiden Seiten: Lichtbänder und je Seite eigene Knicke
+  for (const [px, sd] of [[lp, 'L'], [rp, 'R']]) { ctx.save(); rr(px, ay, pw, ah, 6); ctx.clip(); foilShine(px, ay, pw, ah, sd, 100); ctx.restore(); }
 
   // Lesezeichen und Ringe (Ringe liegen vor dem Band)
   const mid = lp + pw + 18.5;
@@ -3042,7 +3073,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.30';
+const VERSION = 'v0.31';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
