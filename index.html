@@ -102,6 +102,8 @@ const BOSS_DIST = 400;                  // hier endet der Lauf mit dem Boss
 // Punkte und Mondsilber pro Gefallenem sind gleich
 const ENEMY_POINTS = { grunt: 1, rusher: 1, wolf: 1, schild: 2, magier: 2, heiler: 2, boss: 20 };
 const ELITE_POINTS = 5;
+// Endlosmodus: so viele Gefallene zählen, dann muss man ENDLESS_UNLOCK_M weiterlaufen, bevor wieder Punkte und Mondsilber kommen
+const ENDLESS_KILL_LIMIT = 25, ENDLESS_UNLOCK_M = 10;
 const ENEMY_TYPES = {
   grunt:  { hp: 50, speed: 80,  chase: 95,  r: 14 },
   rusher: { hp: 40, speed: 125, chase: 135, r: 13, mdmg: 12 },   // Ghul
@@ -596,7 +598,7 @@ function newGame(cls) {
     kills: 0, dist: 0,
     merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
-    stage: 1, stageStart: 0, nextPick: stageLength(1), zones: [], beams: [], killSilver: 0,
+    stage: 1, stageStart: 0, nextPick: stageLength(1), zones: [], beams: [], killSilver: 0, limitCount: 0, limitLock: 0,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
       x: WORLD_W / 2, y: -60, r: 14, hp: 1, angle: -Math.PI / 2,
@@ -1001,6 +1003,7 @@ function update(dt) {
   // Kamera: nur nach oben, ab oberem Drittel
   if (!G.camLock && p.y < G.camTop + VIEW_H / 3) G.camTop = p.y - VIEW_H / 3;
   G.dist = Math.max(G.dist, -p.y / PX_PER_M);
+  if (G.limitLock && G.dist >= G.limitLock) { G.limitLock = 0; G.limitCount = 0; say('Neue Punkte freigeschaltet'); sfx('stage_up'); }
   generate();
 
   updateEnemies(dt);
@@ -1432,11 +1435,15 @@ function damageEnemy(e, dmg) {
   if (e.state === 'idle') alertEnemy(e);
   if (e.hp <= 0) {
     G.kills++;
-    const pts = e.elite ? ELITE_POINTS : ENEMY_POINTS[e.type] !== undefined ? ENEMY_POINTS[e.type] : 3;
+    let pts = e.elite ? ELITE_POINTS : ENEMY_POINTS[e.type] !== undefined ? ENEMY_POINTS[e.type] : 3;
+    if (G.endless) {   // Limit: nach ENDLESS_KILL_LIMIT Gefallenen gibt es nichts mehr, bis man weitergelaufen ist
+      if (G.limitLock) { pts = 0; G.floats.push({ x: e.x - 14, y: e.y - e.r, vx: 0, t: 0.8, v: 'Limit', c: '#8a9aa0' }); }
+      else if (++G.limitCount >= ENDLESS_KILL_LIMIT) { G.limitLock = G.dist + ENDLESS_UNLOCK_M; say('Punkte-Limit erreicht: lauf ' + ENDLESS_UNLOCK_M + ' m weiter!'); }
+    }
     G.killSilver += pts;
     G.points += pts;
     G.delta = (G.deltaT > 0 ? G.delta : 0) + pts; G.deltaT = 1.2;
-    G.pops.push({ x: e.x - e.r - 4, y: e.y - e.r * 0.4, vx: -34, t: 1.1, v: pts });
+    if (pts > 0) G.pops.push({ x: e.x - e.r - 4, y: e.y - e.r * 0.4, vx: -34, t: 1.1, v: pts });
   }
 }
 function chainLightning(from, dmg) {
@@ -1989,7 +1996,12 @@ function drawRails() {
   while (fs > 18 && ctx.measureText(sc).width > 104) { fs -= 2; ctx.font = fs + 'px ' + F_TITLE; }
   ctx.textAlign = 'center'; ctx.fillStyle = silverGrad(30, 62); ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 4; ctx.fillText(sc, 58, 60); ctx.shadowBlur = 0;
   text(Math.floor(G.dist) + ' m', 58, 88, 22, '#f0e6c8', 'center', F_TITLE);
-  text(G.kills + ' Gefallene', 58, 114, 15, '#c8d4de', 'center', F_TEXT);
+  text(G.kills + ' Gefallene', 58, 111, 15, '#c8d4de', 'center', F_TEXT);
+  if (G.endless) {   // Limit-Balken: gold = noch Punkte frei, rot = gesperrt, füllt sich beim Weiterlaufen
+    const f = G.limitLock ? 1 - (G.limitLock - G.dist) / ENDLESS_UNLOCK_M : 1 - G.limitCount / ENDLESS_KILL_LIMIT;
+    rr(14, 118, 92, 6, 3); ctx.fillStyle = '#050a07'; ctx.fill();
+    rr(14, 118, Math.max(6, 92 * clamp(f, 0, 1)), 6, 3); ctx.fillStyle = G.limitLock ? '#d8584f' : '#f2c14e'; ctx.fill();
+  }
   ctx.fillStyle = '#2e3e32'; ctx.fillRect(14, 130, 92, 1);
   // Entfernungsmesser bis zum Boss. Danach bleibt der Balken voll, die Marken (immer fünf, oben die letzte volle 100) rücken zur 0 hin.
   const GY = 146, GH = 428, D = G.dist, maxPos = Math.max(BOSS_DIST, D), top = Math.max(BOSS_DIST, 100 * Math.floor(D / 100)), prog = clamp(D / BOSS_DIST, 0, 1);
@@ -2939,7 +2951,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.26';
+const VERSION = 'v0.27';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
