@@ -103,7 +103,7 @@ const BOSS_DIST = 400;                  // hier endet der Lauf mit dem Boss
 const ENEMY_POINTS = { grunt: 1, rusher: 1, wolf: 1, schild: 2, magier: 2, heiler: 2, boss: 20 };
 const ELITE_POINTS = 5;
 // Endlosmodus: so viele Gefallene zählen, dann muss man ENDLESS_UNLOCK_M weiterlaufen, bevor wieder Punkte und Mondsilber kommen
-const ENDLESS_KILL_LIMIT = 25, ENDLESS_UNLOCK_M = 10;
+const ENDLESS_KILL_LIMIT = 20, ENDLESS_UNLOCK_M = 10;
 const ENEMY_TYPES = {
   grunt:  { hp: 50, speed: 80,  chase: 95,  r: 14 },
   rusher: { hp: 40, speed: 125, chase: 135, r: 13, mdmg: 12 },   // Ghul
@@ -2951,7 +2951,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.27';
+const VERSION = 'v0.28';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
