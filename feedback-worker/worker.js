@@ -1,7 +1,7 @@
 // Cloudflare Worker für Left Behind:
 //   POST /          Feedback als GitHub-Issue anlegen (Secret GITHUB_TOKEN)
 //   (Rangliste zurückgesetzt: Schlüssel scores-2 statt scores)
-//   GET  /scores    Ranglisten lesen (Alle + je Streiter, je Name und Streiter das beste Ergebnis)  (KV-Namespace SCORES)
+//   GET  /scores    Rangliste lesen: entries (alle Einträge, je Name, Streiter und Gebiet das beste Ergebnis), dazu lists/scores für ältere Spielstände  (KV-Namespace SCORES)
 //   POST /scores    Ergebnis eintragen         (KV-Namespace SCORES)
 // Der GitHub-Token liegt nur hier als Secret, nie im Spiel.
 const REPO = 'sventie/left-behind';
@@ -9,7 +9,8 @@ const ALLOWED_ORIGINS = ['https://sventie.github.io'];   // Adresse des Spiels (
 const WINDOW_MS = 60000, MAX_PER_WINDOW = 3;
 const hits = new Map();
 const CLASSES = ['ritter', 'waldlaeufer', 'magier'];
-const MAX_DIST = 5000, MAX_KILLS = 5000, KEEP = 200, SHOW = 10, NAME_MAX = 25;
+const AREAS = ['wald', 'moor', 'schloss', 'kerker'];
+const MAX_DIST = 5000, MAX_KILLS = 5000, KEEP = 600, SHOW = 10, NAME_MAX = 25;
 
 export default {
   async fetch(request, env) {
@@ -49,7 +50,9 @@ function boards(list) {
   const top = f => list.filter(f).sort((a, b) => b.score - a.score || a.at - b.at).slice(0, SHOW);
   const lists = { all: top(() => true) };
   for (const c of CLASSES) lists[c] = top(e => e.cls === c);
-  return { scores: lists.all, lists };
+  // entries: alle Einträge (Gebiet fehlt bei alten Einträgen = Wald); das Spiel filtert nach Gebiet und Streiter
+  const entries = list.slice().sort((a, b) => b.score - a.score || a.at - b.at).map(e => ({ ...e, area: e.area || 'wald' }));
+  return { scores: lists.all, lists, entries };
 }
 async function load(env) {
   try { return JSON.parse(await env.SCORES.get('scores-2')) || []; } catch (e) { return []; }
@@ -67,10 +70,12 @@ async function addScore(request, env, reply) {
   // Punkte kommen vom Spiel (je Gegnertyp unterschiedlich); ohne Angabe gilt die alte Rechnung. Obergrenze: 100 je Gefallenem plus Boss.
   const points = Number.isFinite(Number(d.points)) ? Math.floor(Number(d.points)) : kills * 3 + (won ? 500 : 0);
   if (!(points >= 0 && points <= kills * 100 + 600)) return reply(400, { error: 'Ungültiges Ergebnis.' });
-  const entry = { name, cls: d.cls, dist, kills, won, score: dist + points, at: Date.now() };
+  const area = AREAS.includes(d.area) ? d.area : 'wald';
+  const entry = { name, cls: d.cls, area, dist, kills, won, score: dist + points, at: Date.now() };
   let list = await load(env);
-  const i = list.findIndex(e => e.cls === entry.cls && e.name.toLowerCase() === name.toLowerCase());   // je Name und Streiter ein bestes Ergebnis
-  const rankOf = e => list.filter(x => x.cls === e.cls && (x.score > e.score || (x.score === e.score && x.at < e.at))).length + 1;
+  const same = e => e.cls === entry.cls && (e.area || 'wald') === area;
+  const i = list.findIndex(e => same(e) && e.name.toLowerCase() === name.toLowerCase());   // je Name, Streiter und Gebiet ein bestes Ergebnis
+  const rankOf = e => list.filter(x => x.cls === e.cls && (x.area || 'wald') === (e.area || 'wald') && (x.score > e.score || (x.score === e.score && x.at < e.at))).length + 1;
   if (i >= 0) { if (list[i].score >= entry.score) return reply(200, { rank: rankOf(list[i]), best: false, ...boards(list) }); list.splice(i, 1); }
   list.push(entry);
   list.sort((a, b) => b.score - a.score || a.at - b.at);

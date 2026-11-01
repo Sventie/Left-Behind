@@ -413,7 +413,7 @@ const MUSIC_DEFS = {
 function musicFor(st) {
   if (!gestureDone) return;
   if (['options', 'controls', 'feedback'].includes(st)) return;
-  const want = ['menu', 'select', 'areas', 'intro', 'book', 'deck', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause', 'victory'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
+  const want = ['menu', 'select', 'areas', 'ranking', 'intro', 'book', 'deck', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause', 'victory'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
   if (MUSIC.name === want) return;
   stopMusic(); MUSIC.name = want;
   if (!want) return;
@@ -3175,9 +3175,10 @@ function draw() {
   if (state === 'recycle') { drawRecycleScreen(); drawCursor(); return; }
   if (state === 'intro') { drawIntroScreen(); drawCursor(); return; }
   if (isPanel(state) && (panelFrom === 'menu' || !G)) { drawMenu(); overlay(0.8); drawPanelScreen(); drawToast(); if (state !== 'feedback') drawCursor(); return; }
-  if (state === 'menu' || !G && state !== 'select' && state !== 'areas') { drawMenu(); drawCursor(); return; }
+  if (state === 'menu' || !G && state !== 'select' && state !== 'areas' && state !== 'ranking') { drawMenu(); drawCursor(); return; }
   if (state === 'select') { drawSelectScreen(); drawCursor(); return; }
   if (state === 'areas') { drawAreaScreen(); drawCursor(); return; }
+  if (state === 'ranking') { drawRankingScreen(); drawCursor(); return; }
 
   ctx.save();
   ctx.beginPath(); ctx.rect(FIELD_X, 0, VIEW_W, VIEW_H); ctx.clip();
@@ -3209,7 +3210,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.34';
+const VERSION = 'v0.35';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -3667,7 +3668,7 @@ applySettings();
 
 // ---------- Rangliste ----------
 const SCORES_URL = FEEDBACK_ENDPOINT ? FEEDBACK_ENDPOINT + '/scores' : '';
-const board = { lists: null, err: false, at: -1e9, loading: false }, BOARD_TABS = [['all', 'Alle', 48], ['ritter', 'Ritter', 66], ['waldlaeufer', 'Waldläufer', 96], ['magier', 'Magier', 70]];
+const board = { lists: null, entries: null, err: false, at: -1e9, loading: false }, BOARD_TABS = [['all', 'Alle', 48], ['ritter', 'Ritter', 66], ['waldlaeufer', 'Waldläufer', 96], ['magier', 'Magier', 70]];
 let boardTab = 'all', boardTabRects = [];
 let scoreSt = { run: null };
 const runScore = () => Math.floor(G.dist) + G.points;
@@ -3678,7 +3679,7 @@ async function loadBoard() {
   try {
     const res = await fetch(SCORES_URL);
     if (!res.ok) throw 0;
-    const j = await res.json(); board.lists = j.lists || { all: j.scores || [] }; board.err = false;
+    const j = await res.json(); board.entries = j.entries || ((j.lists && j.lists.all) || j.scores || []).map(e => ({ ...e, area: e.area || 'wald' })); board.lists = j.lists || { all: j.scores || [] }; board.err = false;
   } catch (e) { board.err = true; }
   board.loading = false;
 }
@@ -3689,11 +3690,11 @@ async function submitScore() {
   if (!name) { scoreSt.msg = 'Bitte einen Namen eingeben.'; scoreSt.kind = 'err'; return; }
   scoreSt.busy = true; scoreSt.msg = 'Speichere …'; scoreSt.kind = '';
   try {
-    const res = await fetch(SCORES_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, cls: run.cls.id, dist: Math.floor(run.dist), kills: run.kills, won: run.won, points: run.points }) });
+    const res = await fetch(SCORES_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, cls: run.cls.id, area: run.area.id, dist: Math.floor(run.dist), kills: run.kills, won: run.won, points: run.points }) });
     const j = await res.json().catch(() => ({}));
     if (res.ok) {
       try { localStorage.setItem(NAME_KEY, name); } catch (e) {}
-      if (j.lists || j.scores) { board.lists = j.lists || { all: j.scores }; board.err = false; board.at = performance.now(); }
+      if (j.lists || j.scores) { board.lists = j.lists || { all: j.scores }; board.entries = j.entries || board.entries; board.err = false; board.at = performance.now(); }
       scoreSt.done = true; scoreSt.kind = 'ok'; fbEl.name.blur();
       scoreSt.msg = j.best ? 'Eingetragen: Platz ' + j.rank + (run.cls ? ' (' + run.cls.name + ')' : '') + '!' : 'Dein bisheriger Rekord ist besser und bleibt stehen.';
       sfx('card_pick');
@@ -3721,45 +3722,104 @@ function drawDeadScreen() {
     uiButton(724, 462, 126, 44, scoreSt.busy ? '…' : 'Eintragen', submitScore, { primary: true, size: 16, disabled: scoreSt.busy });
   } else fbEl.name.classList.remove('on');
   if (scoreSt.msg) text(scoreSt.msg, 640, 540, 18, scoreSt.kind === 'ok' ? '#4fd08a' : scoreSt.kind === 'err' ? '#ff7a8a' : '#c8d4de', 'center', F_TEXT);
-  uiButton(540, 572, 200, 46, form ? 'Überspringen' : 'Zum Menü', leaveDead, { size: 17, primary: !form });
+  if (form) uiButton(540, 572, 200, 46, 'Überspringen', leaveDead, { size: 17 });
+  else { if (SCORES_URL) { uiButton(430, 572, 200, 46, 'Rangliste ansehen', () => { fbEl.name.blur(); openRanking('dead'); }, { size: 16 }); uiButton(650, 572, 200, 46, 'Zum Menü', leaveDead, { size: 17, primary: true }); } else uiButton(540, 572, 200, 46, 'Zum Menü', leaveDead, { size: 17, primary: true }); }
   drawCursor();
 }
+// Name in einer Spalte; zu lange Namen laufen langsam hin und her
+function marquee(nm, nx, ry, nw, size, col, bold, fade) {
+  ctx.font = (bold ? 'bold ' : '') + size + 'px ' + F_TEXT;
+  const tw = ctx.measureText(nm).width;
+  ctx.save(); ctx.beginPath(); ctx.rect(nx, ry, nw, 26); ctx.clip();
+  let off = 0;
+  if (tw > nw) { let u = (performance.now() / 7000) % 2; if (u > 1) u = 2 - u; const k = clamp((u - 0.18) / 0.64, 0, 1); off = (tw - nw) * (k * k * (3 - 2 * k)); }
+  text(nm, nx - off, ry + 19, size, col, 'left', F_TEXT, bold ? 'bold' : '');
+  if (tw > nw) { const g = ctx.createLinearGradient(nx + nw - 18, 0, nx + nw, 0); g.addColorStop(0, fade.replace(/[\d.]+\)$/, '0)')); g.addColorStop(1, fade); ctx.fillStyle = g; ctx.fillRect(nx + nw - 18, ry, 18, 26); }
+  ctx.restore();
+}
+const fmtN = n => Number(n).toLocaleString('de-DE');
+// Hauptmenü: die besten fünf aus allen Gebieten und Streitern, dazu der Weg zur ganzen Rangliste
 function drawBoard() {
   boardTabRects = [];
   if (!SCORES_URL) return;
   if (!board.loading && performance.now() - board.at > (board.err ? 8000 : 30000)) loadBoard();
-  const x = 890, y = 272, w = 350, h = 392;
+  const x = 890, y = 324, w = 350, h = 340;
   rr(x, y, w, h, 14); ctx.fillStyle = 'rgba(10,17,13,.88)'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
   text('Rangliste', x + 20, y + 34, 22, '#f2c14e', 'left', F_TITLE);
-  text('Punkte', x + w - 18, y + 30, 13, '#8a9aa0', 'right', F_TEXT);
-  let tx = x + 14;
-  for (const [id, label, tw] of BOARD_TABS) {   // Reiter: Alle und je Streiter
-    const on = boardTab === id, hov = inside(tx, y + 48, tw, 30);
-    rr(tx, y + 48, tw, 30, 15); ctx.fillStyle = on ? '#1e2c22' : (hov ? '#16231b' : '#101a14'); ctx.fill(); ctx.strokeStyle = on ? '#f2c14e' : '#2e3e32'; ctx.lineWidth = 1.5; ctx.stroke();
-    text(label, tx + tw / 2, y + 68, 14, on ? '#f2c14e' : '#c8d4de', 'center', F_TEXT);
-    boardTabRects.push({ id, x: tx, y: y + 48, w: tw, h: 30 }); tx += tw + 6;
-  }
-  ctx.fillStyle = '#2e3e32'; ctx.fillRect(x + 18, y + 80, w - 36, 1);
-  const me = savedName().toLowerCase(), list = board.lists && (board.lists[boardTab] || []);
-  if (!board.lists) text(board.err ? 'Rangliste nicht erreichbar' : 'Lädt …', x + w / 2, y + 160, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
-  else if (!list.length) text('Noch keine Einträge – sei der Erste!', x + w / 2, y + 160, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
-  else list.slice(0, 10).forEach((e, i) => {
-    const ry = y + 92 + i * 29, mine = me && e.name.toLowerCase() === me, col = mine ? '#f2c14e' : '#e8dcbc', bx = x + 18;
+  text('Alle Gebiete · Alle Streiter', x + 20, y + 56, 13, '#8ee8ff', 'left', F_TEXT);
+  const bx = x + 18;
+  text('WEG', bx + 202, y + 58, 11, '#8a9aa0', 'right', F_TEXT); text('GEGNER', bx + 254, y + 58, 11, '#8a9aa0', 'right', F_TEXT); text('PUNKTE', bx + 314, y + 58, 11, '#8a9aa0', 'right', F_TEXT);
+  ctx.fillStyle = '#2e3e32'; ctx.fillRect(x + 18, y + 68, w - 36, 1);
+  const me = savedName().toLowerCase(), list = board.entries && board.entries.slice().sort((a, b) => b.score - a.score).slice(0, 5);
+  if (!board.entries) text(board.err ? 'Rangliste nicht erreichbar' : 'Lädt …', x + w / 2, y + 150, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
+  else if (!list.length) text('Noch keine Einträge – sei der Erste!', x + w / 2, y + 150, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
+  else list.forEach((e, i) => {
+    const ry = y + 80 + i * 30, mine = me && e.name.toLowerCase() === me, col = mine ? '#f2c14e' : '#e8dcbc';
     text(String(i + 1), bx, ry + 19, 16, i < 3 ? '#f2c14e' : '#8a9aa0', 'left', F_TITLE);
     if (CLASS_ICON[e.cls]) drawIcon(CLASS_ICON[e.cls], bx + 38, ry + 13, 16, col, 1.6);
-    // Name: lange Namen laufen langsam hin und her
-    const nm = e.name + (e.won ? ' ✓' : ''), nx = bx + 58, nw = 146;
-    ctx.font = (mine ? 'bold ' : '') + '17px ' + F_TEXT;
-    const tw = ctx.measureText(nm).width;
-    ctx.save(); ctx.beginPath(); ctx.rect(nx, ry, nw, 26); ctx.clip();
-    let off = 0;
-    if (tw > nw) { let u = (performance.now() / 7000) % 2; if (u > 1) u = 2 - u; const k = clamp((u - 0.18) / 0.64, 0, 1); off = (tw - nw) * (k * k * (3 - 2 * k)); }
-    text(nm, nx - off, ry + 19, 17, col, 'left', F_TEXT, mine ? 'bold' : '');
-    if (tw > nw) { const g = ctx.createLinearGradient(nx + nw - 18, 0, nx + nw, 0); g.addColorStop(0, 'rgba(10,17,13,0)'); g.addColorStop(1, 'rgba(10,17,13,.95)'); ctx.fillStyle = g; ctx.fillRect(nx + nw - 18, ry, 18, 26); }
-    ctx.restore();
-    text(e.dist + ' m', bx + 314 - 62, ry + 19, 14, '#8a9aa0', 'right', F_TEXT);
-    text(e.score.toLocaleString('de-DE'), bx + 314, ry + 19, 17, col, 'right', F_TITLE);
+    marquee(e.name, bx + 58, ry, 100, 17, col, mine, 'rgba(10,17,13,.95)');
+    text(e.dist + ' m', bx + 202, ry + 19, 13, '#8a9aa0', 'right', F_TEXT);
+    text(String(e.kills), bx + 254, ry + 19, 13, '#8a9aa0', 'right', F_TEXT);
+    text(fmtN(e.score), bx + 314, ry + 19, 17, col, 'right', F_TITLE);
   });
+  const bw = w - 36, by = y + h - 60, hov = inside(x + 18, by, bw, 44);
+  rr(x + 18, by, bw, 44, 22); ctx.fillStyle = hov ? '#1e2c22' : '#101a14'; ctx.fill(); ctx.strokeStyle = hov ? '#f2c14e' : '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
+  text('Ganze Rangliste  ›', x + w / 2, by + 28, 16, '#e8dcbc', 'center', F_TITLE);
+  boardTabRects.push({ id: 'open', x: x + 18, y: by, w: bw, h: 44 });
+}
+// ---------- Rangliste (ganzer Bildschirm) ----------
+let rankArea = 'all', rankCls = 'all', rankFrom = 'menu';
+function openRanking(from) {
+  rankFrom = from || 'menu'; rankArea = 'all'; rankCls = 'all'; state = 'ranking';
+  if (SCORES_URL && !board.loading && performance.now() - board.at > 3000) loadBoard();
+}
+function drawRankingScreen() {
+  uiBtns = [];
+  let g = ctx.createLinearGradient(0, 0, 0, FRAME_H); g.addColorStop(0, '#0c1a2a'); g.addColorStop(0.45, '#12283a'); g.addColorStop(0.75, '#1c3a40'); g.addColorStop(1, '#0a110d'); ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  for (const st of stars) { ctx.fillStyle = 'rgba(255,255,255,' + st[3] * 0.5 + ')'; ctx.fillRect(st[0], st[1], st[2], st[2]); }
+  ctx.fillStyle = 'rgba(2,5,4,.8)'; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  if (SCORES_URL && !board.loading && performance.now() - board.at > (board.err ? 8000 : 30000)) loadBoard();
+  kicker('Vergleiche dich', 40, 46);
+  titleText('Rangliste', 40, 92, 46);
+  uiButton(FRAME_W - 40 - 140, 40, 140, 44, '‹ ' + (rankFrom === 'dead' ? 'Zurück' : 'Menü'), () => { state = rankFrom === 'dead' && G ? 'dead' : 'menu'; }, { size: 16 });
+  const chip = (x, y, label, on, act, iconId) => {
+    ctx.font = '14px ' + F_TITLE; const w = ctx.measureText(label).width + 30 + (iconId ? 22 : 0), hov = inside(x, y, w, 34);
+    rr(x, y, w, 34, 17); ctx.fillStyle = on ? '#1e2c22' : (hov ? '#16231b' : '#101a14'); ctx.fill(); ctx.strokeStyle = on ? '#f2c14e' : (hov ? '#9a7a3a' : '#2e3e32'); ctx.lineWidth = 1; ctx.stroke();
+    if (iconId) drawIcon(iconId, x + 22, y + 17, 16, on ? '#f2c14e' : '#c8d4de', 1.6);
+    text(label, x + 15 + (iconId ? 22 : 0), y + 23, 14, on ? '#f2c14e' : '#c8d4de', 'left', F_TITLE); uiHit(x, y, w, 34, act); return x + w + 8;
+  };
+  text('GEBIET', 40, 144, 13, '#8a9aa0', 'left', F_TEXT); text('STREITER', 40, 190, 13, '#8a9aa0', 'left', F_TEXT);
+  let cx = 118; cx = chip(cx, 120, 'Alle', rankArea === 'all', () => { rankArea = 'all'; });
+  for (const a of AREAS) cx = chip(cx, 120, a.id === 'wald' ? 'Wald' : a.name.replace(/^(Das|Der) /, ''), rankArea === a.id, () => { rankArea = a.id; });
+  cx = 118; cx = chip(cx, 166, 'Alle', rankCls === 'all', () => { rankCls = 'all'; });
+  for (const c of CLASSES) cx = chip(cx, 166, c.name, rankCls === c.id, () => { rankCls = c.id; }, CLASS_ICON[c.id]);
+  const all = board.entries || [], me = savedName().toLowerCase();
+  const list = all.filter(e => (rankArea === 'all' || (e.area || 'wald') === rankArea) && (rankCls === 'all' || e.cls === rankCls)).sort((a, b) => b.score - a.score);
+  const myRank = list.findIndex(e => me && e.name.toLowerCase() === me) + 1;
+  text('Zeigt die besten 10 · dein bester Platz: ' + (myRank || '—'), FRAME_W - 56, 190, 14, '#8a9aa0', 'right', F_TEXT);
+  const X = 40, Y = 218, W = 1200, H = 440;
+  rr(X, Y, W, H, 14); ctx.fillStyle = 'rgba(10,17,13,.6)'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+  const colx = { n: 44, c: 260, a: 410, b: 560 };
+  const head = [['#', X + 22, 'left'], ['NAME', X + colx.n + 14, 'left'], ['STREITER', X + colx.c + 14, 'left'], ['GEBIET', X + colx.a + 14, 'left'], ['BOSS', X + colx.b + 14, 'left'], ['WEG', X + W - 230, 'right'], ['GEGNER', X + W - 118, 'right'], ['PUNKTE', X + W - 22, 'right']];
+  for (const [t, hx, al] of head) { if ('letterSpacing' in ctx) ctx.letterSpacing = '1.5px'; text(t, hx, Y + 28, 12, '#8a9aa0', al, F_TEXT); if ('letterSpacing' in ctx) ctx.letterSpacing = '0px'; }
+  if (!board.entries) text(board.err ? 'Rangliste nicht erreichbar' : 'Lädt …', X + W / 2, Y + 200, 20, '#8a9aa0', 'center', F_TEXT, 'italic');
+  else if (!list.length) text('Noch keine Einträge – sei der Erste!', X + W / 2, Y + 200, 20, '#8a9aa0', 'center', F_TEXT, 'italic');
+  else list.slice(0, 10).forEach((e, i) => {
+    const ry = Y + 40 + i * 38, mine = me && e.name.toLowerCase() === me, col = mine ? '#f2c14e' : '#e8dcbc';
+    if (mine) { rr(X + 14, ry, W - 28, 34, 8); ctx.fillStyle = 'rgba(242,193,78,.08)'; ctx.fill(); }
+    text(String(i + 1), X + 22, ry + 23, 14, i < 3 ? '#f2c14e' : '#8a9aa0', 'left', F_TITLE);
+    marquee(e.name, X + colx.n + 14, ry + 4, 190, 17, col, mine, 'rgba(14,22,18,.95)');
+    if (CLASS_ICON[e.cls]) drawIcon(CLASS_ICON[e.cls], X + colx.c + 22, ry + 17, 16, '#f2c14e', 1.6);
+    const cn = (CLASSES.find(c => c.id === e.cls) || {}).name || ''; text(cn, X + colx.c + 38, ry + 22, 14, '#c8d4de', 'left', F_TEXT);
+    const an = AREA_BY_ID[e.area || 'wald'], an2 = an ? (an.id === 'wald' ? 'Wald' : an.name.replace(/^(Das|Der) /, '')) : '';
+    ctx.font = '13px ' + F_TEXT; const aw = ctx.measureText(an2).width + 18; rr(X + colx.a + 14, ry + 8, aw, 20, 10); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke(); text(an2, X + colx.a + 23, ry + 22, 13, '#8ee8ff', 'left', F_TEXT);
+    if (e.won) { ctx.strokeStyle = '#4fd08a'; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(X + colx.b + 14, ry + 18); ctx.lineTo(X + colx.b + 18, ry + 22); ctx.lineTo(X + colx.b + 25, ry + 13); ctx.stroke(); text('besiegt', X + colx.b + 32, ry + 22, 13, '#4fd08a', 'left', F_TEXT); }
+    else text('—', X + colx.b + 14, ry + 22, 13, '#4a5a4e', 'left', F_TEXT);
+    text(e.dist + ' m', X + W - 230, ry + 22, 14, '#8a9aa0', 'right', F_TEXT);
+    text(String(e.kills), X + W - 118, ry + 22, 14, '#8a9aa0', 'right', F_TEXT);
+    text(fmtN(e.score), X + W - 22, ry + 23, 17, col, 'right', F_TITLE);
+  });
+  text('„besiegt“ heißt: der Boss des Gebiets ist gefallen.', 640, 692, 14, '#8a9aa0', 'center', F_TEXT);
 }
 const CLASS_ICON = { ritter: 'k_ritter', waldlaeufer: 'k_waldlaeufer', magier: 'k_magier' };
 
@@ -3986,6 +4046,7 @@ addEventListener('keydown', e => {
     return;
   }
   if (state === 'areas') { areaKey(e); return; }
+  if (state === 'ranking') { if (e.code === 'Escape') state = rankFrom === 'dead' && G ? 'dead' : 'menu'; return; }
   if (state === 'victory') { if (e.code === 'Enter' || e.code === 'Space') victoryContinue(); else if (G.victory && (e.code === 'ArrowDown' || e.code === 'ArrowUp')) G.victory.scroll += e.code === 'ArrowDown' ? 1 : -1; return; }
   if (state === 'merchant') { if (e.code === 'Escape' || e.code === bind('interact')) { state = 'play'; merchantNow = null; startCountdown(); } return; }
   if (state === 'play') {
@@ -4036,9 +4097,9 @@ canvas.addEventListener('mousedown', e => {
     if (mouse.fx >= bx - 20 && mouse.fx <= bx + PACK_W * OPEN_SC + 40 && mouse.fy >= 90 && mouse.fy <= 600) { packOpen.drag = true; packOpen.dx0 = mouse.fx - packOpen.tear * PACK_W * OPEN_SC; mouse.down = true; }
     return;
   }
-  if (state === 'intro' || state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant' || state === 'victory' || state === 'areas') { if (e.button === 0) { if (state === 'areas') areaDrag = { x: mouse.fx, s: areaScroll }; uiClick(); } return; }
+  if (state === 'intro' || state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant' || state === 'victory' || state === 'areas' || state === 'ranking') { if (e.button === 0) { if (state === 'areas') areaDrag = { x: mouse.fx, s: areaScroll }; uiClick(); } return; }
   if (e.button !== 0) return;
-  if (state === 'menu') { const bt = boardTabRects.find(r => mouse.fx >= r.x && mouse.fx <= r.x + r.w && mouse.fy >= r.y && mouse.fy <= r.y + r.h); if (bt) { boardTab = bt.id; sfx('ui_click'); return; } const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
+  if (state === 'menu') { const bt = boardTabRects.find(r => mouse.fx >= r.x && mouse.fx <= r.x + r.w && mouse.fy >= r.y && mouse.fy <= r.y + r.h); if (bt) { sfx('ui_click'); if (bt.id === 'open') openRanking('menu'); else boardTab = bt.id; return; } const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
   if (state === 'select') {
     if (selectHover === -2) { state = 'areas'; return; }
     if (selectHover >= 0) { sfx('ui_click'); startRun(selectHover); }
