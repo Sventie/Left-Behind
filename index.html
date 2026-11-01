@@ -97,7 +97,16 @@ const CLASSES = [
 const VISION = { range: 640, near: 85 };
 const DASH = { dist: 160, time: 0.2, cooldown: 12 };
 const STAGE_STEP = 10;                  // alle 3 Kartenwahlen wird der Abstand um 10 m länger (30, 30, 30, 40, 40, 40, …)
-const BOSS_DIST = 400;                  // hier endet der Lauf mit dem Boss
+const BOSS_DIST = 400;                  // Wald: hier endet der Lauf mit dem Boss (je Gebiet siehe AREAS.len)
+// Gebiete. Jedes schaltet das nächste frei, sobald sein Boss besiegt ist. ready: false = freigeschaltet, aber noch nicht spielbar
+const AREAS = [
+  { id: 'wald', name: 'Der dunkle Wald', sub: 'Hier hat alles begonnen.', boss: 'Bogenmeister', len: 400, ready: true, x: 130, y: 330, need: '' },
+  { id: 'moor', name: 'Das Moor', sub: 'Nebel, Wasser und etwas, das darin wartet.', boss: 'Moorhexe', len: 500, ready: false, x: 340, y: 205, after: 'wald', need: 'Boss im Wald besiegen' },
+  { id: 'schloss', name: 'Das Schloss', sub: 'Tor, Hof und Hallen der gefallenen Krone.', boss: 'Schlossherr', len: 600, ready: false, x: 560, y: 350, after: 'moor', need: 'Boss im Moor besiegen' },
+  { id: 'kerker', name: 'Der Kerker', sub: 'Tief unten, ohne Himmel und ohne Gnade.', boss: 'Kerkermeister', len: 700, ready: false, x: 800, y: 235, after: 'schloss', need: 'Boss im Schloss besiegen' }
+];
+const AREA_BY_ID = Object.fromEntries(AREAS.map(a => [a.id, a]));
+const areaUnlocked = a => !a.after || !!(SAVE.bossDownBy && SAVE.bossDownBy[a.after]);
 // Punkte pro besiegtem Gegner (Rangliste); später je Gegner anders
 // Punkte und Mondsilber pro Gefallenem sind gleich
 const ENEMY_POINTS = { grunt: 1, rusher: 1, wolf: 1, schild: 2, magier: 2, heiler: 2, boss: 20 };
@@ -220,10 +229,14 @@ function loadSave() {
   for (const c of CARDS) if (sv.owned[c.id] === undefined) sv.owned[c.id] = STARTER[c.id] || 0;
   if (typeof sv.silver !== 'number') sv.silver = START_SILVER;
   sv.maxStage = sv.maxStage || 1;
+  sv.bossDownBy = sv.bossDownBy || {};   // je Gebiet: Boss besiegt
+  if (sv.bossDown) sv.bossDownBy.wald = true;   // ältere Spielstände: der erste Boss ist der im Wald
+  sv.records = sv.records || {};   // je Gebiet: bester Weg und beste Punktzahl
+  if (!sv.records.wald) { let b0 = 0; try { b0 = Number(localStorage.getItem('left-behind-best') || 0); } catch (e) {} if (b0 > 0) sv.records.wald = { dist: b0, points: 0 }; }
   sv.seen = sv.seen || {};   // beim Händler gesehene Karten: im Kartenbuch sichtbar, aber nicht im Besitz
   if (CHEAT) {
     for (const c of CARDS) sv.owned[c.id] = Math.max(sv.owned[c.id], CHEAT_COUNT[c.rarity]);
-    sv.silver = Math.max(sv.silver, 5000); sv.maxStage = Math.max(sv.maxStage, 5); sv.bossDown = true;
+    sv.silver = Math.max(sv.silver, 5000); sv.maxStage = Math.max(sv.maxStage, 5); sv.bossDown = true; for (const a of AREAS) sv.bossDownBy[a.id] = true;
   }
   sv.decks = sv.decks || {};
   for (const cls of CLASSES) {
@@ -400,7 +413,7 @@ const MUSIC_DEFS = {
 function musicFor(st) {
   if (!gestureDone) return;
   if (['options', 'controls', 'feedback'].includes(st)) return;
-  const want = ['menu', 'select', 'intro', 'book', 'deck', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause', 'victory'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
+  const want = ['menu', 'select', 'areas', 'intro', 'book', 'deck', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause', 'victory'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
   if (MUSIC.name === want) return;
   stopMusic(); MUSIC.name = want;
   if (!want) return;
@@ -590,9 +603,10 @@ function recomputeStats() {
 }
 function stageLength(stage) { return 30 + Math.floor((stage - 1) / 3) * STAGE_STEP; }
 
-function newGame(cls) {
+function newGame(cls, area) {
+  area = area || AREAS[0];
   G = {
-    cls,
+    cls, area, bossDist: area.len,
     time: 0, camTop: 0, genTop: 0,
     obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
     kills: 0, dist: 0,
@@ -630,7 +644,7 @@ function freeSpot(r, tries = 40, y0, y1) {
   return null;
 }
 // Endlosmodus: je 100 m nach dem Boss wird alles härter
-function endlessLevel() { return G && G.endless ? Math.max(0, G.dist - BOSS_DIST) / 100 : 0; }
+function endlessLevel() { return G && G.endless ? Math.max(0, G.dist - G.bossDist) / 100 : 0; }
 // Ab welcher Entfernung (m) welcher Gegner vorkommt, und wie oft im Vergleich
 const SPECIALS = [{ type: 'wolf', from: 100, w: 3 }, { type: 'schild', from: 150, w: 2 }, { type: 'magier', from: 200, w: 2 }, { type: 'heiler', from: 250, w: 1.2 }];
 function rollType(rushP) {
@@ -700,7 +714,7 @@ function generate() {
     // Wanderhändler: zufällig, nicht zu oft
     // Händler: einer pro Lauf ist sicher, weitere sind selten (nicht kurz vor dem Boss)
     const due = !G.merchantDone ? k >= G.firstMerchantK
-      : k - G.lastMerchantK >= MERCHANT_MIN_GAP && (k * CHUNK_H / PX_PER_M < BOSS_DIST - 48 || G.endless) && Math.random() < MERCHANT_CHANCE;
+      : k - G.lastMerchantK >= MERCHANT_MIN_GAP && (k * CHUNK_H / PX_PER_M < G.bossDist - 48 || G.endless) && Math.random() < MERCHANT_CHANCE;
     if (due) {
       for (let t = 0; t < 40; t++) {
         const mx = rand(330, 630), my = rand(y0 + 80, y1 - 80);
@@ -1007,7 +1021,7 @@ function update(dt) {
   generate();
 
   updateEnemies(dt);
-  if (G.dist >= BOSS_DIST && !G.bossSpawned) spawnBoss();
+  if (G.dist >= G.bossDist && !G.bossSpawned) spawnBoss();
   if (!G.bossSpawned || G.endless) spawnReinforcements();
   updateBullets(dt);
   updateHazards(dt);
@@ -1052,18 +1066,19 @@ function spawnBoss() {
   const b = makeEnemy('boss', WORLD_W / 2, G.camTop + 70, true);
   b.in = true; b.reaction = 1.2;
   G.enemies.push(b); G.boss = b;
-  G.banner = { t: 4, head: 'BOGENMEISTER', sub: 'Besiege ihn, dann beginnt der Endlosmodus' }; sfx('horde_horn');
+  G.banner = { t: 4, head: G.area.boss.toUpperCase(), sub: 'Besiege ihn, dann beginnt der Endlosmodus' }; sfx('horde_horn');
 }
 // Boss besiegt: der Lauf geht im Endlosmodus weiter, bis man fällt
 function winRun() {
   const first = !SAVE.bossDown;
-  G.won = true; SAVE.bossDown = true; persist(); G.endless = true; G.camLock = false;
+  const nextA = AREAS.find(a => a.after === G.area.id), newArea = nextA && !SAVE.bossDownBy[G.area.id];
+  G.won = true; SAVE.bossDown = true; SAVE.bossDownBy[G.area.id] = true; persist(); G.endless = true; G.camLock = false;
   G.nextPick = G.dist; G.pickDelay = 0;
   sfx('stage_up');
   // Belohnungsliste für den Siegbildschirm; weitere Freischaltungen (Karten, Mondsilber …) kommen hier hinein
-  const rewards = [{ icon: 'crown', title: '+' + ENEMY_POINTS.boss + ' Punkte', sub: 'Für den Sieg über den Boss.' }, { icon: 'moon', title: '+' + ENEMY_POINTS.boss + ' Mondsilber', sub: 'Beute vom Boss.' }];
+  const rewards = [{ icon: 'crown', title: '+' + ENEMY_POINTS.boss + ' Punkte', sub: 'Für den Sieg über ' + G.area.boss + '.' }, { icon: 'moon', title: '+' + ENEMY_POINTS.boss + ' Mondsilber', sub: 'Beute vom Boss.' }];
   if (first) rewards.push({ icon: 'book', title: 'Drachen-Grimoire', sub: 'Neues Kartenpack in der Bibliothek.', fresh: true });
-  rewards.push({ icon: 'lock', title: 'Nächstes Level', sub: 'Folgt später: hier erscheint das freigeschaltete Level.', locked: true });
+  if (newArea) rewards.push({ icon: 'crown', title: 'Neues Gebiet: ' + nextA.name, sub: nextA.ready ? 'Jetzt in der Gebietswahl verfügbar.' : 'Freigeschaltet, aber noch nicht spielbar.', fresh: true });
   G.victory = { rewards, scroll: 0 };
   mouse.down = false; mouse.rdown = false; mouse.pressed = false;
   state = 'victory';
@@ -1167,6 +1182,122 @@ function pickLayout() {
   return G.offers.map((c, i) => ({ c, x: x0 + i * (w + gap), y, w, h, k }));
 }
 
+
+// ---------- Gebietswahl (Wegkarte) ----------
+let areaScroll = 0, areaDrag = null, areaSel = AREAS[0].id, areaNodes = [];
+const areaMaxScroll = () => Math.max(0, Math.max(...AREAS.map(a => a.x)) + 200 - FRAME_W);
+function openAreas() {
+  const first = AREAS.filter(a => areaUnlocked(a) && a.ready).pop() || AREAS[0];   // vorgewählt: das letzte spielbare Gebiet
+  areaSel = first.id; areaScroll = 0; areaDrag = null; state = 'areas';
+}
+function areaChoose(a) {
+  if (!areaUnlocked(a) || !a.ready) return;
+  curArea = a; selectHover = lastClass; state = 'select';
+}
+function areaKey(e) {
+  const i = AREAS.findIndex(a => a.id === areaSel);
+  if (e.code === 'Escape') { state = 'menu'; return; }
+  if (e.code === 'ArrowRight' || e.code === 'KeyD') areaSel = AREAS[Math.min(AREAS.length - 1, i + 1)].id;
+  if (e.code === 'ArrowLeft' || e.code === 'KeyA') areaSel = AREAS[Math.max(0, i - 1)].id;
+  if (e.code === 'Enter' || e.code === 'Space') areaChoose(AREA_BY_ID[areaSel]);
+  const a = AREA_BY_ID[areaSel];
+  areaScroll = clamp(areaScroll + clamp(a.x - areaScroll - FRAME_W / 2, -400, 400) * 0.5, 0, areaMaxScroll());
+}
+// Bilder der Gebiete (Koordinaten 272 × 190), werden in Kreise und Karten geschnitten
+function drawAreaArt(id, x, y, w, h) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(w / 272, h / 190);
+  const sky = (c0, c1, c2) => { const g = ctx.createLinearGradient(0, 0, 0, 190); g.addColorStop(0, c0); g.addColorStop(0.6, c1); g.addColorStop(1, c2); ctx.fillStyle = g; ctx.fillRect(0, 0, 272, 190); };
+  const disc = (cx, cy, r, c, a) => { ctx.globalAlpha = a || 1; ctx.fillStyle = c; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill(); ctx.globalAlpha = 1; };
+  const tri = (a, b, c2, d, e, f, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c2, d); ctx.lineTo(e, f); ctx.closePath(); ctx.fill(); };
+  const deadTree = (tx, ty, k) => { ctx.strokeStyle = '#1a1814'; ctx.lineCap = 'round'; ctx.lineWidth = 5 * k; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx, ty - 60 * k); ctx.stroke(); ctx.lineWidth = 3 * k; ctx.beginPath(); ctx.moveTo(tx, ty - 25 * k); ctx.lineTo(tx - 18 * k, ty - 45 * k); ctx.moveTo(tx, ty - 38 * k); ctx.lineTo(tx + 15 * k, ty - 58 * k); ctx.moveTo(tx, ty - 52 * k); ctx.lineTo(tx - 9 * k, ty - 72 * k); ctx.stroke(); };
+  if (id === 'wald') {
+    sky('#0c1a2a', '#1c3a40', '#16281c'); disc(200, 52, 38, 'rgba(200,225,255,.12)'); disc(200, 52, 22, '#dce8f2');
+    [['#0d1f1a', 8, 1, 180], ['#0a1814', 6, 1.4, 210], ['#07110e', 4, 1.8, 240]].forEach(([col, n, sc, yb], L) => {
+      for (let i = 0; i < n; i++) { const px = (i + 0.3 + L * 0.17) * 272 / n, th = (70 + ((i * 37 + L * 11) % 30)) * sc; tri(px - th * 0.28, yb, px, yb - th, px + th * 0.28, yb, col); }
+    });
+  } else if (id === 'moor') {
+    sky('#16262a', '#2c4440', '#1a2a26'); disc(70, 50, 20, '#c8d8c0', 0.55);
+    ctx.fillStyle = '#16221f'; ctx.fillRect(0, 140, 272, 50);
+    ctx.fillStyle = 'rgba(42,90,92,.7)'; ctx.beginPath(); ctx.ellipse(170, 162, 80, 12, 0, 0, 7); ctx.fill();
+    deadTree(40, 150, 1.1); deadTree(150, 142, 0.9); deadTree(235, 152, 1.2);
+    ctx.fillStyle = 'rgba(200,224,216,.14)'; ctx.fillRect(0, 112, 272, 30);
+  } else if (id === 'schloss') {
+    sky('#1a1830', '#3a2a40', '#20182a'); disc(222, 40, 16, '#e8e0f0');
+    ctx.fillStyle = '#0c0a14';
+    ctx.fillRect(30, 80, 40, 110); ctx.fillRect(202, 80, 40, 110); ctx.fillRect(70, 100, 132, 90); ctx.fillRect(108, 60, 56, 130);
+    tri(26, 80, 50, 40, 74, 80, '#0c0a14'); tri(198, 80, 222, 40, 246, 80, '#0c0a14'); tri(104, 60, 136, 20, 168, 60, '#0c0a14');
+    ctx.fillStyle = '#ffc46a'; [[44, 96], [216, 96], [128, 80], [92, 124], [170, 124]].forEach(([wx, wy]) => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(wx, wy, 9, 14, 4) : ctx.rect(wx, wy, 9, 14); ctx.fill(); });
+    ctx.fillStyle = 'rgba(255,178,74,.9)'; ctx.beginPath(); ctx.moveTo(118, 190); ctx.lineTo(118, 150); ctx.arc(136, 150, 18, Math.PI, 0); ctx.lineTo(154, 190); ctx.closePath(); ctx.fill();
+  } else if (id === 'kerker') {
+    const g = ctx.createLinearGradient(0, 0, 0, 190); g.addColorStop(0, '#101114'); g.addColorStop(1, '#1c1d22'); ctx.fillStyle = g; ctx.fillRect(0, 0, 272, 190);
+    ctx.fillStyle = '#2a2d34'; ctx.strokeStyle = '#0a0b0e'; ctx.lineWidth = 2; [[10, 10, 60], [80, 10, 60], [150, 10, 60], [215, 10, 50]].forEach(([bx, by, bw]) => { ctx.fillRect(bx, by, bw, 30); ctx.strokeRect(bx, by, bw, 30); });
+    ctx.fillStyle = '#08090b'; ctx.strokeStyle = '#3a3d46'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(60, 190); ctx.lineTo(60, 90); ctx.arc(136, 90, 76, Math.PI, 0); ctx.lineTo(212, 190); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#8a8e96'; ctx.lineWidth = 5; for (let i = 0; i < 7; i++) { ctx.beginPath(); ctx.moveTo(80 + i * 19, 190); ctx.lineTo(80 + i * 19, 70); ctx.stroke(); }
+    for (const tx of [30, 242]) { const rg = ctx.createRadialGradient(tx, 100, 0, tx, 100, 50); rg.addColorStop(0, 'rgba(255,170,70,.5)'); rg.addColorStop(1, 'rgba(255,170,70,0)'); ctx.fillStyle = rg; ctx.fillRect(tx - 50, 50, 100, 100); disc(tx, 100, 6, '#ffc46a'); }
+  }
+  ctx.restore();
+}
+function drawAreaScreen() {
+  uiBtns = []; areaNodes = [];
+  let g = ctx.createLinearGradient(0, 0, 0, FRAME_H); g.addColorStop(0, '#0c1a2a'); g.addColorStop(0.5, '#12283a'); g.addColorStop(1, '#0a110d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  for (const st of stars) { ctx.fillStyle = 'rgba(255,255,255,' + st[3] + ')'; ctx.fillRect(st[0], st[1], st[2], st[2]); }
+  g = ctx.createRadialGradient(640, 420, 100, 640, 420, 700); g.addColorStop(0, 'rgba(60,110,120,.25)'); g.addColorStop(1, 'rgba(2,5,4,.7)'); ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  text('DIE LETZTEN DER FALLENEN KRONE', 640, 52, 16, '#8ee8ff', 'center', F_TEXT, '500');
+  titleText('Wähle dein Gebiet', 640, 98, 46, 'center');
+  uiButton(40, 40, 110, 40, '‹ Menü', () => { state = 'menu'; }, { size: 15 });
+  const sc = areaScroll, maxS = areaMaxScroll();
+  // Pfad durch alle Gebiete
+  const pts = AREAS.map(a => [a.x - sc, a.y]);
+  ctx.lineWidth = 8; ctx.lineCap = 'round';
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], mx = (x0 + x1) / 2, open = areaUnlocked(AREAS[i + 1]);
+    const lg = ctx.createLinearGradient(x0, 0, x1, 0); lg.addColorStop(0, open ? '#f2c14e' : '#6a5a2a'); lg.addColorStop(1, open ? '#d9a636' : '#3a4a3e');
+    ctx.strokeStyle = lg; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.bezierCurveTo(mx, y0, mx, y1, x1, y1); ctx.stroke();
+  }
+  const last = pts[pts.length - 1];
+  ctx.strokeStyle = '#3a4a3e'; ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.bezierCurveTo(last[0] + 60, last[1], last[0] + 90, last[1] + 20, last[0] + 140, last[1] + 40); ctx.stroke();
+  text('… weitere Gebiete folgen', last[0] + 160, last[1] + 48, 15, '#8a9aa0', 'left', F_TEXT);
+  // Stationen
+  for (const a of AREAS) {
+    const x = a.x - sc, y = a.y, open = areaUnlocked(a), sel = a.id === areaSel, done = !!SAVE.bossDownBy[a.id], r = sel ? 54 : 44;
+    if (x < -120 || x > FRAME_W + 120) continue;
+    areaNodes.push({ id: a.id, x, y, r });
+    uiHit(x - r, y - r, r * 2, r * 2 + 60, () => { areaSel = a.id; });
+    if (sel) { ctx.fillStyle = 'rgba(242,193,78,.2)'; ctx.beginPath(); ctx.arc(x, y, r + 9, 0, 7); ctx.fill(); }
+    ctx.save(); ctx.beginPath(); ctx.arc(x, y, r - 4, 0, 7); ctx.clip();
+    drawAreaArt(a.id, x - (r - 4) * 1.43, y - r + 4, (r - 4) * 2.86, (r - 4) * 2);
+    if (!open) { ctx.fillStyle = 'rgba(10,14,12,.62)'; ctx.fillRect(x - r, y - r, r * 2, r * 2); }
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.lineWidth = 4; ctx.strokeStyle = open ? '#f2c14e' : '#4a5a4e'; ctx.stroke();
+    if (!open) { ctx.save(); ctx.translate(x - 14, y - 14); ctx.scale(1.17, 1.17); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke(new Path2D(ICONS.lock)); ctx.restore(); }
+    text(a.name, x, y + r + 26, 17, open ? '#f0e6c8' : '#8a9aa0', 'center', F_TITLE);
+    if (done) { ctx.strokeStyle = '#4fd08a'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(x - 46, y + r + 42); ctx.lineTo(x - 42, y + r + 46); ctx.lineTo(x - 35, y + r + 38); ctx.stroke(); text('Boss besiegt', x - 30, y + r + 46, 14, '#4fd08a', 'left', F_TEXT, 'bold'); }
+    else if (!open) text(a.need, x, y + r + 46, 13, '#f2c14e', 'center', F_TEXT);
+  }
+  // Pfeile und Scroll-Leiste
+  if (maxS > 0) {
+    if (sc > 0) { rr(14, 290, 52, 52, 26); ctx.fillStyle = 'rgba(10,17,13,.92)'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke(); text('‹', 40, 328, 34, '#f2c14e', 'center', F_TITLE); uiHit(14, 290, 52, 52, () => { areaScroll = clamp(areaScroll - 300, 0, maxS); }); }
+    if (sc < maxS) { rr(FRAME_W - 66, 290, 52, 52, 26); ctx.fillStyle = 'rgba(10,17,13,.92)'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke(); text('›', FRAME_W - 40, 328, 34, '#f2c14e', 'center', F_TITLE); uiHit(FRAME_W - 66, 290, 52, 52, () => { areaScroll = clamp(areaScroll + 300, 0, maxS); }); }
+    rr(240, 536, 800, 6, 3); ctx.fillStyle = '#101a14'; ctx.fill(); const tw = 800 * FRAME_W / (maxS + FRAME_W);
+    rr(240 + (800 - tw) * sc / maxS, 536, tw, 6, 3); ctx.fillStyle = '#9a7a3a'; ctx.fill();
+  }
+  // Detailleiste
+  const a = AREA_BY_ID[areaSel], open = areaUnlocked(a), rec = SAVE.records[a.id], X = 200, Y = 558, W = 880, H = 112;
+  rr(X, Y, W, H, 16); g = ctx.createLinearGradient(0, Y, 0, Y + H); g.addColorStop(0, '#1a2a20'); g.addColorStop(1, '#101a14'); ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = open ? '#f2c14e' : '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
+  text(a.name, X + 24, Y + 40, 26, open ? '#f0e6c8' : '#8a9aa0', 'left', F_TITLE);
+  if (SAVE.bossDownBy[a.id]) text('✓ Boss besiegt', X + W - 24, Y + 36, 15, '#4fd08a', 'right', F_TEXT, 'bold');
+  text(a.sub, X + 24, Y + 62, 16, '#c8d4de', 'left', F_TEXT, 'italic');
+  let cx = X + 24;
+  for (const t of ['Boss: ' + a.boss, a.len + ' m', rec ? 'Rekord ' + rec.dist + ' m · ' + (rec.points || 0).toLocaleString('de-DE') + ' P' : 'Noch kein Rekord']) {
+    ctx.font = '14px ' + F_TEXT; const tw = ctx.measureText(t).width + 20;
+    rr(cx, Y + 74, tw, 26, 13); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke(); text(t, cx + 10, Y + 92, 14, '#c8d4de', 'left', F_TEXT); cx += tw + 8;
+  }
+  if (open && a.ready) uiButton(X + W - 224, Y + 58, 200, 46, 'Wählen', () => areaChoose(a), { primary: true, size: 17 });
+  else if (open) uiButton(X + W - 244, Y + 58, 220, 46, 'Bald spielbar', null, { size: 16, disabled: true });
+  else uiButton(X + W - 304, Y + 58, 280, 46, a.need, null, { size: 14, disabled: true });
+}
+
 // ---------- Charakterwahl ----------
 const SEL = { w: 300, h: 470, gap: 40, y: 150 };
 function selectLayout() {
@@ -1174,10 +1305,11 @@ function selectLayout() {
   const x0 = (FRAME_W - total) / 2;
   return CLASSES.map((c, i) => ({ c, i, x: x0 + i * (SEL.w + SEL.gap), y: SEL.y, w: SEL.w, h: SEL.h }));
 }
+let curArea = AREAS[0];
 function startRun(i) {
   lastClass = i;
   try { localStorage.setItem('left-behind-class', CLASSES[i].id); } catch (e) {}
-  newGame(CLASSES[i]);
+  newGame(CLASSES[i], curArea);
   mouse.down = false; mouse.rdown = false;
   state = 'play';
 }
@@ -1473,7 +1605,10 @@ function finishRun() {
   SAVE.silver += G.earned;
   SAVE.maxStage = Math.max(SAVE.maxStage || 1, G.stage);
   persist();
-  if (G.dist > best) {
+  const rec = SAVE.records[G.area.id] || (SAVE.records[G.area.id] = { dist: 0, points: 0 });
+  rec.dist = Math.max(rec.dist, Math.floor(G.dist)); rec.points = Math.max(rec.points, Math.floor(G.dist) + G.points);
+  persist();
+  if (G.area.id === 'wald' && G.dist > best) {
     best = G.dist;
     try { localStorage.setItem('left-behind-best', String(best)); } catch (e) {}
   }
@@ -2004,7 +2139,7 @@ function drawRails() {
   }
   ctx.fillStyle = '#2e3e32'; ctx.fillRect(14, 130, 92, 1);
   // Entfernungsmesser bis zum Boss. Danach bleibt der Balken voll, die Marken (immer fünf, oben die letzte volle 100) rücken zur 0 hin.
-  const GY = 146, GH = 428, D = G.dist, maxPos = Math.max(BOSS_DIST, D), top = Math.max(BOSS_DIST, 100 * Math.floor(D / 100)), prog = clamp(D / BOSS_DIST, 0, 1);
+  const GY = 146, GH = 428, D = G.dist, maxPos = Math.max(G.bossDist, D), top = Math.max(G.bossDist, 100 * Math.floor(D / 100)), prog = clamp(D / G.bossDist, 0, 1);
   rr(49, GY, 22, GH, 11); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
   if (prog > 0) {
     const fh = Math.max(14, (GH - 8) * prog);
@@ -2013,7 +2148,7 @@ function drawRails() {
   }
   for (let i = 0; i <= 4; i++) {
     const v = i * top / 4, y = GY + GH - 2 - (v / maxPos) * (GH - 4), isTop = i === 4;
-    text('— ' + Math.round(v), 78, y + 5, 14, isTop ? (D < BOSS_DIST ? '#ff9aa4' : '#8ee8ff') : '#b8c4d0', 'left', F_TEXT, isTop ? 'bold' : '');
+    text('— ' + Math.round(v), 78, y + 5, 14, isTop ? (D < G.bossDist ? '#ff9aa4' : '#8ee8ff') : '#b8c4d0', 'left', F_TEXT, isTop ? 'bold' : '');
   }
   const my = GY + GH - 2 - Math.min(1, D / maxPos) * (GH - 4);
   rr(4, my - 10, 42, 20, 10); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 1; ctx.stroke();
@@ -2122,7 +2257,7 @@ function drawFieldHUD() {
     ctx.strokeStyle = 'rgba(255,90,90,' + (0.35 + 0.35 * pul) + ')'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(bx, by, G.boss.r + 10 + pul * 4, 0, 7); ctx.stroke();
     const f = G.boss.hp / G.boss.maxHp;
-    text('BOGENMEISTER', VIEW_W / 2, 24, 14, '#f0e6c8', 'center', F_TITLE);
+    text(G.area.boss.toUpperCase(), VIEW_W / 2, 24, 14, '#f0e6c8', 'center', F_TITLE);
     rr(VIEW_W / 2 - 200, 32, 400, 12, 6); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
     rr(VIEW_W / 2 - 198, 34, Math.max(8, 396 * f), 8, 4); ctx.fillStyle = '#d9473f'; ctx.fill();
   }
@@ -2958,7 +3093,7 @@ function drawSilverTotal(rx, y) {
 const stars = Array.from({ length: 120 }, () => [Math.random() * FRAME_W, Math.random() * 420, Math.random() * 1.4 + 0.4, Math.random() * 0.6 + 0.3]);
 const pines = Array.from({ length: 40 }, (_, i) => [i * 34 - 10, 540 + Math.random() * 60, 70 + Math.random() * 70]);
 const menuButtons = [
-  { label: 'Neuer Durchlauf', main: true, x: 80, y: 392, w: 330, h: 56, action: () => { selectHover = lastClass; state = 'select'; } },
+  { label: 'Neuer Durchlauf', main: true, x: 80, y: 392, w: 330, h: 56, action: () => openAreas() },
   { label: 'Kartenbuch', x: 80, y: 458, w: 330, h: 56, action: () => { bookSpread = 0; state = 'book'; } },
   { label: 'Deck', x: 80, y: 524, w: 330, h: 56, action: () => { deckClass = lastClass; deckHoverIdx = -1; state = 'deck'; } },
   { label: 'Bibliothek', x: 80, y: 590, w: 330, h: 56, action: () => { state = 'shop'; } },
@@ -3040,8 +3175,9 @@ function draw() {
   if (state === 'recycle') { drawRecycleScreen(); drawCursor(); return; }
   if (state === 'intro') { drawIntroScreen(); drawCursor(); return; }
   if (isPanel(state) && (panelFrom === 'menu' || !G)) { drawMenu(); overlay(0.8); drawPanelScreen(); drawToast(); if (state !== 'feedback') drawCursor(); return; }
-  if (state === 'menu' || !G && state !== 'select') { drawMenu(); drawCursor(); return; }
+  if (state === 'menu' || !G && state !== 'select' && state !== 'areas') { drawMenu(); drawCursor(); return; }
   if (state === 'select') { drawSelectScreen(); drawCursor(); return; }
+  if (state === 'areas') { drawAreaScreen(); drawCursor(); return; }
 
   ctx.save();
   ctx.beginPath(); ctx.rect(FIELD_X, 0, VIEW_W, VIEW_H); ctx.clip();
@@ -3073,7 +3209,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.33';
+const VERSION = 'v0.34';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -3572,9 +3708,9 @@ function drawDeadScreen() {
   overlay(0.8);
   const form = !!SCORES_URL && !CHEAT && !G.cheated && !scoreSt.done;
   text(G.gaveUp ? 'Aufgegeben' : 'Gefallen', 640, 200, 56, G.gaveUp ? '#f2c14e' : '#ff7a8a', 'center', F_TITLE);
-  if (G.won) text('✓ Bogenmeister besiegt · Endlos bis ' + Math.floor(G.dist) + ' m', 640, 226, 18, '#4fd08a', 'center', F_TEXT);
+  if (G.won) text('✓ ' + G.area.boss + ' besiegt · Endlos bis ' + Math.floor(G.dist) + ' m', 640, 226, 18, '#4fd08a', 'center', F_TEXT);
   text(G.cls.name + ' · ' + Math.floor(G.dist) + ' m · ' + G.kills + ' Gefallene · ' + G.cards.length + ' Karten', 640, 252, 24, '#f0e6c8', 'center', F_TEXT);
-  text('Rekord: ' + Math.floor(best) + ' m   ·   + ' + G.earned + ' Mondsilber', 640, 290, 19, '#b8c4d0', 'center', F_TEXT);
+  text('Rekord: ' + Math.floor((SAVE.records[G.area.id] || { dist: 0 }).dist) + ' m   ·   + ' + G.earned + ' Mondsilber', 640, 290, 19, '#b8c4d0', 'center', F_TEXT);
   titleText(runScore() + ' Punkte', 640, 352, 40, 'center');
   if (G.won) text('Weg + Punkte der besiegten Gegner (Boss 20)', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
   else text('Weg + Punkte der Gefallenen', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
@@ -3793,7 +3929,7 @@ function drawIntroScreen() {
 }
 
 // ---------- Eingabe ----------
-function toSelect() { selectHover = lastClass; state = 'select'; }
+function toSelect() { openAreas(); }
 addEventListener('keydown', e => {
   audioInit();
   if (e.target === fbEl.name) { if (e.code === 'Enter') submitScore(); else if (e.code === 'Escape') leaveDead(); return; }
@@ -3846,9 +3982,10 @@ addEventListener('keydown', e => {
     if (e.code === 'Enter' || e.code === 'Space') { startRun(selectHover >= 0 ? selectHover : lastClass); return; }
     if (e.code === 'ArrowLeft' || e.code === 'KeyA') selectHover = (Math.max(selectHover, 0) + CLASSES.length - 1) % CLASSES.length;
     if (e.code === 'ArrowRight' || e.code === 'KeyD') selectHover = (Math.max(selectHover, 0) + 1) % CLASSES.length;
-    if (e.code === 'Escape') state = 'menu';
+    if (e.code === 'Escape') state = 'areas';
     return;
   }
+  if (state === 'areas') { areaKey(e); return; }
   if (state === 'victory') { if (e.code === 'Enter' || e.code === 'Space') victoryContinue(); else if (G.victory && (e.code === 'ArrowDown' || e.code === 'ArrowUp')) G.victory.scroll += e.code === 'ArrowDown' ? 1 : -1; return; }
   if (state === 'merchant') { if (e.code === 'Escape' || e.code === bind('interact')) { state = 'play'; merchantNow = null; startCountdown(); } return; }
   if (state === 'play') {
@@ -3870,6 +4007,7 @@ function setMouse(e) {
   mouse.fy = (e.clientY - r.top) / r.height * FRAME_H;
   mouse.x = mouse.fx - FIELD_X;
   mouse.y = mouse.fy;
+  if (state === 'areas' && areaDrag) areaScroll = clamp(areaDrag.s - (mouse.fx - areaDrag.x), 0, areaMaxScroll());
   if (state === 'menu') menuHover = menuButtons.findIndex(b => mouse.fx >= b.x && mouse.fx <= b.x + b.w && mouse.fy >= b.y && mouse.fy <= b.y + b.h);
   if (state === 'pick') pickHover = pickLayout().findIndex(L => mouse.fx >= L.x && mouse.fx <= L.x + L.w && mouse.fy >= L.y && mouse.fy <= L.y + L.h);
   if (state === 'select') {
@@ -3898,11 +4036,11 @@ canvas.addEventListener('mousedown', e => {
     if (mouse.fx >= bx - 20 && mouse.fx <= bx + PACK_W * OPEN_SC + 40 && mouse.fy >= 90 && mouse.fy <= 600) { packOpen.drag = true; packOpen.dx0 = mouse.fx - packOpen.tear * PACK_W * OPEN_SC; mouse.down = true; }
     return;
   }
-  if (state === 'intro' || state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant' || state === 'victory') { if (e.button === 0) uiClick(); return; }
+  if (state === 'intro' || state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant' || state === 'victory' || state === 'areas') { if (e.button === 0) { if (state === 'areas') areaDrag = { x: mouse.fx, s: areaScroll }; uiClick(); } return; }
   if (e.button !== 0) return;
   if (state === 'menu') { const bt = boardTabRects.find(r => mouse.fx >= r.x && mouse.fx <= r.x + r.w && mouse.fy >= r.y && mouse.fy <= r.y + r.h); if (bt) { boardTab = bt.id; sfx('ui_click'); return; } const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
   if (state === 'select') {
-    if (selectHover === -2) { state = 'menu'; return; }
+    if (selectHover === -2) { state = 'areas'; return; }
     if (selectHover >= 0) { sfx('ui_click'); startRun(selectHover); }
     return;
   }
@@ -3910,10 +4048,11 @@ canvas.addEventListener('mousedown', e => {
   if (state === 'pick') { if (pickHover >= 0) choosePick(pickHover); return; }
   mouse.down = true; mouse.pressed = true;
 });
-addEventListener('mouseup', e => { if (e.button === 0) { if (packOpen) packOpen.drag = false; mouse.down = false; mouse.pressed = false; dragSlider = null; } if (e.button === 2) mouse.rdown = false; });
+addEventListener('mouseup', e => { if (e.button === 0) { areaDrag = null; if (packOpen) packOpen.drag = false; mouse.down = false; mouse.pressed = false; dragSlider = null; } if (e.button === 2) mouse.rdown = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('wheel', e => {
   if (state === 'book') { bookSpread += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
+  if (state === 'areas') { areaScroll = clamp(areaScroll + e.deltaY * 0.8, 0, areaMaxScroll()); e.preventDefault(); }
   if (state === 'victory' && G.victory) { G.victory.scroll += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'deck') { deckPage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'recycle') { recyclePage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
