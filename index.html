@@ -1128,7 +1128,7 @@ function spawnBoss() {
   b.in = true; b.reaction = 1.2;
   if (moorBoss) { b.boss = true; b.phase = 1; b.form = 'a'; b.cast = 2.5; b.last = ''; b.strafe = 1; b.strafeT = 2; }
   G.enemies.push(b); G.boss = b;
-  G.banner = { t: 4, head: G.area.boss.toUpperCase(), sub: 'Besiege ihn, dann beginnt der Endlosmodus' }; sfx('horde_horn');
+  G.banner = { t: 4, head: G.area.boss.toUpperCase(), sub: (moorBoss ? 'Besiege sie' : 'Besiege ihn') + ', dann beginnt der Endlosmodus' }; sfx('horde_horn');
 }
 // Boss besiegt: der Lauf geht im Endlosmodus weiter, bis man fällt
 function winRun() {
@@ -2021,7 +2021,7 @@ function drawEntities() {
   }
   for (const q of G.parts) { ctx.fillStyle = q.color; ctx.globalAlpha = Math.min(1, q.life * 5); ctx.fillRect(q.x - 1.5, q.y - 1.5, 3, 3); }
   ctx.globalAlpha = 1;
-  if (G.area.id === 'moor') { drawHexeHazards(); drawWisps(); drawFogBanks(); }
+  if (G.area.id === 'moor') { drawWisps(); drawFogBanks(); }
   drawFigure(G.cls.id, p.x, p.y, p.angle, 1, {
     dash: p.dashT > 0,
     swing: p.swingT > 0 ? 1 - p.swingT / WEAPONS.schwert.swing : -1,
@@ -3471,6 +3471,9 @@ function draw() {
   ctx.restore();
   drawFogInto();
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(fog, 0, 0); ctx.restore();
+  if (G.area.id === 'moor' && (G.clouds.length || G.hands.length)) {   // Angriffe der Hexe bleiben im Dunkeln und im Nebel sichtbar
+    ctx.save(); ctx.translate(FIELD_X, -G.camTop); ctx.beginPath(); ctx.rect(0, G.camTop, VIEW_W, VIEW_H); ctx.clip(); drawHexeHazards(); ctx.restore();
+  }
   ctx.save(); ctx.translate(FIELD_X, 0);
   ctx.beginPath(); ctx.rect(0, 0, VIEW_W, VIEW_H); ctx.clip();
   drawFieldHUD();
@@ -3492,7 +3495,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.36';
+const VERSION = 'v0.37';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
