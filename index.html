@@ -102,7 +102,7 @@ const BOSS_DIST = 400;                  // Wald: hier endet der Lauf mit dem Bos
 const AREAS = [
   { id: 'wald', name: 'Der dunkle Wald', sub: 'Hier hat alles begonnen.', boss: 'Bogenmeister', len: 400, ready: true, x: 130, y: 330, need: '' },
   { id: 'moor', name: 'Das Moor', sub: 'Nebel, Wasser und etwas, das darin wartet.', boss: 'Moorhexe', len: 500, ready: true, x: 340, y: 205, after: 'wald', need: 'Boss im Wald besiegen' },
-  { id: 'schloss', name: 'Das Schloss', sub: 'Tor, Hof und Hallen der gefallenen Krone.', boss: 'Schlossherr', len: 600, ready: false, x: 560, y: 350, after: 'moor', need: 'Boss im Moor besiegen' },
+  { id: 'schloss', name: 'Das Schloss', sub: 'Tor, Hof und Hallen der gefallenen Krone.', boss: 'Schlossherr', len: 600, ready: true, x: 560, y: 350, after: 'moor', need: 'Boss im Moor besiegen' },
   { id: 'kerker', name: 'Der Kerker', sub: 'Tief unten, ohne Himmel und ohne Gnade.', boss: 'Kerkermeister', len: 700, ready: false, x: 800, y: 235, after: 'schloss', need: 'Boss im Schloss besiegen' }
 ];
 const AREA_BY_ID = Object.fromEntries(AREAS.map(a => [a.id, a]));
@@ -614,7 +614,7 @@ function newGame(cls, area) {
     kills: 0, dist: 0,
     merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
-    stage: 1, stageStart: 0, nextPick: stageLength(1), zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
+    stage: 1, stageStart: 0, nextPick: stageLength(1), rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
       x: WORLD_W / 2, y: -60, r: 14, hp: 1, angle: -Math.PI / 2,
@@ -676,7 +676,9 @@ function generate() {
     const k = Math.round(-y1 / CHUNK_H);
     // Deckung: Ruinenmauern, Felsen, Bäume
     const moor = G.area.id === 'moor';
-    const count = k === 0 ? 4 : moor ? Math.floor(rand(9, 14)) : Math.floor(rand(6, 10));
+    const castle = G.area.id === 'schloss';
+    if (castle) ensureCastle(y0 - 1000);
+    const count = castle ? 0 : k === 0 ? 4 : moor ? Math.floor(rand(9, 14)) : Math.floor(rand(6, 10));
     for (let i = 0; i < count; i++) {
       for (let t = 0; t < 30; t++) {
         const r = Math.random();
@@ -1124,7 +1126,9 @@ function update(dt) {
 function spawnBoss() {
   G.bossSpawned = true; G.camLock = true;
   const moorBoss = G.area.id === 'moor';
+  if (G.hall) G.camTop = G.hall.y0 + 20;   // Thronhalle: die Kamera zeigt den ganzen Raum
   const b = makeEnemy(moorBoss ? 'hexe' : 'boss', WORLD_W / 2, G.camTop + 90, true);
+  if (G.area.id === 'schloss' || G.area.id === 'kerker') { b.hp = b.maxHp = 1500; }   // Platzhalter, bis der Boss entworfen ist
   b.in = true; b.reaction = 1.2;
   if (moorBoss) { b.boss = true; b.phase = 1; b.form = 'a'; b.cast = 2.5; b.last = ''; b.strafe = 1; b.strafeT = 2; }
   G.enemies.push(b); G.boss = b;
@@ -1132,6 +1136,7 @@ function spawnBoss() {
 }
 // Boss besiegt: der Lauf geht im Endlosmodus weiter, bis man fällt
 function winRun() {
+  if (G.hallGate) { G.obstacles = G.obstacles.filter(o => o !== G.hallGate); G.hallGate = null; if (G.hall && G.hall.topWall) G.hall.topWall.closed = false; }
   G.enemies = G.enemies.filter(e => e.type !== 'irrlicht'); G.clouds = []; G.hands = []; G.fogs = G.fogs.filter(f => !f.hexe); G.rootT = 0;
   const first = !SAVE.bossDown;
   const nextA = AREAS.find(a => a.after === G.area.id), newArea = nextA && !SAVE.bossDownBy[G.area.id];
@@ -1403,7 +1408,9 @@ function updateEnemies(dt) {
     }
 
     let dirx = 0, diry = 0, speed = T.speed;
-    const tx = e.lastX - e.x, ty = e.lastY - e.y, td = Math.hypot(tx, ty) || 1;
+    let ltx = e.lastX, lty = e.lastY;
+    if (G.cwalls.length) [ltx, lty] = castleTarget(e.x, e.y, ltx, lty);   // Schloss: erst durch die Tür, dann zum Ziel
+    const tx = ltx - e.x, ty = lty - e.y, td = Math.hypot(tx, ty) || 1;
 
     if (e.type === 'grunt' || e.type === 'boss') {
       if (los && dist < 640) {
@@ -1796,11 +1803,13 @@ function makeFloor() {
 // ---------- Zeichnen: Welt ----------
 function drawWorld() {
   const top = G.camTop;
+  const castle = G.area.id === 'schloss', moor = G.area.id === 'moor';
+  if (castle) drawCastleBase();
+  if (!castle) {
   if (!floorPattern) makeFloor();
   ctx.fillStyle = floorPattern;
   ctx.fillRect(0, top, VIEW_W, VIEW_H);
   // Steinpfad in der Mitte (nicht im Moor)
-  const moor = G.area.id === 'moor';
   const g = ctx.createLinearGradient(300, 0, 660, 0);
   g.addColorStop(0, 'rgba(150,150,130,0)'); g.addColorStop(0.15, 'rgba(150,150,130,.22)'); g.addColorStop(0.85, 'rgba(150,150,130,.22)'); g.addColorStop(1, 'rgba(150,150,130,0)');
   if (!moor) {
@@ -1822,6 +1831,7 @@ function drawWorld() {
     eg.addColorStop(0, '#040806'); eg.addColorStop(1, 'rgba(4,8,6,0)');
     ctx.fillStyle = eg; ctx.fillRect(Math.min(gx, ge), top, 26, VIEW_H);
   }
+  }
   if (moor) for (const q of G.patches) { if (q.kind !== 'reeds' && q.y + q.ry > top && q.y - q.ry < top + VIEW_H) drawPatch(q); }
   // Deckung
   for (const o of G.obstacles) {
@@ -1835,6 +1845,212 @@ function drawWorld() {
     ctx.fillStyle = 'rgba(255,120,150,.25)'; ctx.beginPath(); ctx.arc(k.x, k.y, 20, 0, 7); ctx.fill();
     rr(k.x - 8, k.y - 11, 16, 22, 6); ctx.fillStyle = '#d33a5a'; ctx.fill();
     ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.stroke();
+  }
+}
+
+
+// ---------- Schloss: Räume, Wände, Türen ----------
+// Das Schloss besteht aus Räumen übereinander. Zwischen zwei Räumen liegt eine Quermauer mit einer offenen Tür (Durchgang), die Seitenwände haben nur geschlossene Zierdeüren.
+const CASTLE_WALL = 40;
+const CASTLE_INDOOR = ['halle', 'zimmer'];
+function castlePlan() {
+  // Reihenfolge der Zonen: Tor und Vorhof (draußen), Räume, Innenhof (draußen), Räume, dann die Thronhalle
+  const pick = n => Array.from({ length: n }, () => CASTLE_INDOOR[Math.floor(Math.random() * 2)]);
+  const types = ['tor', 'vorhof', 'vorhof', 'vorhof', ...pick(6), 'hof', 'hof', 'hof', ...pick(7)];
+  const D = 40 + G.bossDist * PX_PER_M, w = types.map(() => rand(0.8, 1.2)), sum = w.reduce((a, b) => a + b, 0);
+  return types.map((t, i) => ({ type: t, h: Math.round(D * w[i] / sum) }));
+}
+function addCastleWall(y, th, o) {   // Quermauer mit Tür (gx, gw); y = Mitte der Mauer
+  const gw = o.gw || Math.round(rand(140, 170)), gx = o.gx !== undefined ? o.gx : Math.round(rand(110, WORLD_W - 110 - gw));
+  const w = { y, th, gx, gw, kind: o.kind || 'plain', closed: false };
+  G.cwalls.push(w);
+  G.obstacles.push({ kind: 'wall', hidden: true, x: 0, y: y - th / 2, w: gx, h: th }, { kind: 'wall', hidden: true, x: gx + gw, y: y - th / 2, w: WORLD_W - gx - gw, h: th });
+  return w;
+}
+function ensureCastle(topY) {
+  if (!G.castlePlan) {
+    G.castlePlan = castlePlan();
+    const w = addCastleWall(40, 80, { kind: 'gate', gx: 395, gw: 170 });   // Stadtmauer mit Tor
+    G.obstacles.push({ kind: 'wall', hidden: true, x: 395, y: 40 - 40, w: 170, h: 80 });   // das Tor ist unten geschlossen
+    w.closed = true; G.castleTop = 40; G.castleN = 0;
+  }
+  while (G.castleTop > topY) buildCastleRoom();
+}
+function buildCastleRoom() {
+  const i = G.castleN++;
+  let type, h;
+  if (i < G.castlePlan.length) { type = G.castlePlan[i].type; h = G.castlePlan[i].h; }
+  else if (i === G.castlePlan.length) { type = 'thron'; h = 680; }
+  else { const r = Math.random(); type = r < 0.36 ? 'halle' : r < 0.6 ? 'zimmer' : 'hof'; h = Math.round(rand(900, 1300)); }
+  const y1 = G.castleTop, y0 = y1 - h, room = { type, y0, y1, seed: Math.random(), doorsL: [], doorsR: [], torches: [] };
+  G.rooms.push(room);
+  // Seitenwände (Kollision) und geschlossene Zierdeüren: 0 bis 2 je Seite, nicht gespiegelt
+  G.obstacles.push({ kind: 'wall', hidden: true, x: 0, y: y0, w: CASTLE_WALL, h }, { kind: 'wall', hidden: true, x: WORLD_W - CASTLE_WALL, y: y0, w: CASTLE_WALL, h });
+  for (const side of ['doorsL', 'doorsR']) {
+    const n = type === 'thron' ? 1 + (Math.random() < 0.5 ? 1 : 0) : Math.floor(Math.random() * 3);
+    for (let k = 0; k < n; k++) {
+      for (let t = 0; t < 12; t++) {
+        const dy = y0 + 70 + Math.random() * Math.max(0, h - 70 * 2 - 90);
+        if (dy + 90 > y1 - 70) continue;
+        if (room[side].some(q => Math.abs(q - dy) < 130)) continue;
+        room[side].push(dy); break;
+      }
+    }
+  }
+  for (let t = Math.floor(h / 260); t > 0; t--) room.torches.push({ x: Math.random() < 0.5 ? 70 : WORLD_W - 70, y: y0 + rand(80, h - 80) });
+  // Quermauer oben mit Tür; die Thronhalle bleibt oben zu, bis der Boss besiegt ist
+  const topWall = addCastleWall(y0, CASTLE_WALL, { kind: type === 'vorhof' && G.castlePlan[i + 1] && !['vorhof'].includes(G.castlePlan[i + 1].type) ? 'facade' : 'plain' });
+  if (type === 'thron') {
+    G.hall = room; room.topWall = topWall; topWall.closed = true;
+    G.hallGate = { kind: 'wall', hidden: true, x: topWall.gx, y: y0 - CASTLE_WALL / 2, w: topWall.gw, h: CASTLE_WALL };
+    G.obstacles.push(G.hallGate);
+  }
+  room.topWall = topWall;
+  fillCastleRoom(room, topWall, G.cwalls[G.cwalls.length - 2] || null);
+  G.castleTop = y0;
+}
+function fillCastleRoom(room, topWall, botWall) {
+  const { type, y0, y1 } = room, H = y1 - y0;
+  const free = (x, y, w, h) => !G.obstacles.some(o => !o.hidden && x < o.x + o.w + 70 && x + w + 70 > o.x && y < o.y + o.h + 70 && y + h + 70 > o.y);
+  const prop = (sty, x, y, w, h, round) => {
+    const o = { kind: round ? 'tree' : 'wall', sty, seed: Math.random(), x, y, w, h };
+    if (round) { o.r = w / 2; o.cx = x + o.r; o.cy = y + o.r; }
+    G.obstacles.push(o); return o;
+  };
+  const lane = (y, w, h) => y < y0 + 150 || y + h > y1 - 150;   // vor den Türen bleibt es frei
+  const tries = (n, mk) => { for (let i = 0; i < n; i++) for (let t = 0; t < 20; t++) { const q = mk(); if (!lane(q.y, q.w, q.h) && q.x > 70 && q.x + q.w < WORLD_W - 70 && free(q.x, q.y, q.w, q.h)) { prop(q.sty, q.x, q.y, q.w, q.h, q.round); break; } } };
+  const n = Math.max(2, Math.round(H / 260));
+  if (type === 'halle' || type === 'thron') {
+    const rows = Math.max(2, Math.floor((H - 300) / 230));
+    for (let i = 0; i < rows; i++) { const y = y0 + 150 + i * (H - 300) / Math.max(1, rows - 1) - 26; for (const x of [214, 682]) if (!free(x, y, 52, 52) || lane(y, 52, 52)) continue; else prop('column', x, y, 52, 52, true); }
+    if (type === 'halle') tries(Math.max(0, n - 2), () => ({ sty: 'bank', x: rand(90, 760), y: rand(y0, y1), w: 80, h: 22 }));
+    if (type === 'thron') { room.carpet = true; prop('throne', 444, y0 + 56, 72, 62, false); }
+  } else if (type === 'zimmer') {
+    tries(n, () => ({ sty: 'tisch', x: rand(90, 770), y: rand(y0, y1), w: 100, h: 56 }));
+    tries(n, () => ({ sty: 'regal', x: rand(70, 760), y: rand(y0, y1), w: 120, h: 30 }));
+    tries(Math.floor(n / 2), () => ({ sty: 'column', x: rand(90, 820), y: rand(y0, y1), w: 44, h: 44, round: true }));
+  } else if (type === 'vorhof' || type === 'tor') {
+    tries(Math.max(1, Math.floor(n / 3)), () => ({ sty: 'brunnen', x: rand(110, 740), y: rand(y0, y1), w: 84, h: 84, round: true }));
+    tries(n, () => ({ sty: 'statue', x: rand(90, 800), y: rand(y0, y1), w: 52, h: 52 }));
+    tries(n, () => ({ sty: 'hecke', x: rand(90, 740), y: rand(y0, y1), w: 110, h: 34 }));
+    tries(Math.max(1, Math.floor(n / 2)), () => ({ sty: 'haus', x: rand(90, 760), y: rand(y0, y1), w: 100, h: 70 }));
+    tries(Math.floor(n / 2), () => ({ sty: 'bank', x: rand(90, 800), y: rand(y0, y1), w: 70, h: 20 }));
+  } else if (type === 'hof') {
+    tries(1, () => ({ sty: 'brunnen', x: 440, y: (y0 + y1) / 2 - 76, w: 152, h: 152, round: true }));
+    tries(n, () => ({ sty: 'hecke', x: rand(90, 740), y: rand(y0, y1), w: 140, h: 60 }));
+    tries(n, () => ({ sty: 'column', x: rand(90, 820), y: rand(y0, y1), w: 44, h: 44, round: true }));
+  }
+}
+// Wohin ein Gegner läuft: liegt eine Quermauer zwischen ihm und dem Ziel, erst zur Tür, dann hindurch
+function castleTarget(ex, ey, tx, ty) {
+  let best = null, bd = Infinity;
+  for (const w of G.cwalls) {
+    if (w.closed || (ey - w.y) * (ty - w.y) >= 0) continue;
+    const d = Math.abs(ey - w.y);
+    if (d < bd) { bd = d; best = w; }
+  }
+  if (!best) return [tx, ty];
+  const gx = best.gx + best.gw / 2, above = ey < best.y, side = above ? -1 : 1;
+  if (Math.abs(ex - gx) > best.gw / 2 - 30 && Math.abs(ey - best.y) < 260) return [gx, best.y + side * 90];   // vor die Tür stellen
+  return [gx, best.y - side * 90];   // durch die Tür
+}
+// ---------- Schloss: Zeichnen ----------
+let castlePats = null;
+function castlePatterns() {
+  const mk = (w, h, fn) => { const c = document.createElement('canvas'); c.width = w; c.height = h; fn(c.getContext('2d')); return ctx.createPattern(c, 'repeat'); };
+  castlePats = {
+    tile: mk(60, 60, x => { x.fillStyle = '#2a2a30'; x.fillRect(0, 0, 60, 60); x.strokeStyle = 'rgba(0,0,0,.28)'; x.lineWidth = 2; x.strokeRect(0, 0, 60, 60); }),
+    wood: mk(40, 40, x => { x.fillStyle = '#2a221c'; x.fillRect(0, 0, 40, 40); x.strokeStyle = 'rgba(0,0,0,.3)'; x.lineWidth = 2; x.beginPath(); x.moveTo(0, 0); x.lineTo(40, 0); x.moveTo(20, 0); x.lineTo(20, 40); x.stroke(); }),
+    cob: mk(52, 44, x => { x.fillStyle = '#243028'; x.fillRect(0, 0, 52, 44); x.strokeStyle = 'rgba(0,0,0,.25)'; x.lineWidth = 1.5; x.beginPath(); x.moveTo(0, 22); x.lineTo(52, 22); x.moveTo(26, 0); x.lineTo(26, 22); x.moveTo(0, 22); x.lineTo(0, 44); x.moveTo(52, 22); x.lineTo(52, 44); x.stroke(); }),
+    brick: mk(40, 20, x => { x.fillStyle = '#3a3f46'; x.fillRect(0, 0, 40, 20); x.strokeStyle = 'rgba(0,0,0,.4)'; x.lineWidth = 2; x.beginPath(); x.moveTo(0, 0); x.lineTo(40, 0); x.moveTo(0, 10); x.lineTo(40, 10); x.moveTo(20, 0); x.lineTo(20, 10); x.moveTo(0, 10); x.lineTo(0, 20); x.moveTo(40, 10); x.lineTo(40, 20); x.stroke(); })
+  };
+}
+function castleDoorV(x, y, right) {   // geschlossene Tür in der Seitenwand: von der Raumseite bis kurz vor die Außenkante
+  const w = 34, h = 90;
+  ctx.fillStyle = '#3a3f46'; ctx.strokeStyle = '#14171a'; ctx.lineWidth = 2.5; ctx.fillRect(right ? x : x - 3, y - 5, w + 3, h + 10); ctx.strokeRect(right ? x : x - 3, y - 5, w + 3, h + 10);
+  ctx.fillStyle = '#6a4a2a'; ctx.strokeStyle = '#2a1c10'; ctx.lineWidth = 2; ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
+  ctx.beginPath(); ctx.moveTo(x, y + h / 2); ctx.lineTo(x + w, y + h / 2); ctx.moveTo(x + 6, y + 8); ctx.lineTo(x + w - 6, y + 8); ctx.moveTo(x + 6, y + h - 8); ctx.lineTo(x + w - 6, y + h - 8); ctx.stroke();
+  ctx.fillStyle = '#d9a636'; ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2 - 8, 2.8, 0, 7); ctx.arc(x + w / 2, y + h / 2 + 8, 2.8, 0, 7); ctx.fill();
+}
+function castleWallBand(x, y, w, h, horiz, notch) {   // Mauer von oben
+  ctx.fillStyle = castlePats.brick; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = 'rgba(255,255,255,.1)';
+  if (horiz) ctx.fillRect(x, y + h * 0.28, w, h * 0.44); else ctx.fillRect(x + w * 0.28, y, w * 0.44, h);
+  ctx.strokeStyle = '#14171a'; ctx.lineWidth = 3; ctx.strokeRect(x, y, w, h);
+}
+function drawCastleBase() {
+  if (!castlePats) castlePatterns();
+  const top = G.camTop, bot = top + VIEW_H;
+  for (const r of G.rooms) {
+    if (r.y1 < top || r.y0 > bot) continue;
+    ctx.fillStyle = r.type === 'zimmer' ? castlePats.wood : (r.type === 'halle' || r.type === 'thron') ? castlePats.tile : castlePats.cob;
+    ctx.fillRect(0, r.y0, WORLD_W, r.y1 - r.y0);
+    if (r.type === 'halle' || r.type === 'thron') {   // roter Teppich mit goldenen Rändern
+      ctx.fillStyle = 'rgba(106,28,36,.85)'; ctx.fillRect(410, r.y0, 140, r.y1 - r.y0); ctx.fillStyle = '#d9a636'; ctx.fillRect(418, r.y0, 4, r.y1 - r.y0); ctx.fillRect(538, r.y0, 4, r.y1 - r.y0);
+    } else if (r.type === 'vorhof' || r.type === 'tor' || r.type === 'hof') { ctx.fillStyle = 'rgba(58,58,50,.55)'; ctx.fillRect(410, r.y0, 140, r.y1 - r.y0); }
+    if (r.type === 'thron') {   // Podest mit Stufen
+      for (const [w, h, c] of [[420, 150, '#4a3a4a'], [360, 120, '#5a4a5a'], [300, 92, '#6a5a6a']]) { ctx.fillStyle = c; ctx.fillRect(480 - w / 2, r.y0 + 20, w, h); ctx.strokeStyle = '#14111a'; ctx.lineWidth = 3; ctx.strokeRect(480 - w / 2, r.y0 + 20, w, h); }
+    }
+    // Seitenwände mit geschlossenen Türen
+    castleWallBand(0, r.y0, CASTLE_WALL, r.y1 - r.y0, false); castleWallBand(WORLD_W - CASTLE_WALL, r.y0, CASTLE_WALL, r.y1 - r.y0, false);
+    for (const y of r.doorsL) castleDoorV(6, y, false);
+    for (const y of r.doorsR) castleDoorV(WORLD_W - CASTLE_WALL, y, true);
+    for (const t of r.torches) { if (t.y < top - 100 || t.y > bot + 100) continue; const g = ctx.createRadialGradient(t.x, t.y, 0, t.x, t.y, 95); g.addColorStop(0, 'rgba(255,170,70,.32)'); g.addColorStop(1, 'rgba(255,170,70,0)'); ctx.fillStyle = g; ctx.fillRect(t.x - 95, t.y - 95, 190, 190); ctx.fillStyle = '#4a4f57'; ctx.beginPath(); ctx.arc(t.x, t.y, 8, 0, 7); ctx.fill(); ctx.fillStyle = '#ffc46a'; ctx.beginPath(); ctx.arc(t.x, t.y, 4.5, 0, 7); ctx.fill(); }
+  }
+  for (const w of G.cwalls) {   // Quermauern mit offener Tür und Pfosten
+    if (w.y + w.th < top || w.y - w.th > bot) continue;
+    const y = w.y - w.th / 2;
+    castleWallBand(0, y, w.gx, w.th, true); castleWallBand(w.gx + w.gw, y, WORLD_W - w.gx - w.gw, w.th, true);
+    ctx.fillStyle = '#5a5e66'; ctx.strokeStyle = '#14171a'; ctx.lineWidth = 2.5;
+    for (const px of [w.gx - 10, w.gx + w.gw - 4]) { ctx.fillRect(px, y - 4, 14, w.th + 8); ctx.strokeRect(px, y - 4, 14, w.th + 8); }
+    if (w.closed && w.kind === 'gate') {   // Tor mit Fallgitter, Zugbrücke und Türmen
+      ctx.fillStyle = '#26231e'; ctx.fillRect(w.gx + 4, y, w.gw - 8, w.th); ctx.strokeStyle = '#8a8e96'; ctx.lineWidth = 5;
+      for (let x = w.gx + 20; x < w.gx + w.gw - 10; x += 22) { ctx.beginPath(); ctx.moveTo(x, y + 6); ctx.lineTo(x, y + w.th - 4); ctx.stroke(); }
+      ctx.beginPath(); ctx.moveTo(w.gx + 4, y + w.th * 0.4); ctx.lineTo(w.gx + w.gw - 4, y + w.th * 0.4); ctx.moveTo(w.gx + 4, y + w.th * 0.75); ctx.lineTo(w.gx + w.gw - 4, y + w.th * 0.75); ctx.stroke();
+      castleTower(w.gx - 14, w.y + 10, 54); castleTower(w.gx + w.gw + 14, w.y + 10, 54);
+    } else if (w.closed) {
+      ctx.fillStyle = '#26231e'; ctx.fillRect(w.gx + 4, y, w.gw - 8, w.th); ctx.strokeStyle = '#8a8e96'; ctx.lineWidth = 4; for (let x = w.gx + 20; x < w.gx + w.gw - 10; x += 22) { ctx.beginPath(); ctx.moveTo(x, y + 4); ctx.lineTo(x, y + w.th - 4); ctx.stroke(); }
+    } else if (w.kind === 'facade') { castleTower(230, w.y, 62); castleTower(730, w.y, 62); }
+  }
+}
+function castleTower(x, y, r) {
+  ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.arc(x, y, r + 6, 0, 7); ctx.fill();
+  ctx.fillStyle = '#555a63'; ctx.strokeStyle = '#14171a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.stroke();
+  for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2; ctx.save(); ctx.translate(x + Math.cos(a) * (r - 6), y + Math.sin(a) * (r - 6)); ctx.rotate(a); ctx.fillStyle = '#2e3238'; ctx.lineWidth = 1.5; ctx.fillRect(-6, -6, 12, 12); ctx.strokeRect(-6, -6, 12, 12); ctx.restore(); }
+  for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; ctx.fillStyle = i % 2 ? '#7a3a3a' : '#8a4444'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * (r - 18), y + Math.sin(a) * (r - 18)); ctx.lineTo(x + Math.cos(a + 0.628) * (r - 18), y + Math.sin(a + 0.628) * (r - 18)); ctx.closePath(); ctx.fill(); }
+  ctx.fillStyle = '#d9a636'; ctx.beginPath(); ctx.arc(x, y, 5, 0, 7); ctx.fill();
+}
+function drawCastleProp(o) {
+  const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
+  ctx.lineWidth = 3; ctx.strokeStyle = '#14171a';
+  if (o.sty === 'column') {
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.arc(cx + 4, cy + 7, o.w / 2, 0, 7); ctx.fill();
+    ctx.fillStyle = '#6a6e76'; ctx.beginPath(); ctx.arc(cx, cy, o.w / 2, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.arc(cx - o.w * 0.12, cy - o.w * 0.12, o.w * 0.27, 0, 7); ctx.fill();
+  } else if (o.sty === 'brunnen') {
+    const r = o.w / 2;
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.arc(cx + 5, cy + 8, r, 0, 7); ctx.fill();
+    ctx.fillStyle = '#6a6f78'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#26565e'; ctx.beginPath(); ctx.arc(cx, cy, r - 9, 0, 7); ctx.fill(); ctx.fillStyle = 'rgba(180,230,230,.3)'; ctx.beginPath(); ctx.arc(cx - 8, cy - 8, r * 0.3, 0, 7); ctx.fill();
+    ctx.fillStyle = '#8a8e96'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, 9, 0, 7); ctx.fill(); ctx.stroke();
+  } else if (o.sty === 'statue') {
+    ctx.fillStyle = '#6a6f78'; ctx.fillRect(o.x, o.y, o.w, o.h); ctx.strokeRect(o.x, o.y, o.w, o.h); ctx.fillStyle = '#7a7f88'; ctx.fillRect(o.x + 6, o.y + 6, o.w - 12, o.h - 12);
+    ctx.fillStyle = '#9a9ea6'; ctx.beginPath(); ctx.arc(cx, cy, 12, 0, 7); ctx.fill(); ctx.stroke(); ctx.strokeStyle = '#9a9ea6'; ctx.lineCap = 'round'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(cx - 12, cy); ctx.lineTo(cx - 24, cy - 8); ctx.moveTo(cx + 12, cy); ctx.lineTo(cx + 24, cy - 8); ctx.stroke();
+  } else if (o.sty === 'hecke') {
+    rr(o.x, o.y, o.w, o.h, Math.min(o.w, o.h) / 2.4); ctx.fillStyle = '#1e5a2e'; ctx.fill(); ctx.strokeStyle = '#0c2414'; ctx.stroke(); rr(o.x + 9, o.y + 8, o.w - 18, o.h - 16, Math.min(o.w, o.h) / 3); ctx.fillStyle = 'rgba(42,122,60,.7)'; ctx.fill();
+  } else if (o.sty === 'haus') {
+    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(o.x + 6, o.y + 8, o.w, o.h); ctx.fillStyle = '#5a5e66'; ctx.fillRect(o.x - 6, o.y - 6, o.w + 12, o.h + 12); ctx.strokeRect(o.x - 6, o.y - 6, o.w + 12, o.h + 12);
+    ctx.fillStyle = '#6a3a34'; ctx.fillRect(o.x, o.y, o.w, o.h); ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = 1.5; ctx.beginPath(); for (let yy = 9; yy < o.h / 2; yy += 9) { ctx.moveTo(o.x, o.y + yy); ctx.lineTo(o.x + o.w, o.y + yy); ctx.moveTo(o.x, o.y + o.h - yy); ctx.lineTo(o.x + o.w, o.y + o.h - yy); } ctx.stroke();
+    ctx.fillStyle = '#4a2420'; ctx.fillRect(o.x, o.y + o.h / 2 - 3, o.w, 6); ctx.fillStyle = '#4a4f57'; ctx.strokeStyle = '#14171a'; ctx.lineWidth = 2; ctx.fillRect(o.x + o.w - 26, o.y + 8, 14, 14); ctx.strokeRect(o.x + o.w - 26, o.y + 8, 14, 14);
+  } else if (o.sty === 'bank') {
+    ctx.fillStyle = '#6a6f78'; ctx.fillRect(o.x, o.y, o.w, o.h); ctx.lineWidth = 2.5; ctx.strokeRect(o.x, o.y, o.w, o.h); ctx.fillStyle = '#7a7f88'; ctx.fillRect(o.x + 4, o.y + 4, o.w - 8, o.h - 8);
+  } else if (o.sty === 'tisch') {
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(o.x + 5, o.y + 7, o.w, o.h); ctx.fillStyle = '#5a4630'; ctx.strokeStyle = '#1c140c'; ctx.fillRect(o.x, o.y, o.w, o.h); ctx.strokeRect(o.x, o.y, o.w, o.h);
+    ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.fillRect(o.x + 10, o.y + 10, o.w - 20, o.h - 20); ctx.fillStyle = '#c8c0a8'; ctx.beginPath(); ctx.arc(o.x + o.w * 0.3, o.y + o.h / 2, 9, 0, 7); ctx.fill(); ctx.fillStyle = '#8a2a30'; ctx.beginPath(); ctx.arc(o.x + o.w * 0.65, o.y + o.h / 2 - 4, 7, 0, 7); ctx.fill();
+  } else if (o.sty === 'regal') {
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(o.x + 4, o.y + 6, o.w, o.h); ctx.fillStyle = '#3a2a1c'; ctx.strokeStyle = '#14100a'; ctx.fillRect(o.x, o.y, o.w, o.h); ctx.strokeRect(o.x, o.y, o.w, o.h);
+    for (let bx = o.x + 6; bx < o.x + o.w - 8; bx += 9) { ctx.fillStyle = ['#8a2a30', '#2a5a8a', '#3a6a2a', '#8a6a2a'][Math.floor(bx / 9) % 4]; ctx.fillRect(bx, o.y + 5, 6, o.h - 10); }
+  } else if (o.sty === 'throne') {
+    ctx.fillStyle = '#3a2a1c'; rr(o.x, o.y, o.w, o.h, 8); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#8a2a30'; rr(o.x + 8, o.y + 8, o.w - 16, o.h - 16, 6); ctx.fill(); ctx.strokeStyle = '#d9a636'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.fillStyle = '#d9a636'; ctx.fillRect(o.x - 4, o.y - 2, o.w + 8, 12);
   }
 }
 
@@ -1892,6 +2108,8 @@ function drawMerchantWorld(m) {
   ctx.fillStyle = '#4a6ea6'; ctx.beginPath(); ctx.arc(m.x - 4, m.y - 27, 7, 0, 7); ctx.fill();
 }
 function drawObstacle(o) {
+  if (o.hidden) return;
+  if (o.sty) { drawCastleProp(o); return; }
   if (o.kind === 'wall') {
     ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(o.x + 4, o.y + 8, o.w, o.h);
     const g = ctx.createLinearGradient(0, o.y, 0, o.y + o.h);
@@ -3492,7 +3710,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.38';
+const VERSION = 'v0.39';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
