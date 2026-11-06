@@ -1132,6 +1132,7 @@ function spawnBoss() {
   const moorBoss = G.area.id === 'moor';
   if (G.hall) G.camTop = G.hall.y0 + 20;   // Thronhalle: die Kamera zeigt den ganzen Raum
   const herrBoss = G.area.id === 'schloss';
+  if (G.area.id === 'wald') bogenArena();
   const b = makeEnemy(moorBoss ? 'hexe' : herrBoss ? 'herr' : 'boss', WORLD_W / 2, G.camTop + (herrBoss ? 250 : 90), true);
   if (G.area.id === 'kerker') { b.hp = b.maxHp = 1500; }   // Platzhalter, bis der Boss entworfen ist
   if (herrBoss) { b.boss = true; b.phase = 1; b.cyc = 'stoss'; b.cool = 1.2; b.act = null; b.rainT = 0; b.form = 'a'; }
@@ -2493,6 +2494,22 @@ function drawShieldAt(x, y, sc, rot) {
   ctx.restore();
 }
 // ---------- Bogenmeister ----------
+function bogenArena() {   // Boss-Arena im Wald: nur 6 bis 8 Bäume, locker im Kreis am Rand, innen viel Freifläche für die Pfeile
+  const top = G.camTop, cx = WORLD_W / 2, cy = top + VIEW_H / 2, p = G.player;
+  G.obstacles = G.obstacles.filter(o => o.y + o.h < top - 20 || o.y > top + VIEW_H + 20);
+  const n = 6 + Math.floor(Math.random() * 3), off = Math.random() * 6.283, trees = [];
+  for (let i = 0; i < n; i++) {
+    for (let tries = 0; tries < 12; tries++) {
+      const a = off + i / n * 6.283 + rand(-0.22, 0.22) + tries * 0.3, k = rand(0.9, 1.08), r = rand(30, 44);
+      const x = clamp(cx + Math.cos(a) * 400 * k, r + 60, WORLD_W - r - 60), y = clamp(cy + Math.sin(a) * 250 * k, top + r + 40, top + VIEW_H - r - 40);
+      if (Math.hypot(x - WORLD_W / 2, y - (top + 90)) < r + 110) continue;   // nicht auf dem Startplatz des Bosses
+      if (Math.hypot(x - p.x, y - p.y) < r + 70) continue;
+      if (trees.some(t => Math.hypot(t.cx - x, t.cy - y) < t.r + r + 50)) continue;
+      trees.push({ kind: 'tree', seed: Math.random(), x: x - r, y: y - r, w: r * 2, h: r * 2, r, cx: x, cy: y }); break;
+    }
+  }
+  G.obstacles.push(...trees);
+}
 // Eine Phase. Nach jedem Angriff geht er hinter eine Deckung (Baum, Fels), kommt hervor und greift wieder an.
 // Angriffe: Dreierschuss, Fächerschuss, Pfeilregen, Kreissalve, Pfeilwand, Scharfschuss, Brandpfeile (zufällig nach Gewicht, nie zweimal derselbe).
 const BOGEN_ATK = [['dreier', 20], ['faecher', 17], ['regen', 13], ['kreis', 12], ['wand', 8], ['scharf', 15], ['brand', 28]];
@@ -4210,7 +4227,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.50';
+const VERSION = 'v0.51';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
