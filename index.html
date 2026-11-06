@@ -1667,7 +1667,7 @@ function updateBullets(dt) {
       const t = b.ignoreP ? Infinity : segCircle(b.px, b.py, b.x, b.y, p.x, p.y, p.r + (b.rad || 0));
       if (t < tHit) { tHit = t; target = p; }
     }
-    if (b.through) tObs = Infinity;   // durchschlagender Pfeil (Scharfschuss): geht durch Hindernisse
+    if (b.through || b.over) tObs = Infinity;   // durchschlagender Pfeil (Scharfschuss): geht durch Hindernisse
     if (tObs === Infinity && tHit === Infinity) continue;
     if (tHit < tObs) {
       const hx = b.px + (b.x - b.px) * tHit, hy = b.py + (b.y - b.py) * tHit;
@@ -2248,7 +2248,9 @@ function drawEntities() {
     if (e.type === 'irrlicht') { drawIrrlicht(e); continue; }
     if (e.type === 'boss') {
       const r0 = e.r, k = r0 / 14;
-      e.r = 14; ctx.save(); ctx.translate(e.x, e.y); ctx.scale(k, k); ctx.translate(-e.x, -e.y); drawSkeleton(e);
+      const lf = 1 + 0.25 * (e.lift || 0);
+      if (lf > 1.01) { ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(e.x + 6, e.y + 22, 24, 11, 0, 0, 7); ctx.fill(); }
+      e.r = 14; ctx.save(); ctx.translate(e.x, e.y); ctx.scale(k * lf, k * lf); ctx.translate(-e.x, -e.y); drawSkeleton(e);
       ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, 18, 0, 7); ctx.stroke(); ctx.restore(); e.r = r0;
     } else if (e.type === 'grunt') drawSkeleton(e);
     else if (e.type === 'wolf') drawWolf(e);
@@ -2496,7 +2498,7 @@ function drawShieldAt(x, y, sc, rot) {
 // ---------- Bogenmeister ----------
 // Eine Phase. Nach jedem Angriff geht er hinter eine Deckung (Baum, Fels), kommt hervor und greift wieder an.
 // Angriffe: Dreierschuss, Fächerschuss, Pfeilregen, Kreissalve, Pfeilwand, Scharfschuss, Brandpfeile (zufällig nach Gewicht, nie zweimal derselbe).
-const BOGEN_ATK = [['dreier', 20], ['faecher', 17], ['regen', 13], ['kreis', 12], ['wand', 8], ['scharf', 15], ['brand', 15]];
+const BOGEN_ATK = [['dreier', 20], ['faecher', 17], ['regen', 13], ['kreis', 12], ['wand', 8], ['scharf', 15], ['brand', 28]];
 function bogenArrow(e, ang, sp, dmg, extra) { addBullet(e.x + Math.cos(ang) * e.r, e.y + Math.sin(ang) * e.r, ang, sp, dmg, 'enemy', 4000, 0, Object.assign({ rad: 7, big: true, cull: true }, extra || {})); }   // fliegt über die ganze Karte, bis er den Rand verlässt
 function bogenPick(e) {
   const list = BOGEN_ATK.filter(w => w[0] !== e.last), tot = list.reduce((s, w) => s + w[1], 0);
@@ -2504,7 +2506,7 @@ function bogenPick(e) {
   for (const w of list) { r -= w[1]; if (r <= 0) return w[0]; }
   return list[0][0];
 }
-function bogenCover(e) {   // Platz hinter einer Deckung, von der man den Spieler nicht sieht
+function bogenCover(e, other) {   // Platz hinter einer Deckung, von der man den Spieler nicht sieht (other: eine andere als die jetzige, auch weiter weg)
   const p = G.player; let best = null, bd = 1e9;
   for (const o of G.obstacles) {
     if (o.hidden || o.sty === 'fallen') continue;
@@ -2514,10 +2516,19 @@ function bogenCover(e) {   // Platz hinter einer Deckung, von der man den Spiele
     if (ul < 130) continue;
     const hx = ocx + ux / ul * (R + e.r + 16), hy = ocy + uy / ul * (R + e.r + 16);
     if (hx < e.r + 20 || hx > WORLD_W - e.r - 20 || hy < G.camTop + e.r + 30 || hy > G.camTop + VIEW_H - e.r - 10) continue;
-    const d = Math.hypot(hx - e.x, hy - e.y) + (Math.hypot(hx - p.x, hy - p.y) < 220 ? 400 : 0);
+    if (other && Math.hypot(hx - e.x, hy - e.y) < 110) continue;
+    const d = Math.hypot(hx - e.x, hy - e.y) + (Math.hypot(hx - p.x, hy - p.y) < 220 ? 400 : 0) + (other ? rand(0, 250) : 0);
     if (d < bd) { bd = d; best = { x: hx, y: hy }; }
   }
-  return bd < 560 ? best : null;
+  return bd < (other ? 900 : 560) ? best : null;
+}
+function bogenDash(e, after) {   // Sprung/Dash hinter eine andere Deckung; danach ggf. gleich der nächste Angriff
+  const sp = bogenCover(e, true);
+  e.dashCd = rand(5.5, 8.5);
+  if (!sp) { if (after) bogenStart(e, after); return false; }
+  const d = Math.hypot(sp.x - e.x, sp.y - e.y);
+  e.mode = 'act'; e.act = { name: 'dash', t: 0, tx: sp.x, ty: sp.y, dur: Math.min(0.9, d / 760 + 0.1), after };
+  sfx('dash', 0.7); return true;
 }
 function bogenStart(e, name) {
   const p = G.player, low = e.hp < e.maxHp * 0.5, ang = Math.atan2(p.y - e.y, p.x - e.x), dg = Math.PI / 180;
@@ -2537,7 +2548,7 @@ function bogenStart(e, name) {
     e.act.ring = ring; ring(0, 0); e.act.dur = 2.1;
   } else if (name === 'wand') {
     const gx = clamp(p.x - 65 + rand(-160, 160), 20, WORLD_W - 150), y0 = G.camTop;
-    addAtk({ kind: 'tele', shape: 'band', y: y0, h: 70, gx, gw: 130, T: 1.0, fire: () => { for (let x = 20; x < WORLD_W; x += 40) { if (x > gx - 10 && x < gx + 140) continue; addBullet(x, y0 + 10, Math.PI / 2, 190, 12, 'enemy', 4000, 0, { rad: 6, big: true, cull: true }); } sfx('enemy_shoot', 0.9); } });
+    addAtk({ kind: 'tele', shape: 'band', y: y0, h: 70, gx, gw: 130, T: 1.0, fire: () => { for (let x = 20; x < WORLD_W; x += 40) { if (x > gx - 10 && x < gx + 140) continue; addBullet(x, y0 + 10, Math.PI / 2, 190, 12, 'enemy', 4000, 0, { rad: 6, big: true, cull: true, over: true }); } sfx('enemy_shoot', 0.9); } });
     e.act.dur = 1.3;
   } else if (name === 'scharf') {
     const t = addAtk({ kind: 'tele', shape: 'lane', x: e.x, y: e.y, ang, len: 700, w: 26, T: 1.2, lock: 0.25, follow: a => { a.ang = Math.atan2(p.y - e.y, p.x - e.x); e.angle = a.ang; }, fire: a => { bogenArrow(e, a.ang, 1000, 30, { through: true, rad: 9 }); sfx('enemy_shoot', 1); G.shakeT = Math.max(G.shakeT, 0.1); } });
@@ -2550,6 +2561,13 @@ function bogenStart(e, name) {
 function bogenAct(e, dt) {
   const p = G.player, a = e.act, dg = Math.PI / 180;
   a.t += dt;
+  if (a.name === 'dash') {
+    const d = Math.hypot(a.tx - e.x, a.ty - e.y); e.lift = Math.sin(Math.min(1, a.t / a.dur) * Math.PI);
+    e.angle = Math.atan2(p.y - e.y, p.x - e.x);
+    if (d > 8 && a.t < a.dur + 0.3) { const st = Math.min(d, 760 * dt); moveCircle(e, (a.tx - e.x) / d * st, (a.ty - e.y) / d * st); if (Math.random() < 0.6) G.parts.push({ x: e.x, y: e.y, vx: rand(-40, 40), vy: rand(-40, 40), life: 0.3, color: '#9a8a6a' }); }
+    else { e.lift = 0; e.act = null; e.mode = 'cover'; e.modeT = 0; e.spotT = 0; e.spot = null; e.coverT = 0.5; if (a.after) bogenStart(e, a.after); }
+    return;
+  }
   if (a.name !== 'scharf') e.angle = Math.atan2(p.y - e.y, p.x - e.x);
   if (a.name === 'dreier') { while (a.n < 3 && a.t >= 0.4 + a.n * 0.17) { a.n++; bogenArrow(e, e.angle + (Math.random() - 0.5) * 0.1, 400, 16); sfx('enemy_shoot', 0.8); } }
   else if (a.name === 'regen') {
@@ -2575,11 +2593,13 @@ function updateBogen(e, dt) {
   e.plx = p.x; e.ply = p.y;
   const dx = p.x - e.x, dy = p.y - e.y, dist = Math.hypot(dx, dy) || 1;
   const go = (tx, ty, sp) => { const d = Math.hypot(tx - e.x, ty - e.y); if (d > 6) moveCircle(e, (tx - e.x) / d * sp * dt, (ty - e.y) / d * sp * dt); };
+  e.lift = e.mode === 'act' && e.act && e.act.name === 'dash' ? e.lift : 0;
+  if (e.mode !== 'act') { e.dashCd = (e.dashCd === undefined ? rand(5.5, 8.5) : e.dashCd) - dt; if (e.dashCd <= 0) bogenDash(e, null); }
   if (e.mode === 'act' && e.act) bogenAct(e, dt);
   else if (e.mode === 'peek') {   // aus der Deckung treten, bis er den Spieler sieht
     e.modeT += dt; e.angle = Math.atan2(dy, dx);
     const los = hasLOS(e.x, e.y, p.x, p.y);
-    if (los && dist < 760 || e.modeT > 1.6) bogenStart(e, bogenPick(e));
+    if (los && dist < 760 || e.modeT > 1.6) { const n = e.first === false ? bogenPick(e) : 'brand'; e.first = false; if (n === 'brand') bogenDash(e, 'brand'); else bogenStart(e, n); }
     else go(p.x, p.y, T.chase * 1.2);
   } else {   // Deckung: hinter Baum oder Fels warten, sonst zurückweichen
     e.modeT += dt; e.angle = Math.atan2(dy, dx);
@@ -4167,7 +4187,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.47';
+const VERSION = 'v0.48';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
