@@ -1363,7 +1363,6 @@ function drawAreaScreen() {
           const k = clamp((performance.now() - areaHold.t0) / 5000, 0, 1);
           if (!hv) areaHold = null;
           else if (k >= 1) { SAVE.bossReached[a.id] = true; persist(); areaHold = null; sfx('stage_up'); }
-          else { rr(bx + 4, by + 19, (84 - 8) * k, 3, 1.5); ctx.fillStyle = '#f2c14e'; ctx.fill(); }
         }
       }
       uiHit(bx, by, 84, 24, () => { if (can) areaChoose(a, true); else areaHold = { id: a.id, t0: performance.now() }; });
@@ -3997,7 +3996,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.41';
+const VERSION = 'v0.42';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
