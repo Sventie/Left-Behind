@@ -232,6 +232,7 @@ function loadSave() {
   for (const c of CARDS) if (sv.owned[c.id] === undefined) sv.owned[c.id] = STARTER[c.id] || 0;
   if (typeof sv.silver !== 'number') sv.silver = START_SILVER;
   sv.maxStage = sv.maxStage || 1;
+  sv.bossReached = sv.bossReached || {};   // je Gebiet: in einem echten Lauf bis zum Boss gekommen (schaltet „Nur Boss“ frei)
   sv.bossDownBy = sv.bossDownBy || {};   // je Gebiet: Boss besiegt
   if (sv.bossDown) sv.bossDownBy.wald = true;   // ältere Spielstände: der erste Boss ist der im Wald
   sv.records = sv.records || {};   // je Gebiet: bester Weg und beste Punktzahl
@@ -1127,6 +1128,7 @@ function update(dt) {
 
 function spawnBoss() {
   G.bossSpawned = true; G.camLock = true;
+  if (!G.bossOnly && !SAVE.bossReached[G.area.id]) { SAVE.bossReached[G.area.id] = true; persist(); }
   const moorBoss = G.area.id === 'moor';
   if (G.hall) G.camTop = G.hall.y0 + 20;   // Thronhalle: die Kamera zeigt den ganzen Raum
   const herrBoss = G.area.id === 'schloss';
@@ -1264,6 +1266,8 @@ function openAreas() {
   const first = AREAS.filter(a => areaUnlocked(a) && a.ready).pop() || AREAS[0];   // vorgewählt: das letzte spielbare Gebiet
   areaSel = first.id; areaScroll = 0; areaDrag = null; state = 'areas';
 }
+let areaHold = null;   // Knopf „Nur Boss“ gedrückt gehalten: {id, t0}
+const bossTrainOpen = a => !!(SAVE.bossReached[a.id] || SAVE.bossDownBy[a.id]);
 function areaChoose(a, bossOnly) {
   if (!areaUnlocked(a) || !a.ready) return;
   curArea = a; curBossOnly = !!bossOnly; selectHover = lastClass; state = 'select';
@@ -1349,10 +1353,20 @@ function drawAreaScreen() {
     if (done) { ctx.strokeStyle = '#4fd08a'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(x - 46, y + r + 42); ctx.lineTo(x - 42, y + r + 46); ctx.lineTo(x - 35, y + r + 38); ctx.stroke(); text('Boss besiegt', x - 30, y + r + 46, 14, '#4fd08a', 'left', F_TEXT, 'bold'); }
     else if (!open) text(a.need, x, y + r + 46, 13, '#f2c14e', 'center', F_TEXT);
     if (open && a.ready) {   // kleiner Knopf: direkt zum Boss
-      const bx = x - 42, by = y + r + (done ? 54 : 34), hv = inside(bx, by, 84, 24);
-      rr(bx, by, 84, 24, 12); ctx.fillStyle = hv ? '#3a1c20' : '#1c1214'; ctx.fill(); ctx.strokeStyle = hv ? '#ff7a8a' : '#8a3a40'; ctx.lineWidth = 1.5; ctx.stroke();
-      text('Nur Boss', x, by + 17, 13, hv ? '#ffb0b8' : '#e8a0a8', 'center', F_TEXT, 'bold');
-      uiHit(bx, by, 84, 24, () => areaChoose(a, true));
+      const bx = x - 42, by = y + r + (done ? 54 : 34), hv = inside(bx, by, 84, 24), can = bossTrainOpen(a);
+      rr(bx, by, 84, 24, 12); ctx.fillStyle = !can ? '#14181a' : hv ? '#3a1c20' : '#1c1214'; ctx.fill(); ctx.strokeStyle = !can ? '#4a5a4e' : hv ? '#ff7a8a' : '#8a3a40'; ctx.lineWidth = 1.5; ctx.stroke();
+      if (can) text('Nur Boss', x, by + 17, 13, hv ? '#ffb0b8' : '#e8a0a8', 'center', F_TEXT, 'bold');
+      else {
+        text('Nur Boss', x + 6, by + 17, 13, '#6a7a7e', 'center', F_TEXT, 'bold');
+        ctx.save(); ctx.translate(bx + 9, by + 5); ctx.scale(.6, .6); ctx.strokeStyle = '#8a7a4a'; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke(new Path2D(ICONS.lock)); ctx.restore();
+        if (areaHold && areaHold.id === a.id) {
+          const k = clamp((performance.now() - areaHold.t0) / 5000, 0, 1);
+          if (!hv) areaHold = null;
+          else if (k >= 1) { SAVE.bossReached[a.id] = true; persist(); areaHold = null; sfx('stage_up'); }
+          else { rr(bx + 4, by + 19, (84 - 8) * k, 3, 1.5); ctx.fillStyle = '#f2c14e'; ctx.fill(); }
+        }
+      }
+      uiHit(bx, by, 84, 24, () => { if (can) areaChoose(a, true); else areaHold = { id: a.id, t0: performance.now() }; });
     }
   }
   // Pfeile und Scroll-Leiste
@@ -3983,7 +3997,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.40';
+const VERSION = 'v0.41';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -4896,7 +4910,7 @@ canvas.addEventListener('mousedown', e => {
   if (state === 'pick') { if (pickHover >= 0) choosePick(pickHover); return; }
   mouse.down = true; mouse.pressed = true;
 });
-addEventListener('mouseup', e => { if (e.button === 0) { areaDrag = null; if (packOpen) packOpen.drag = false; mouse.down = false; mouse.pressed = false; dragSlider = null; } if (e.button === 2) mouse.rdown = false; });
+addEventListener('mouseup', e => { if (e.button === 0) { areaDrag = null; areaHold = null; if (packOpen) packOpen.drag = false; mouse.down = false; mouse.pressed = false; dragSlider = null; } if (e.button === 2) mouse.rdown = false; });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('wheel', e => {
   if (state === 'book') { bookSpread += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
