@@ -616,7 +616,7 @@ function newGame(cls, area) {
     kills: 0, dist: 0,
     merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
-    stage: 1, stageStart: 0, nextPick: stageLength(1), atk: [], bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
+    stage: 1, stageStart: 0, nextPick: stageLength(1), atk: [], fallen: [], bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
       x: WORLD_W / 2, y: -60, r: 14, hp: 1, angle: -Math.PI / 2,
@@ -1915,6 +1915,7 @@ function drawWorld() {
     if (o.y > top + VIEW_H || o.y + o.h < top) continue;
     drawObstacle(o);
   }
+  for (const f of G.fallen) drawFallen(f);
   if (moor) for (const q of G.patches) { if (q.kind === 'reeds' && q.y + q.ry > top && q.y - q.ry < top + VIEW_H) drawPatch(q); }
   for (const m of G.merchants) drawMerchantWorld(m);
   // Heiltränke
@@ -2361,14 +2362,25 @@ function drawSkeleton(e) {
 // ---------- Angriffe der Bosse: Warnung, dann Treffer ----------
 // kind: 'debris' (Trümmer), 'wedge' (Hieb), 'wave' (Schockwelle), 'circle' (Landung), 'lane' (Sturmbahn, nur Warnung)
 function addAtk(o) { o.t = 0; G.atk.push(o); return o; }
-function fellPillar(o, fx, fy) {   // Säule fällt um und bleibt als Hindernis liegen
+function fellPillar(o, fx, fy) {   // Säule fällt um (genau von der Quelle weg) und bleibt als schräges Hindernis liegen
   const i = G.obstacles.indexOf(o); if (i < 0) return;
   G.obstacles.splice(i, 1);
-  const dx = o.cx - fx, dy = o.cy - fy, horiz = Math.abs(dx) > Math.abs(dy), sx = horiz ? Math.sign(dx) || 1 : 0, sy = horiz ? 0 : Math.sign(dy) || 1;
-  const w = horiz ? 130 : 30, h = horiz ? 30 : 130, cx = o.cx + sx * 65, cy = o.cy + sy * 65;
-  G.obstacles.push({ kind: 'wall', sty: 'fallen', seed: Math.random(), x: clamp(cx - w / 2, 40, WORLD_W - 40 - w), y: cy - h / 2, w, h });
+  const ang = Math.atan2(o.cy - fy, o.cx - fx), L = 130, cx = o.cx + Math.cos(ang) * L / 2, cy = o.cy + Math.sin(ang) * L / 2;
+  G.fallen.push({ cx, cy, ang, L, W: 30, seed: Math.random() });
+  for (let k = -2; k <= 2; k++) {   // Kollision: fünf Kreise entlang der Säule (nicht außerhalb des Raums)
+    const px = clamp(cx + Math.cos(ang) * k * 26, 55, WORLD_W - 55), py = cy + Math.sin(ang) * k * 26, r = 16;
+    G.obstacles.push({ kind: 'tree', hidden: true, r, cx: px, cy: py, x: px - r, y: py - r, w: r * 2, h: r * 2 });
+  }
   for (let k = 0; k < 14; k++) G.parts.push({ x: o.cx, y: o.cy, vx: rand(-150, 150), vy: rand(-150, 150), life: 0.5, color: '#9aa0a8' });
   sfx('block', 0.8); G.shakeT = Math.max(G.shakeT, 0.2);
+}
+function drawFallen(f) {
+  ctx.save(); ctx.translate(f.cx, f.cy); ctx.rotate(f.ang);
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(-f.L / 2 + 4, -f.W / 2 + 7, f.L, f.W);
+  ctx.fillStyle = '#6a6e76'; ctx.strokeStyle = '#14171a'; ctx.lineWidth = 3; rr(-f.L / 2, -f.W / 2, f.L, f.W, 6); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-f.L * 0.25, -f.W / 2 + 2); ctx.lineTo(-f.L * 0.2, f.W / 2 - 2); ctx.moveTo(f.L * 0.2, f.W / 2 - 2); ctx.lineTo(f.L * 0.25, -f.W / 2 + 2); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.fillRect(-f.L / 2 + 6, -f.W / 2 + 4, f.L - 12, 5);
+  ctx.restore();
 }
 function pillarsIn(x, y, reach, ang, arc) {   // Säulen im Hieb (arc = ganzer Bogen im Bogenmaß, null = Kreis)
   return G.obstacles.filter(o => o.sty === 'column' && Math.hypot(o.cx - x, o.cy - y) < reach + o.r && (arc === null || Math.abs(normAngle(Math.atan2(o.cy - y, o.cx - x) - ang)) < arc / 2 + 0.25));
@@ -2466,8 +2478,8 @@ function herrStartAct(e, name) {
   e.act = { name, t: 0, n: 0 };
   e.angle = Math.atan2(p.y - e.y, p.x - e.x);
   if (name === 'stoss') { addAtk({ kind: 'wave', x: e.x, y: e.y, maxR: HERR.stossR, warn: 0.9, T: 0.7, dmg: 18 }); e.act.cx = e.x; e.act.cy = e.y; }
-  if (name === 'sturm') { e.act.ang = e.angle;   // Richtung wird beim Start festgelegt: Markierung und Dash gehen dorthin
-    addAtk({ kind: 'lane', x: e.x, y: e.y, ang: e.angle, len: 640, w: 72, T: 1.0 }); }
+  if (name === 'sturm') { e.act.ang = e.angle;   // Bahn folgt dem Spieler, bis der Boss losläuft
+    e.act.lane = addAtk({ kind: 'lane', x: e.x, y: e.y, ang: e.angle, len: 640, w: 72, T: 1.0 }); }
   if (name === 'sprung') { e.act.tx = p.x; e.act.ty = p.y; e.act.sx = e.x; e.act.sy = e.y; addAtk({ kind: 'circle', x: p.x, y: p.y, r: 62, T: 1.0, dmg: 26 }); e.air = true; }
 }
 function herrHit(e, reach, arc, dmg, T) { return addAtk({ kind: 'wedge', sword: true, x: e.x, y: e.y, ang: e.angle, reach, arc, T, dmg }); }
@@ -2496,7 +2508,7 @@ function updateHerrAct(e, dt) {
     if (a.t > 1.9) { e.act = null; e.cool = 0.6; }
   }
   else if (a.name === 'sturm') {
-    if (a.t < 1.0) { e.angle = a.ang; e.crouch = Math.min(1, a.t / 0.7); }   // duckt sich und holt aus, schaut auf die Markierung
+    if (a.t < 1.0) { a.ang = Math.atan2(p.y - e.y, p.x - e.x); e.angle = a.ang; if (a.lane) a.lane.ang = a.ang; e.crouch = Math.min(1, a.t / 0.7); }   // Bahn und Blick folgen dem Spieler; mit dem Loslaufen ist sie festgelegt
     else if (!a.stun) {
       e.crouch = 0; e.angle = a.ang;
       const sp = ph2 ? 640 : 520, mv = moveCircle(e, Math.cos(a.ang) * sp * dt, Math.sin(a.ang) * sp * dt); a.run = (a.run || 0) + mv;
@@ -2518,10 +2530,12 @@ function updateHerr(e, dt) {
   e.hit = Math.max(0, e.hit - dt);
   if (e.phase === 1.5) {   // Übergang: 1 s Stillstand, Schildwurf, Balken füllt sich, 1 s Pause
     e.tt += dt; e.angle = Math.atan2(p.y - e.y, p.x - e.x);
+    e.crouch = e.tt < 1 ? Math.min(1, e.tt / 0.85) : 0;   // Ausholen: lehnt sich zurück, Schild wird hochgenommen
+    e.lunge = e.tt >= 1 ? clamp(1 - (e.tt - 1) / 0.3, 0, 1) : 0;   // Wurf: Ruck nach vorn
     if (e.tt >= 1 && !e.thrown) {
-      e.thrown = true; sfx('horde_horn', 0.8);
+      e.thrown = true; e.shieldGone = true; G.shakeT = Math.max(G.shakeT, 0.2); sfx('horde_horn', 0.8);
       const tx = clamp(p.x, 90, WORLD_W - 90), ty = p.y;
-      addAtk({ kind: 'circle', x: tx, y: ty, x0: e.x, y0: e.y, r: 52, T: 1.0, dmg: 24, shield: true, onland: a => { G.obstacles.push({ kind: 'wall', sty: 'schild', seed: Math.random(), x: a.x - 48, y: a.y - 32, w: 96, h: 64 }); e.shieldGone = true; for (let k = 0; k < 16; k++) G.parts.push({ x: a.x, y: a.y, vx: rand(-160, 160), vy: rand(-160, 160), life: 0.5, color: '#9aa0a8' }); sfx('block', 1); } });
+      addAtk({ kind: 'circle', x: tx, y: ty, x0: e.x, y0: e.y, r: 52, T: 1.0, dmg: 24, shield: true, onland: a => { G.obstacles.push({ kind: 'wall', sty: 'schild', seed: Math.random(), x: a.x - 48, y: a.y - 32, w: 96, h: 64 }); for (let k = 0; k < 16; k++) G.parts.push({ x: a.x, y: a.y, vx: rand(-160, 160), vy: rand(-160, 160), life: 0.5, color: '#9aa0a8' }); sfx('block', 1); } });
     }
     if (e.tt >= 2) { e.maxHp = HERR.hp2; e.hp = Math.max(0.001, e.maxHp * clamp((e.tt - 2) / 2, 0, 1)); }
     if (e.tt >= 5) { e.phase = 2; e.inv = false; e.hp = e.maxHp; e.cool = 0.8; e.form = 'b'; sfx('horde_horn'); }
@@ -2555,7 +2569,7 @@ function drawHerr(e) {
   if (lift > 0.02) { ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(e.x + 8, e.y + 26, 30, 14, 0, 0, 7); ctx.fill(); }
   if (e.stun > 0) { ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 3; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.arc(e.x, e.y, e.r + 12, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
   enemyFrame(e, () => {
-    ctx.scale(1.12 * air, 1.12 * air); ctx.translate(-10 * (e.crouch || 0), 0);
+    ctx.scale(1.12 * air, 1.12 * air); ctx.translate(-10 * (e.crouch || 0) + 16 * (e.lunge || 0), 0);
     ctx.fillStyle = '#5a1a22'; ctx.strokeStyle = '#1c0a0c'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-12, -24); ctx.lineTo(-44, -18); ctx.lineTo(-52, 0); ctx.lineTo(-44, 18); ctx.lineTo(-12, 24); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.strokeStyle = '#3a0e14'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-20, -14); ctx.lineTo(-44, -8); ctx.moveTo(-20, 0); ctx.lineTo(-48, 0); ctx.moveTo(-20, 14); ctx.lineTo(-44, 8); ctx.stroke();
     eLine([12, 18, 68, 12], '#c8ced6', 7); eLine([12, 18, 68, 12], 'rgba(255,255,255,.6)', 2);
@@ -2568,6 +2582,7 @@ function drawHerr(e) {
     ctx.strokeStyle = '#0a0b0e'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(12, -6); ctx.lineTo(18, -6); ctx.moveTo(12, 6); ctx.lineTo(18, 6); ctx.stroke();
     for (let i = 0; i < 8; i++) { const a0 = i / 8 * 6.283; ctx.fillStyle = '#d9a636'; ctx.strokeStyle = '#7a5a1a'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(4 + Math.cos(a0) * 11, Math.sin(a0) * 11); ctx.lineTo(4 + Math.cos(a0 + 0.2) * 19, Math.sin(a0 + 0.2) * 19); ctx.lineTo(4 + Math.cos(a0 + 0.4) * 11, Math.sin(a0 + 0.4) * 11); ctx.closePath(); ctx.fill(); ctx.stroke(); }
     if (shield) {
+      if (e.phase === 1.5) { const w = e.crouch || 0; ctx.translate(6 * w, -10 * w); ctx.scale(1 + 0.35 * w, 1 + 0.35 * w); ctx.rotate(-0.35 * w); }
       ctx.fillStyle = '#4a5058'; ctx.strokeStyle = '#14171a'; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(20, -44); ctx.quadraticCurveTo(40, -40, 44, -20); ctx.quadraticCurveTo(46, -2, 32, 6); ctx.quadraticCurveTo(18, 2, 16, -18); ctx.closePath(); ctx.fill(); ctx.stroke();
       eCirc(30, -20, 6, '#d9a636', '#14100a', 2);
     }
@@ -4013,7 +4028,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.43';
+const VERSION = 'v0.44';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
