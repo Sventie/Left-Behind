@@ -2448,10 +2448,7 @@ function drawAtk() {
         ctx.setLineDash([4, 6]); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(a.x, a.y, a.r * (0.5 + 0.5 * f), 0, 7); ctx.stroke(); ctx.setLineDash([]);
         ctx.strokeStyle = 'rgba(79,208,138,.9)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
         for (const g of a.gaps) { ctx.beginPath(); ctx.moveTo(a.x + Math.cos(g) * 50, a.y + Math.sin(g) * 50); ctx.lineTo(a.x + Math.cos(g) * (a.r + 16), a.y + Math.sin(g) * (a.r + 16)); ctx.stroke(); }
-      } else if (a.shape === 'band') {
-        ctx.fillRect(0, a.y, WORLD_W, a.h); ctx.setLineDash([6, 5]); ctx.strokeRect(0, a.y, WORLD_W, a.h); ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(79,208,138,.28)'; ctx.fillRect(a.gx, a.y, a.gw, a.h); ctx.strokeStyle = '#4fd08a'; ctx.setLineDash([5, 4]); ctx.strokeRect(a.gx, a.y, a.gw, a.h); ctx.setLineDash([]);
-      }
+      }   // Pfeilwand-Warnung: siehe drawWallWarn (über der Dunkelheit)
       continue;
     }
     if (a.kind === 'debris') {
@@ -2588,7 +2585,7 @@ function bogenAct(e, dt) {
     while (a.n < 3 && a.t >= 0.2 + a.n * 0.45) {
       const ang = a.th + a.n * 2.094, q0 = a.predict(0.6), q = { x: clamp(q0.x + Math.cos(ang) * 90, 50, WORLD_W - 50), y: clamp(q0.y + Math.sin(ang) * 90, G.camTop + 40, G.camTop + VIEW_H - 40) };
       a.n++;
-      addAtk({ kind: 'tele', shape: 'circle', x: q.x, y: q.y, r: 40, T: 0.8, fire: t => { sfx('hit_enemy', 0.6); G.fires.push({ x: t.x, y: t.y, r: 46, t: 0, life: 10, tick: 0.2 }); if (Math.hypot(p.x - t.x, p.y - t.y) < t.r + p.r * 0.5) hurtPlayer(10, Math.atan2(t.y - p.y, t.x - p.x)); } });
+      addAtk({ kind: 'tele', shape: 'circle', x: q.x, y: q.y, r: 40, T: 0.8, fire: t => { sfx('hit_enemy', 0.6); G.fires.push({ x: t.x, y: t.y, r: 46, t: 0, life: 20, tick: 0.2 }); if (Math.hypot(p.x - t.x, p.y - t.y) < t.r + p.r * 0.5) hurtPlayer(10, Math.atan2(t.y - p.y, t.x - p.x)); } });
     }
   }
   const more = e.queue && e.queue.length;
@@ -3227,7 +3224,19 @@ function drawRails() {
   text('Im Deck: ' + G.library.length + ' Karten', 1180, 700, 14, '#b8c4d0', 'center', F_TEXT);
 }
 
+function drawWallWarn() {   // Warnband der Pfeilwand: auch außerhalb des Sichtkegels zu sehen (liegt über der Dunkelheit)
+  for (const a of G.atk) {
+    if (a.kind !== 'tele' || a.shape !== 'band') continue;
+    const f = a.t / a.T, y = a.y - G.camTop;
+    ctx.fillStyle = 'rgba(255,90,60,' + (0.16 + 0.16 * f) + ')'; ctx.fillRect(0, y, VIEW_W, a.h);
+    ctx.strokeStyle = 'rgba(255,122,90,.95)'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]); ctx.strokeRect(0, y, VIEW_W, a.h); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(79,208,138,.3)'; ctx.fillRect(a.gx, y, a.gw, a.h); ctx.strokeStyle = '#4fd08a'; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]); ctx.strokeRect(a.gx, y, a.gw, a.h); ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255,210,190,.8)';
+    for (let x = 30; x < VIEW_W; x += 40) { if (x > a.gx - 10 && x < a.gx + a.gw + 10) continue; ctx.beginPath(); ctx.moveTo(x - 6, y + a.h / 2 - 6); ctx.lineTo(x + 6, y + a.h / 2 - 6); ctx.lineTo(x, y + a.h / 2 + 8); ctx.closePath(); ctx.fill(); }
+  }
+}
 function drawFieldHUD() {
+  drawWallWarn();
   if (G.deltaT > 0) {   // Punktezuwachs neben der Punktezahl im Rahmen
     ctx.globalAlpha = Math.min(1, G.deltaT * 2.5);
     ctx.font = '30px ' + F_TITLE; ctx.textAlign = 'left'; ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 8; ctx.fillStyle = '#f2c14e';
@@ -4201,7 +4210,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.49';
+const VERSION = 'v0.50';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
