@@ -2411,6 +2411,15 @@ function drawAtk() {
       const f = a.done ? 1 : a.t / a.T;
       ctx.fillStyle = 'rgba(255,90,60,' + (a.done ? 0.5 * a.show * 5 : 0.12 + 0.16 * f) + ')'; ctx.strokeStyle = 'rgba(255,122,90,.9)'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.arc(a.x, a.y, a.reach, a.ang - a.arc / 2, a.ang + a.arc / 2); ctx.closePath(); ctx.fill(); ctx.setLineDash([6, 5]); ctx.stroke(); ctx.setLineDash([]);
+      if (a.sword) {   // graues Schwert wird von einer Seite zur anderen durch den Bogen gezogen (kurz vor dem Treffer)
+        const s0 = a.done ? 1 : clamp((a.t - (a.T - 0.22)) / 0.22, 0, 1), sa = a.ang - a.arc / 2 + a.arc * (1 - (1 - s0) * (1 - s0)), al = a.done ? clamp(a.show * 5, 0, 1) : 1;
+        if (s0 > 0) { ctx.strokeStyle = 'rgba(200,206,214,' + 0.45 * al + ')'; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(a.x, a.y, a.reach * 0.82, a.ang - a.arc / 2, sa); ctx.stroke(); ctx.lineCap = 'butt'; }
+        ctx.save(); ctx.globalAlpha = al; ctx.translate(a.x, a.y); ctx.rotate(sa);
+        ctx.fillStyle = '#b8bec6'; ctx.strokeStyle = '#2a2e34'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(34, -5); ctx.lineTo(a.reach - 14, -4); ctx.lineTo(a.reach, 0); ctx.lineTo(a.reach - 14, 4); ctx.lineTo(34, 5); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(38, -1); ctx.lineTo(a.reach - 18, -1); ctx.stroke();
+        ctx.fillStyle = '#6a5a3a'; ctx.strokeStyle = '#14100a'; ctx.lineWidth = 2; ctx.fillRect(28, -11, 6, 22); ctx.strokeRect(28, -11, 6, 22); ctx.restore();
+      }
     } else if (a.kind === 'wave') {
       if (a.t <= a.warn) { ctx.strokeStyle = 'rgba(255,122,90,.8)'; ctx.lineWidth = 3; ctx.setLineDash([7, 5]); ctx.beginPath(); ctx.arc(a.x, a.y, a.maxR, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
       else { ctx.strokeStyle = 'rgba(255,150,110,' + (1 - a.R / a.maxR * 0.6) + ')'; ctx.lineWidth = 12; ctx.beginPath(); ctx.arc(a.x, a.y, a.R, 0, 7); ctx.stroke(); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,230,200,.7)'; ctx.stroke(); }
@@ -2456,33 +2465,40 @@ function herrStartAct(e, name) {
   const p = G.player, ph2 = e.phase === 2;
   e.act = { name, t: 0, n: 0 };
   e.angle = Math.atan2(p.y - e.y, p.x - e.x);
-  if (name === 'schwert') addAtk({ kind: 'wedge', x: e.x, y: e.y, ang: e.angle, reach: 135, arc: 2.4, T: 0.8, dmg: 28 });
   if (name === 'stoss') { addAtk({ kind: 'wave', x: e.x, y: e.y, maxR: HERR.stossR, warn: 0.9, T: 0.7, dmg: 18 }); e.act.cx = e.x; e.act.cy = e.y; }
-  if (name === 'sturm') { e.act.ang = e.angle; addAtk({ kind: 'lane', x: e.x, y: e.y, ang: e.angle, len: 640, w: 72, T: 1.0 }); }
+  if (name === 'sturm') { e.act.ang = e.angle;   // Richtung wird beim Start festgelegt: Markierung und Dash gehen dorthin
+    addAtk({ kind: 'lane', x: e.x, y: e.y, ang: e.angle, len: 640, w: 72, T: 1.0 }); }
   if (name === 'sprung') { e.act.tx = p.x; e.act.ty = p.y; e.act.sx = e.x; e.act.sy = e.y; addAtk({ kind: 'circle', x: p.x, y: p.y, r: 62, T: 1.0, dmg: 26 }); e.air = true; }
 }
-function herrHit(e, reach, arc, dmg, T) { return addAtk({ kind: 'wedge', x: e.x, y: e.y, ang: e.angle, reach, arc, T, dmg }); }
+function herrHit(e, reach, arc, dmg, T) { return addAtk({ kind: 'wedge', sword: true, x: e.x, y: e.y, ang: e.angle, reach, arc, T, dmg }); }
 function updateHerrAct(e, dt) {
   const p = G.player, a = e.act, ph2 = e.phase === 2;
   a.t += dt;
   const face = () => { e.angle = Math.atan2(p.y - e.y, p.x - e.x); };
-  if (a.name === 'schwert') { if (a.t > 1.9) { e.act = null; e.cool = ph2 ? 0.5 : 1.0; } }
+  const stepIn = sp => { const d = Math.hypot(p.x - e.x, p.y - e.y); if (d > e.r + p.r + 40) moveCircle(e, Math.cos(e.angle) * sp * dt, Math.sin(e.angle) * sp * dt); };
+  if (a.name === 'schwert') {   // erst ein Schritt auf den Spieler zu, dann erst der Hieb (Bogen erscheint nach dem Schritt)
+    if (a.t < 0.25) { face(); stepIn(300); }
+    else if (!a.sw) { a.sw = true; face(); herrHit(e, 135, 2.4, 28, 0.8); }
+    if (a.t > 1.5) { e.act = null; e.cool = ph2 ? 0.5 : 1.0; }
+  }
   else if (a.name === 'kombo' || a.name === 'kombo2') {
-    // drei Hiebe; in Phase 2 dreht er sich vor jedem Hieb zum Spieler und dasht einen Schritt heran
+    // drei Hiebe; vor jedem Hieb dreht er sich zum Spieler und macht einen Schritt (Phase 2: Dash), erst danach erscheint der Hieb-Bogen
     const slot = 1.0, i = Math.floor(a.t / slot), u = a.t - i * slot;
     if (i >= 3) { e.act = null; e.cool = ph2 ? 0.4 : 1.1; return; }
-    if (a.n < i) a.n = i;
-    if (!a['w' + i]) { a['w' + i] = true; face(); if (a.name === 'kombo2') { a.dashT = 0.18; a.dx = Math.cos(e.angle); a.dy = Math.sin(e.angle); } herrHit(e, 130, 2.2, a.name === 'kombo2' ? 22 : 20, a.name === 'kombo2' ? 0.55 : 0.7); }
-    if (a.name === 'kombo2' && a.dashT > 0) { a.dashT -= dt; moveCircle(e, a.dx * 520 * dt, a.dy * 520 * dt); for (const o of pillarsIn(e.x, e.y, e.r + 24, null, null)) fellPillar(o, e.x, e.y); }
-    else if (a.name === 'kombo' && u > 0.7 && u < 0.85) moveCircle(e, Math.cos(e.angle) * 260 * dt, Math.sin(e.angle) * 260 * dt);   // Schritt nach vorn
+    if (a.i !== i) { a.i = i; a.sw = false; face(); if (a.name === 'kombo2') { a.dashT = 0.18; a.dx = Math.cos(e.angle); a.dy = Math.sin(e.angle); } }
+    if (a.name === 'kombo2') { if (a.dashT > 0) { a.dashT -= dt; moveCircle(e, a.dx * 520 * dt, a.dy * 520 * dt); for (const o of pillarsIn(e.x, e.y, e.r + 24, null, null)) fellPillar(o, e.x, e.y); } }
+    else if (u < 0.2) stepIn(280);
+    if (!a.sw && u >= 0.22) { a.sw = true; herrHit(e, 130, 2.2, a.name === 'kombo2' ? 22 : 20, a.name === 'kombo2' ? 0.55 : 0.7); }
   }
   else if (a.name === 'stoss') {
+    e.hop = a.t < 0.9 ? Math.sin(clamp((a.t - 0.3) / 0.6, 0, 1) * Math.PI) : 0;   // springt kurz hoch und schlägt auf den Boden
     if (a.t > 0.9 && !a.go) { a.go = true; e.rainT = HERR.rain1; e.cyc = 'regen'; G.shakeT = Math.max(G.shakeT, 0.3); sfx('block', 0.9); }
     if (a.t > 1.9) { e.act = null; e.cool = 0.6; }
   }
   else if (a.name === 'sturm') {
-    if (a.t < 1.0) { a.ang = Math.atan2(p.y - e.y, p.x - e.x); e.angle = a.ang; }   // Bahn folgt dem Spieler bis kurz vor dem Start
+    if (a.t < 1.0) { e.angle = a.ang; e.crouch = Math.min(1, a.t / 0.7); }   // duckt sich und holt aus, schaut auf die Markierung
     else if (!a.stun) {
+      e.crouch = 0; e.angle = a.ang;
       const sp = ph2 ? 640 : 520, mv = moveCircle(e, Math.cos(a.ang) * sp * dt, Math.sin(a.ang) * sp * dt); a.run = (a.run || 0) + mv;
       if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + p.r + 4 && !a.hurt) { a.hurt = true; hurtPlayer(32, a.ang); }
       const cols = pillarsIn(e.x, e.y, e.r + 14, null, null);
@@ -2514,6 +2530,7 @@ function updateHerr(e, dt) {
   if (e.stun > 0) { e.stun -= dt; e.angle = Math.atan2(p.y - e.y, p.x - e.x); herrRain(e, dt); return; }
   const ph2 = e.phase === 2, speed = ph2 ? T.speed * 2.2 : T.speed;
   herrRain(e, dt);
+  if (!e.act) { e.hop = 0; e.crouch = 0; }
   if (e.act) { updateHerrAct(e, dt); e.x = clamp(e.x, e.r, WORLD_W - e.r); e.y = clamp(e.y, G.camTop + e.r + 20, G.camTop + VIEW_H - e.r); return; }
   e.angle = Math.atan2(p.y - e.y, p.x - e.x);
   const d = Math.hypot(p.x - e.x, p.y - e.y) || 1, want = ph2 ? 90 : 110;
@@ -2534,11 +2551,11 @@ function updateHerr(e, dt) {
 }
 function drawHerr(e) {
   const shield = e.phase === 1 || (e.phase === 1.5 && !e.shieldGone);
-  const air = e.air ? 1 + 0.25 * Math.sin(Math.min(1, e.act ? e.act.t / 1.0 : 0) * Math.PI) : 1;
-  if (e.air) { ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(e.x + 8, e.y + 26, 30, 14, 0, 0, 7); ctx.fill(); }
+  const lift = e.air ? 0.25 * Math.sin(Math.min(1, e.act ? e.act.t / 1.0 : 0) * Math.PI) : 0.3 * (e.hop || 0), air = 1 + lift;
+  if (lift > 0.02) { ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(e.x + 8, e.y + 26, 30, 14, 0, 0, 7); ctx.fill(); }
   if (e.stun > 0) { ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 3; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.arc(e.x, e.y, e.r + 12, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
   enemyFrame(e, () => {
-    ctx.scale(1.12 * air, 1.12 * air);
+    ctx.scale(1.12 * air, 1.12 * air); ctx.translate(-10 * (e.crouch || 0), 0);
     ctx.fillStyle = '#5a1a22'; ctx.strokeStyle = '#1c0a0c'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-12, -24); ctx.lineTo(-44, -18); ctx.lineTo(-52, 0); ctx.lineTo(-44, 18); ctx.lineTo(-12, 24); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.strokeStyle = '#3a0e14'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-20, -14); ctx.lineTo(-44, -8); ctx.moveTo(-20, 0); ctx.lineTo(-48, 0); ctx.moveTo(-20, 14); ctx.lineTo(-44, 8); ctx.stroke();
     eLine([12, 18, 68, 12], '#c8ced6', 7); eLine([12, 18, 68, 12], 'rgba(255,255,255,.6)', 2);
@@ -3996,7 +4013,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.42';
+const VERSION = 'v0.43';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
