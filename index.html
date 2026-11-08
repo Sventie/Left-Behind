@@ -799,11 +799,33 @@ function genMoor(y0, y1, k) {
 }
 const inEll = (px, py, f, k) => ((px - f.x) / (f.rx * (k || 1))) ** 2 + ((py - f.y) / (f.ry * (k || 1))) ** 2 < 1;
 const inFog = (x, y) => G.fogs && G.fogs.some(f => inEll(x, y, f));
+function dotHit() { G.hurtT = Math.max(G.hurtT, 0.28); sfx('player_hurt', 0.4); }   // jeder Tick eines Dauerschadens: roter Rand und Ton, wiederholt
+function applyBurn(t) { G.burnT = Math.max(G.burnT || 0, t); }
+function updateDotFx(dt) {   // Gift: Blasen steigen auf; Feuer: Glut und kleine Flammen
+  const p = G.player;
+  G.bubs = G.bubs || [];
+  if (G.venomT > 0) { G.bubT = (G.bubT || 0) - dt; if (G.bubT <= 0) { G.bubT = 0.07; G.bubs.push({ x: p.x + rand(-16, 16), y: p.y + rand(-8, 10), vx: rand(-10, 10), vy: -rand(32, 58), life: 1.2, max: 1.2, r: rand(3, 7), kind: 'gift' }); } }
+  if (G.burnT > 0) { G.emberT = (G.emberT || 0) - dt; if (G.emberT <= 0) { G.emberT = 0.04; G.bubs.push({ x: p.x + rand(-14, 14), y: p.y + rand(-10, 8), vx: rand(-16, 16), vy: -rand(40, 85), life: 0.75, max: 0.75, r: rand(2, 4.2), kind: Math.random() < 0.3 ? 'flamme' : 'glut' }); } }
+  for (const b of G.bubs) { b.life -= dt; b.x += b.vx * dt; b.y += b.vy * dt; }
+  G.bubs = G.bubs.filter(b => b.life > 0);
+  if (G.burnT > 0) {
+    G.burnT -= dt; G.burnTick = (G.burnTick || 0) - dt;
+    if (G.burnTick <= 0) { G.burnTick = 0.5; if (!godMode) { p.hp -= 4; dotHit(); } }
+  }
+}
+function drawDotFx() {
+  for (const b of (G.bubs || [])) {
+    const k = b.life / b.max;
+    if (b.kind === 'gift') { ctx.fillStyle = 'rgba(160,255,140,' + 0.45 * k + ')'; ctx.strokeStyle = 'rgba(190,255,150,' + k + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill(); ctx.stroke(); }
+    else if (b.kind === 'glut') { ctx.fillStyle = 'rgba(255,' + Math.round(120 + 100 * k) + ',50,' + k + ')'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill(); }
+    else { ctx.fillStyle = 'rgba(255,170,60,' + k + ')'; ctx.beginPath(); ctx.moveTo(b.x - b.r, b.y + b.r); ctx.quadraticCurveTo(b.x - b.r * 0.6, b.y - b.r * 1.2, b.x, b.y - b.r * 2.6); ctx.quadraticCurveTo(b.x + b.r * 0.8, b.y - b.r, b.x + b.r, b.y + b.r); ctx.closePath(); ctx.fill(); }
+  }
+}
 function applyVenom(t) { G.venomT = Math.max(G.venomT || 0, t); }   // Status „Vergiftet“: leichter Schaden, solange er anhält
 function updateVenom(dt) {
   if (!(G.venomT > 0)) return;
   G.venomT -= dt; G.venomTick = (G.venomTick || 0) - dt;
-  if (G.venomTick <= 0) { G.venomTick = 0.5; if (!godMode) { G.player.hp -= 2; G.hurtT = Math.max(G.hurtT, 0.1); } }
+  if (G.venomTick <= 0) { G.venomTick = 0.5; if (!godMode) { G.player.hp -= 2; dotHit(); } }
 }
 function updateMoor(dt) {
   const p = G.player;
@@ -1082,7 +1104,7 @@ function update(dt) {
     return;
   }
   if (G.goT > 0) G.goT -= dt;
-  G.time += dt; updateVenom(dt);
+  G.time += dt; updateVenom(dt); updateDotFx(dt);
 
   // Bewegung (WASD) oder Windstoß
   let mx = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
@@ -1661,8 +1683,9 @@ function updateEnemies(dt) {
       if (dist < e.r + p.r + 4 && e.melee <= 0) { hurtPlayer(T.mdmg * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x)); applyVenom(3); e.melee = 0.9; }
     } else if (e.type === 'schwarm') {   // Mückenschwarm: Schaden und Gift, solange man im Schwarm steht
       dirx = dx / (dist || 1); diry = dy / (dist || 1); speed = T.chase;
+      e.invT = Math.max(0, (e.invT || 0) - dt);
       e.tick = (e.tick || 0) - dt;
-      if (dist < e.r + p.r * 0.4 && e.tick <= 0) { e.tick = 0.5; if (!godMode) { p.hp -= 3; G.hurtT = Math.max(G.hurtT, 0.12); } applyVenom(3); }
+      if (dist < e.r + p.r * 0.4 && e.tick <= 0) { e.tick = 0.5; if (!godMode) { p.hp -= 3; dotHit(); } applyVenom(3); }
     } else if (e.type === 'armbrust') {   // Armbrustschütze: Fächer aus 5 Bolzen, danach nachladen
       if (e.aimT > 0) { e.aimT -= dt; dirx = diry = 0; }
       else if (los && dist < 640) {
@@ -1901,6 +1924,11 @@ function explode(x, y, dmg, R, target) {
 }
 function damageEnemy(e, dmg) {
   if (e.hp <= 0 || e.inv || e.hidden) return;
+  if (e.type === 'schwarm') {   // kein Lebensbalken: genau drei Treffer, nach jedem 0,3 s unverwundbar (Kettenblitz tötet ihn nicht sofort)
+    if (e.invT > 0) return;
+    e.invT = 0.3; e.hits = (e.hits || 0) + 1; spark(e.x, e.y, '#cfe6df');
+    dmg = e.hits >= 3 ? e.hp + 1 : e.maxHp / 3;
+  }
   if ((e.type === 'hexe' || e.type === 'herr') && e.phase === 1 && e.hp - dmg <= 0) { e.hp = 0.001; e.inv = true; e.phase = 1.5; e.tt = 0; e.hit = 0.3; e.act = null; sfx('enemy_die'); return; }
   if (e.air) return;
   if (e.type === 'schild') {   // Schild: von vorn kaum Schaden, von der Seite und hinten voll
@@ -2571,6 +2599,7 @@ function drawEntities() {
     swing: p.swingT > 0 ? 1 - p.swingT / WEAPONS.schwert.swing : -1,
     block: isBlocking(), focus: isFocusing(), med: isMeditating()
   });
+  drawDotFx();   // Giftblasen und Glut steigen über dem Spieler auf
 }
 // ---------- Gegner von oben (Blickrichtung = angle) ----------
 function eCirc(x, y, r, fill, stroke, lw) { ctx.beginPath(); ctx.arc(x, y, r, 0, 7); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw || 2; ctx.stroke(); } }
@@ -2627,7 +2656,7 @@ function pillarsIn(x, y, reach, ang, arc) {   // Säulen im Hieb (arc = ganzer B
 }
 function updateFires(dt) {
   const p = G.player;
-  for (const f of G.fires) { f.t += dt; f.tick -= dt; if (f.tick <= 0) { f.tick = 0.5; if (Math.hypot(p.x - f.x, p.y - f.y) < f.r + p.r * 0.4) hurtPlayer(5, Math.atan2(f.y - p.y, f.x - p.x)); } }
+  for (const f of G.fires) { f.t += dt; f.tick -= dt; if (f.tick <= 0) { f.tick = 0.5; if (Math.hypot(p.x - f.x, p.y - f.y) < f.r + p.r * 0.4) applyBurn(2); } }
   G.fires = G.fires.filter(f => f.t < f.life);
 }
 function updateAtk(dt) {
@@ -3244,7 +3273,7 @@ function updateHexeHazards(dt) {
   for (const f of G.fogs) if (f.hexe) f.t = Math.min(1, f.t + dt * 2);
   for (const c of G.clouds) {   // Giftwolke: kurz Vorwarnung, dann Schaden über Zeit, wandert langsam zum Spieler
     c.t += dt;
-    if (c.t > c.warn) { const d = Math.hypot(p.x - c.x, p.y - c.y) || 1; if (!c.still) { c.x += (p.x - c.x) / d * 16 * dt; c.y += (p.y - c.y) / d * 16 * dt; } c.tick = (c.tick || 0) - dt; if (c.tick <= 0) { c.tick = 0.5; if (d < c.r + p.r * 0.5 && !godMode) { applyVenom(3); p.hp -= 3; G.hurtT = Math.max(G.hurtT, 0.15); } } }
+    if (c.t > c.warn) { const d = Math.hypot(p.x - c.x, p.y - c.y) || 1; if (!c.still) { c.x += (p.x - c.x) / d * 16 * dt; c.y += (p.y - c.y) / d * 16 * dt; } c.tick = (c.tick || 0) - dt; if (c.tick <= 0) { c.tick = 0.5; if (d < c.r + p.r * 0.5 && !godMode) { applyVenom(3); p.hp -= 3; dotHit(); } } }
   }
   G.clouds = G.clouds.filter(c => c.t < c.life);
   for (const h of G.hands) {   // Moorhände: Warnkreis, dann greift die Hand
@@ -3727,6 +3756,7 @@ function statusList() {   // aktive Zustände des Spielers: Text, Farbe
   if (G.pull && G.pull.t > 0) out.push(['Herangezogen', '#c8ced6', 0]);
   if (G.curseT > 0) out.push(['Verflucht · langsamer, kurze Warnzeiten', '#b070ff', G.curseT]);
   if (G.venomT > 0) out.push(['Vergiftet', '#78dc5a', G.venomT]);
+  if (G.burnT > 0) out.push(['Brennt', '#ff9a4a', G.burnT]);
   if (G.slowT > 0) out.push(['Verlangsamt', '#8ee8ff', G.slowT]);
   else if (G.inPool) out.push(['Im Wasser · langsamer', '#8ee8ff', 0]);
   if (G.fogs && G.fogs.length && inFog(p.x, p.y)) out.push(['Im Nebel · halbe Sicht', '#cfe6df', 0]);
@@ -4717,7 +4747,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.73';
+const VERSION = 'v0.74';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
