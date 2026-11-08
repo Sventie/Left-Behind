@@ -1901,7 +1901,9 @@ function updateBullets(dt) {
         damageEnemy(target, b.dmg);
         if (S.chain > 0) chainLightning(target, b.dmg * 0.5);
         spark(hx, hy, '#e8e8e8');
-        if (b.pierce > 0) { b.pierce--; b.ignore.push(target); continue; }
+        // Das Schild des Schildträgers hält Pfeile auch mit Durchschuss auf (der Kettenblitz läuft trotzdem weiter)
+        const shieldStop = target.type === 'schild' && Math.abs(normAngle(Math.atan2(-b.vy, -b.vx) - target.angle)) < 62 * deg;
+        if (b.pierce > 0 && !shieldStop) { b.pierce--; b.ignore.push(target); continue; }
       }
     } else {
       const hx = b.px + (b.x - b.px) * tObs, hy = b.py + (b.y - b.py) * tObs;
@@ -4765,7 +4767,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.78';
+const VERSION = 'v0.79';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
