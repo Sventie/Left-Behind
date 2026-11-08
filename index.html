@@ -666,6 +666,7 @@ function makeEnemy(type, x, y, alert) {
   const elite = !t.boss && (type === 'grunt' || type === 'rusher' || type === 'magier') && G.dist >= 300 && Math.random() < 0.07;
   const hpK = (1 + over * 0.2) * (elite ? 3 : 1);
   return {
+    el: type === 'magier' ? (G.area.id === 'wald' ? 'feuer' : G.area.id === 'moor' ? 'gift' : ['feuer', 'frost', 'gift'][Math.floor(Math.random() * 3)]) : undefined,
     type, x, y, r: t.r * (elite ? 1.25 : 1), hp: t.hp * hpK, maxHp: t.hp * hpK, dmgMul: (1 + over * 0.1) * (elite ? 1.3 : 1), elite,
     angle: rand(-Math.PI, Math.PI),
     state: alert ? 'alert' : 'idle',
@@ -771,6 +772,12 @@ function genMoor(y0, y1, k) {
 }
 const inEll = (px, py, f, k) => ((px - f.x) / (f.rx * (k || 1))) ** 2 + ((py - f.y) / (f.ry * (k || 1))) ** 2 < 1;
 const inFog = (x, y) => G.fogs && G.fogs.some(f => inEll(x, y, f));
+function applyVenom(t) { G.venomT = Math.max(G.venomT || 0, t); }   // Status „Vergiftet“: leichter Schaden, solange er anhält
+function updateVenom(dt) {
+  if (!(G.venomT > 0)) return;
+  G.venomT -= dt; G.venomTick = (G.venomTick || 0) - dt;
+  if (G.venomTick <= 0) { G.venomTick = 0.5; if (!godMode) { G.player.hp -= 2; G.hurtT = Math.max(G.hurtT, 0.1); } }
+}
 function updateMoor(dt) {
   const p = G.player;
   G.slowT = Math.max(0, G.slowT - dt); G.rootT = Math.max(0, G.rootT - dt);
@@ -794,7 +801,7 @@ function updateMoor(dt) {
     G.poisonT = 0.5;
     const pz = G.patches.filter(q => q.kind === 'poison');
     if (pz.length) {
-      if (pz.some(q => inEll(p.x, p.y, q)) && !godMode) { p.hp -= 3; G.hurtT = Math.max(G.hurtT, 0.12); }
+      if (pz.some(q => inEll(p.x, p.y, q)) && !godMode) applyVenom(3);
       for (const e of G.enemies) if (e.hp > 0 && !e.hidden && !e.boss && pz.some(q => inEll(e.x, e.y, q))) damageEnemy(e, 4);
     }
   }
@@ -1045,7 +1052,7 @@ function update(dt) {
     return;
   }
   if (G.goT > 0) G.goT -= dt;
-  G.time += dt;
+  G.time += dt; updateVenom(dt);
 
   // Bewegung (WASD) oder Windstoß
   let mx = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
@@ -1487,6 +1494,7 @@ function updateEnemies(dt) {
   const p = G.player;
   for (const e of G.enemies) {
     const T = ENEMY_TYPES[e.type];
+    if (e.aura > 0) e.aura -= dt;
     if (e.type === 'hexe') { updateHexe(e, dt); continue; }
     if (e.type === 'herr') { updateHerr(e, dt); continue; }
     if (e.type === 'trug') { updateTrug(e, dt); continue; }
@@ -1537,24 +1545,28 @@ function updateEnemies(dt) {
         }
       } else if (td > 24) { dirx = tx / td; diry = ty / td; speed = T.chase; }
     } else if (e.type === 'wolf') {
-      e.melee = Math.max(0, e.melee - dt);
-      if (e.wolfT === undefined) { e.wolfT = rand(1, 2.5); e.lunge = 0; e.circ = Math.random() < 0.5 ? 1 : -1; }
-      e.wolfT -= dt;
-      if (e.lunge > 0) {   // Sprung auf den Spieler
-        e.lunge -= dt; dirx = e.lx; diry = e.ly; speed = 380;
-        if (dist < e.r + p.r + 6 && e.melee <= 0) { hurtPlayer(9 * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x)); e.melee = 0.6; e.lunge = 0; e.wolfT = rand(1.8, 3.2); e.circ *= -1; }
-        if (e.lunge <= 0 && e.wolfT < 0.5) e.wolfT = rand(1.8, 3.2);
-      } else if (los && dist < 640) {
-        const nx = dx / dist, ny = dy / dist;
-        if (dist > 260) { dirx = nx; diry = ny; speed = T.chase; }
-        else {   // umkreisen, Radius um 120
-          const k = clamp((dist - 120) / 160, -1, 1);
-          dirx = -ny * e.circ + nx * k; diry = nx * e.circ + ny * k;
-          const l = Math.hypot(dirx, diry) || 1; dirx /= l; diry /= l;
-          if (e.wolfT <= 0 && dist < 230) { e.lunge = 0.5; e.lx = nx; e.ly = ny; }
+      // Rudel: großer Kreis um den Spieler, einer lädt auf (roter Strich, friert 0,5 s vor dem Sprung ein), springt, verweilt, dann wieder kreisen
+      if (e.wst === undefined) { e.wst = 'circle'; e.cd = rand(1.5, 3); e.wt = 0; }
+      if (e.wst === 'charge') { dirx = diry = 0; }
+      else if (e.wst === 'jump') {
+        e.wt -= dt; dirx = e.jx; diry = e.jy; speed = 520; e.angle = Math.atan2(e.jy, e.jx);
+        if (!e.jhit && dist < e.r + p.r + 4) { e.jhit = true; hurtPlayer(9 * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x)); }
+        if (e.wt <= 0) { e.wst = 'linger'; e.wt = 0.9; }
+      } else if (e.wst === 'linger') { e.wt -= dt; if (e.wt <= 0) { e.wst = 'circle'; e.cd = rand(3, 4); } }
+      else if (los && dist < 640) {
+        const wolves = G.enemies.filter(o => o.type === 'wolf' && o.hp > 0), idx = Math.max(0, wolves.indexOf(e)), n = wolves.length || 1;
+        const th = G.time * 0.25 + idx / n * 6.283, tx2 = clamp(p.x + Math.cos(th) * 250, 40, WORLD_W - 40), ty2 = clamp(p.y + Math.sin(th) * 250, G.camTop + 40, G.camTop + VIEW_H - 40);
+        const dd = Math.hypot(tx2 - e.x, ty2 - e.y);
+        if (dd > 10) { dirx = (tx2 - e.x) / dd; diry = (ty2 - e.y) / dd; speed = dd > 200 ? T.chase * 0.8 : 110; }
+        e.cd -= dt;
+        if (e.cd <= 0 && e.vis && dist < 430 && dist > 90 && G.time >= (G.wolfLock || 0)) {
+          e.wst = 'charge'; G.wolfLock = G.time + 0.8;
+          const len = clamp(dist + 90, 240, 380);
+          addAtk({ kind: 'tele', shape: 'lane', x: e.x, y: e.y, ang: Math.atan2(p.y - e.y, p.x - e.x), len, w: 18, T: 1.2, lock: 0.5,
+            follow: a => { a.x = e.x; a.y = e.y; a.ang = Math.atan2(p.y - e.y, p.x - e.x); e.angle = a.ang; },
+            fire: a => { if (e.hp > 0) { e.wst = 'jump'; e.jx = Math.cos(a.ang); e.jy = Math.sin(a.ang); e.wt = a.len / 520; e.jhit = false; sfx('dash', 0.5); } } });
         }
       } else if (td > 24) { dirx = tx / td; diry = ty / td; speed = T.chase; }
-      if (dist < e.r + p.r + 2 && e.melee <= 0) { hurtPlayer(9 * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x)); e.melee = 0.6; }
     } else if (e.type === 'magier') {
       if (los && dist < 640) {
         e.strafeT -= dt;
@@ -1566,6 +1578,17 @@ function updateEnemies(dt) {
         if (e.cooldown <= 0 && e.vis && dist < 560) { castFireball(e); e.cooldown = rand(3, 4.2); }
       } else if (td > 24) { dirx = tx / td; diry = ty / td; speed = T.chase; }
     } else if (e.type === 'heiler') {
+      if (e.casting > 0) {   // Schutzaura wirken: Heilen pausiert, ein Treffer unterbricht
+        e.casting -= dt; dirx = diry = 0;
+        if (e.hit > 0) { e.casting = 0; e.auraCd = 3; }
+        else if (e.casting <= 0) {
+          const al = G.enemies.filter(o => o !== e && o.hp > 0 && o.type !== 'heiler' && Math.hypot(o.x - e.x, o.y - e.y) < 260).sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y)).slice(0, 3);
+          for (const o of al) { o.aura = 4; G.beams.push({ a: e, b: o, t: 0.4 }); }
+          e.auraCd = rand(7, 10);
+        }
+      } else {
+      e.auraCd = (e.auraCd === undefined ? rand(3, 5) : e.auraCd) - dt;
+      if (e.auraCd <= 0 && G.enemies.filter(o => o !== e && o.hp > 0 && o.type !== 'heiler' && Math.hypot(o.x - e.x, o.y - e.y) < 260).length >= 2) { e.casting = 1.5; e.castMax = 1.5; }
       let near = null, nd = Infinity;
       for (const o of G.enemies) { if (o === e || o.hp <= 0 || o.type === 'heiler') continue; const d = Math.hypot(o.x - e.x, o.y - e.y); if (d < nd) { nd = d; near = o; } }
       if (dist < 260 && los) { dirx = -dx / dist; diry = -dy / dist; speed = T.chase; }   // hält Abstand zum Spieler
@@ -1581,6 +1604,7 @@ function updateEnemies(dt) {
           if (pointVisible(o.x, o.y)) G.floats.push({ x: o.x - 10, y: o.y - o.r - 6, vx: 0, t: 0.8, v: '+' + amt, c: '#8ff0b8' });
         }
         e.cooldown = hurt.length ? 1 / 3 : 0.2;   // drei Heilimpulse pro Sekunde
+      }
       }
     } else {
       if (td > 6) { dirx = tx / td; diry = ty / td; speed = T.chase; }
@@ -1634,17 +1658,26 @@ function castFireball(e) {   // 2 oder 3 Feuerbälle: einer auf den Spieler, die
       if (pts.every(q => Math.hypot(q.x - x, q.y - y) >= 2 * R + 6)) { pts.push({ x, y }); break; }
     }
   }
-  for (const q of pts) G.zones.push({ x0: e.x, y0: e.y, x: q.x, y: q.y, r: R, t: T, T, dmg: 20 * e.dmgMul });
+  for (const q of pts) G.zones.push({ x0: e.x, y0: e.y, x: q.x, y: q.y, r: R, t: T, T, dmg: (e.el === 'frost' ? 14 : e.el === 'gift' ? 10 : 20) * e.dmgMul, el: e.el || 'feuer' });
   sfx('enemy_shoot', 0.8);
 }
+const ELEM_COL = {
+  feuer: { fill: '255,90,60', line: '255,122,90', orb: '#ffc46a', orb2: '#a8431a', glow: '#ff8a3a', p1: '#ff8a3a', p2: '#ffc46a', rob: '#8a3a2a', rob2: '#5a2018', dk: '#2a0a06' },
+  frost: { fill: '90,170,255', line: '140,210,255', orb: '#bfe8ff', orb2: '#4a90c8', glow: '#8ee8ff', p1: '#bfe8ff', p2: '#8ee8ff', rob: '#4a7aa8', rob2: '#2e5078', dk: '#0e2038' },
+  gift: { fill: '120,220,90', line: '160,240,120', orb: '#a8ff7a', orb2: '#3a8a2a', glow: '#78dc5a', p1: '#a8ff7a', p2: '#78dc5a', rob: '#4a7a3a', rob2: '#2e5a24', dk: '#102a0a' }
+};
 function updateHazards(dt) {
   const p = G.player;
   for (const z of G.zones) {
     z.t -= dt;
     if (z.t > 0) continue;
     sfx('spell_explode', 0.8);
-    for (let i = 0; i < 14; i++) G.parts.push({ x: z.x, y: z.y, vx: rand(-160, 160), vy: rand(-160, 160), life: 0.35, color: Math.random() < 0.5 ? '#ff8a3a' : '#ffc46a' });
-    if (Math.hypot(p.x - z.x, p.y - z.y) <= z.r + p.r * 0.5) hurtPlayer(z.dmg, Math.atan2(z.y - p.y, z.x - p.x));
+    const pc = ELEM_COL[z.el] || ELEM_COL.feuer;
+    for (let i = 0; i < 14; i++) G.parts.push({ x: z.x, y: z.y, vx: rand(-160, 160), vy: rand(-160, 160), life: 0.35, color: Math.random() < 0.5 ? pc.p1 : pc.p2 });
+    if (Math.hypot(p.x - z.x, p.y - z.y) <= z.r + p.r * 0.5) {
+      hurtPlayer(z.dmg, Math.atan2(z.y - p.y, z.x - p.x));
+      if (z.el === 'frost') G.slowT = Math.max(G.slowT, 2); else if (z.el === 'gift') applyVenom(3);
+    }
   }
   G.zones = G.zones.filter(z => z.t > 0);
   for (const b of G.beams) b.t -= dt;
@@ -1763,6 +1796,7 @@ function damageEnemy(e, dmg) {
       spark(e.x + Math.cos(toP) * (e.r + 8), e.y + Math.sin(toP) * (e.r + 8), '#f2c14e');
     }
   }
+  if (e.aura > 0) { dmg *= 0.7; sfx('block', 0.3); }   // Schutzaura des Heilers: 30 % weniger Schaden
   e.hp -= dmg; e.hit = 0.12;
   if (settings.dmgnums) G.floats.push({ x: e.x + e.r + 4, y: e.y - e.r * 0.4, vx: 30, t: 0.8, v: Math.max(1, Math.round(dmg)) });
   sfx(e.hp > 0 ? 'hit_enemy' : 'enemy_die', clamp(1 - Math.hypot(e.x - G.player.x, e.y - G.player.y) / 900, 0.3, 1));
@@ -2332,6 +2366,7 @@ function drawEntities() {
     else if (e.elite) drawGhoul(e, 0.76, '#7a4a46', '#9a6a5e', '#2a1214');
     else drawGhoul(e, 0.76, '#5f6f50', '#7a8a68', '#1c2414');
     if (e.hit > 0 && e.type !== 'boss') { ctx.globalAlpha = 0.65; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+    if (e.aura > 0) { ctx.strokeStyle = 'rgba(143,232,255,' + (0.55 + 0.25 * Math.sin(performance.now() / 120)) + ')'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(e.x, e.y, e.r + 7, 0, 7); ctx.stroke(); ctx.fillStyle = 'rgba(143,232,255,.12)'; ctx.fill(); }   // Schutzaura
     if (e.elite) { ctx.save(); ctx.translate(e.x, e.y - e.r - 16); ctx.fillStyle = '#f2c14e'; ctx.strokeStyle = '#7a5a1a'; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(-7, -8); ctx.lineTo(-3, -4); ctx.lineTo(0, -11); ctx.lineTo(3, -4); ctx.lineTo(7, -8); ctx.lineTo(9, 0); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
     if (settings.hpbars) {
       const bw = e.elite ? 40 : 28;
@@ -2357,12 +2392,13 @@ function drawEntities() {
   for (const z of G.zones) {   // Feuerball-Warnkreis und Flug
     if (!pointVisible(z.x, z.y) && !pointVisible(z.x0, z.y0)) continue;
     const f = 1 - z.t / z.T, pulse = 0.5 + 0.5 * Math.sin(performance.now() / 70);
-    ctx.fillStyle = 'rgba(255,90,60,' + (0.12 + 0.12 * f) + ')'; ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, 7); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,122,90,' + (0.6 + 0.4 * pulse) + ')'; ctx.lineWidth = 2.5; ctx.setLineDash([7, 5]); ctx.stroke(); ctx.setLineDash([]);
-    ctx.strokeStyle = 'rgba(255,122,90,.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(z.x, z.y, z.r * (1 - f), 0, 7); ctx.stroke();
+    const ec = ELEM_COL[z.el] || ELEM_COL.feuer, lc = ec.line;
+    ctx.fillStyle = 'rgba(' + ec.fill + ',' + (0.12 + 0.12 * f) + ')'; ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(' + lc + ',' + (0.6 + 0.4 * pulse) + ')'; ctx.lineWidth = 2.5; ctx.setLineDash([7, 5]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(' + lc + ',.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(z.x, z.y, z.r * (1 - f), 0, 7); ctx.stroke();
     const bx = z.x0 + (z.x - z.x0) * f, by = z.y0 + (z.y - z.y0) * f - Math.sin(f * Math.PI) * 30;
-    ctx.shadowColor = '#ff8a3a'; ctx.shadowBlur = 16; ctx.fillStyle = '#ffc46a'; ctx.beginPath(); ctx.arc(bx, by, 7, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
-    ctx.strokeStyle = '#a8431a'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.shadowColor = ec.glow; ctx.shadowBlur = 16; ctx.fillStyle = ec.orb; ctx.beginPath(); ctx.arc(bx, by, 7, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.strokeStyle = ec.orb2; ctx.lineWidth = 2; ctx.stroke();
   }
   for (const b of G.beams) {   // Heilstrahl
     if (!pointVisible(b.a.x, b.a.y) && !pointVisible(b.b.x, b.b.y)) continue;
@@ -3076,7 +3112,7 @@ function updateHexeHazards(dt) {
   for (const f of G.fogs) if (f.hexe) f.t = Math.min(1, f.t + dt * 2);
   for (const c of G.clouds) {   // Giftwolke: kurz Vorwarnung, dann Schaden über Zeit, wandert langsam zum Spieler
     c.t += dt;
-    if (c.t > c.warn) { const d = Math.hypot(p.x - c.x, p.y - c.y) || 1; c.x += (p.x - c.x) / d * 16 * dt; c.y += (p.y - c.y) / d * 16 * dt; c.tick = (c.tick || 0) - dt; if (c.tick <= 0) { c.tick = 0.5; if (d < c.r + p.r * 0.5 && !godMode) { p.hp -= 5; G.hurtT = Math.max(G.hurtT, 0.15); } } }
+    if (c.t > c.warn) { const d = Math.hypot(p.x - c.x, p.y - c.y) || 1; c.x += (p.x - c.x) / d * 16 * dt; c.y += (p.y - c.y) / d * 16 * dt; c.tick = (c.tick || 0) - dt; if (c.tick <= 0) { c.tick = 0.5; if (d < c.r + p.r * 0.5 && !godMode) { applyVenom(3); p.hp -= 3; G.hurtT = Math.max(G.hurtT, 0.15); } } }
   }
   G.clouds = G.clouds.filter(c => c.t < c.life);
   for (const h of G.hands) {   // Moorhände: Warnkreis, dann greift die Hand
@@ -3191,14 +3227,15 @@ function drawWolf(e) {
   });
 }
 function drawMagier(e) {
+  const ec = ELEM_COL[e.el || 'feuer'];   // Robe und Stab in der Farbe des Elements
   enemyFrame(e, () => {
     eLine([2, 12, 34, 12], '#6a4a2a', 4);
-    ctx.globalAlpha = 0.28; eCirc(36, 12, 9, '#ff8a3a'); ctx.globalAlpha = 1;
-    eCirc(36, 12, 5, '#ffc46a', '#a8431a', 2);
-    eCirc(0, 0, 14, '#5a4a8a', '#231a40', 2.5);
-    ctx.fillStyle = '#3e3266'; ctx.strokeStyle = '#231a40'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-12, -6); ctx.quadraticCurveTo(-2, -17, 12, 0); ctx.quadraticCurveTo(-2, 17, -12, 6); ctx.quadraticCurveTo(-6, 0, -12, -6); ctx.fill(); ctx.stroke();
-    eCirc(2, 0, 5.5, '#2a2046'); eCirc(5, -2, 1.3, '#ffc46a'); eCirc(5, 2, 1.3, '#ffc46a');
-    eCirc(9, 11, 3.4, '#e8dfc4', '#231a40', 1.5);
+    ctx.globalAlpha = 0.28; eCirc(36, 12, 9, ec.glow); ctx.globalAlpha = 1;
+    eCirc(36, 12, 5, ec.orb, ec.orb2, 2);
+    eCirc(0, 0, 14, ec.rob, ec.dk, 2.5);
+    ctx.fillStyle = ec.rob2; ctx.strokeStyle = ec.dk; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-12, -6); ctx.quadraticCurveTo(-2, -17, 12, 0); ctx.quadraticCurveTo(-2, 17, -12, 6); ctx.quadraticCurveTo(-6, 0, -12, -6); ctx.fill(); ctx.stroke();
+    eCirc(2, 0, 5.5, ec.dk); eCirc(5, -2, 1.3, ec.orb); eCirc(5, 2, 1.3, ec.orb);
+    eCirc(9, 11, 3.4, '#e8dfc4', ec.dk, 1.5);
   });
 }
 function drawSchild(e) {
@@ -3212,6 +3249,7 @@ function drawSchild(e) {
   });
 }
 function drawHeiler(e) {
+  if (e.casting > 0) { const k = 1 - e.casting / (e.castMax || 1.5); ctx.strokeStyle = 'rgba(143,240,184,.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(e.x, e.y, 26, -Math.PI / 2, -Math.PI / 2 + 6.283 * k); ctx.stroke(); ctx.strokeStyle = 'rgba(143,240,184,.35)'; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.arc(e.x, e.y, 260, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
   ctx.globalAlpha = 0.16; eCirc(e.x, e.y, 22, '#6fe0a0'); ctx.globalAlpha = 1;
   ctx.strokeStyle = 'rgba(111,224,160,.7)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.arc(e.x, e.y, 22, 0, 7); ctx.stroke(); ctx.setLineDash([]);
   enemyFrame(e, () => {
@@ -3484,7 +3522,7 @@ function statusList() {   // aktive Zustände des Spielers: Text, Farbe
   const p = G.player, out = [];
   if (G.rootT > 0) out.push(['Festgehalten', '#c898e0', G.rootT]);
   if (G.curseT > 0) out.push(['Verflucht · langsamer, kurze Warnzeiten', '#b070ff', G.curseT]);
-  if (G.patches && G.patches.some(q => q.kind === 'poison' && inEll(p.x, p.y, q)) || G.clouds && G.clouds.some(c => c.t > c.warn && Math.hypot(p.x - c.x, p.y - c.y) < c.r + p.r * 0.5)) out.push(['Vergiftet', '#78dc5a', 0]);
+  if (G.venomT > 0) out.push(['Vergiftet', '#78dc5a', G.venomT]);
   if (G.slowT > 0) out.push(['Verlangsamt', '#8ee8ff', G.slowT]);
   else if (G.inPool) out.push(['Im Wasser · langsamer', '#8ee8ff', 0]);
   if (G.fogs && G.fogs.length && inFog(p.x, p.y)) out.push(['Im Nebel · halbe Sicht', '#cfe6df', 0]);
@@ -4475,7 +4513,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.70';
+const VERSION = 'v0.72';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
