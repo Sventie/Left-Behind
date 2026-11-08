@@ -1632,7 +1632,7 @@ function updateEnemies(dt) {
         if (e.cd <= 0 && e.vis && dist < (e.chain ? e.chain.len + 120 : 430) && dist > 90 && G.time >= (G.wolfLock || 0)) {
           e.wst = 'charge'; G.wolfLock = G.time + 0.8;
           const len = e.chain ? Math.min(clamp(dist + 90, 240, 380), e.chain.len + 60) : clamp(dist + 90, 240, 380);
-          addAtk({ kind: 'tele', shape: 'lane', x: e.x, y: e.y, ang: Math.atan2(p.y - e.y, p.x - e.x), len, w: 18, T: 1.2, lock: 0.5,
+          addAtk({ kind: 'tele', owner: e, shape: 'lane', x: e.x, y: e.y, ang: Math.atan2(p.y - e.y, p.x - e.x), len, w: 18, T: 1.2, lock: 0.5,
             follow: a => { a.x = e.x; a.y = e.y; a.ang = Math.atan2(p.y - e.y, p.x - e.x); e.angle = a.ang; },
             fire: a => { if (e.hp > 0) { e.wst = 'jump'; e.jx = Math.cos(a.ang); e.jy = Math.sin(a.ang); e.wt = a.len / 520; e.jhit = false; sfx('dash', 0.5); } } });
         }
@@ -1696,7 +1696,7 @@ function updateEnemies(dt) {
         e.cooldown -= dt;
         if (e.cooldown <= 0 && e.vis && dist < 560) {
           const ang = Math.atan2(dy, dx); e.aimT = 0.9; e.reloading = false;
-          addAtk({ kind: 'tele', shape: 'wedge', x: e.x, y: e.y, ang, reach: 420, arc: 0.98, T: 0.8, fire: () => {
+          addAtk({ kind: 'tele', owner: e, shape: 'wedge', x: e.x, y: e.y, ang, reach: 420, arc: 0.98, T: 0.8, fire: () => {
             if (e.hp <= 0) return;
             for (let i = 0; i < 5; i++) addBullet(e.x, e.y, ang + (i - 2) * 0.17, 400, 9 * e.dmgMul, 'enemy', 900, 0, { rad: 5 });
             sfx('enemy_shoot', 0.9); e.cooldown = 2.6; e.reloading = true;
@@ -1710,7 +1710,7 @@ function updateEnemies(dt) {
       e.cd = (e.cd === undefined ? 1.5 : e.cd) - dt;
       if (e.hopT > 0) {   // kleiner Sprung nach vorn, dann der Hieb
         e.hopT -= dt; dirx = Math.cos(e.hopAng); diry = Math.sin(e.hopAng); speed = 330;
-        if (e.hopT <= 0) { addAtk({ kind: 'wedge', sword: true, x: e.x, y: e.y, ang: e.hopAng, reach: 105, arc: 2.5, T: 0.55, dmg: 18 * e.dmgMul }); e.swingT = 0.9; }
+        if (e.hopT <= 0) { addAtk({ kind: 'wedge', owner: e, sword: true, x: e.x, y: e.y, ang: e.hopAng, reach: 105, arc: 2.5, T: 0.55, dmg: 18 * e.dmgMul }); e.swingT = 0.9; }
       } else if (e.swingT > 0) { e.swingT -= dt; dirx = diry = 0; if (e.swingT <= 0) e.cd = 2.5; }
       else if (los && dist < 150 && e.cd <= 0 && e.vis) { e.hopAng = Math.atan2(dy, dx); e.hopT = 0.2; }
       else if (sh) {   // bleibt in der Deckung des Schildträgers, von ihm aus gesehen hinter ihm
@@ -1728,7 +1728,7 @@ function updateEnemies(dt) {
         e.cooldown -= dt;
         if (e.cooldown <= 0 && e.vis && dist < 400) {
           e.hookT = 0.95;
-          addAtk({ kind: 'tele', shape: 'lane', x: e.x, y: e.y, ang: Math.atan2(dy, dx), len: 340, w: 14, T: 0.9, lock: 0.3,
+          addAtk({ kind: 'tele', owner: e, shape: 'lane', x: e.x, y: e.y, ang: Math.atan2(dy, dx), len: 340, w: 14, T: 0.9, lock: 0.3,
             follow: a => { a.x = e.x; a.y = e.y; a.ang = Math.atan2(p.y - e.y, p.x - e.x); e.angle = a.ang; },
             fire: a => {
               if (e.hp <= 0) return;
@@ -2661,6 +2661,7 @@ function updateFires(dt) {
   G.fires = G.fires.filter(f => f.t < f.life);
 }
 function updateAtk(dt) {
+  if (G.atk.length) G.atk = G.atk.filter(a => !(a.owner && a.owner.hp <= 0));   // Warnungen verschwinden mit ihrem Gegner
   for (const h of G.hooks) h.t -= dt;
   G.hooks = G.hooks.filter(h => h.t > 0);
   if (G.fires.length) updateFires(dt);
@@ -4764,7 +4765,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.75';
+const VERSION = 'v0.76';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
