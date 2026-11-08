@@ -1075,7 +1075,7 @@ function update(dt) {
       if (e.hp <= 0 || e.hidden) continue;
       if (e.x - e.r < 0 || e.x + e.r > WORLD_W || e.y - e.r < G.camTop || e.y + e.r > G.camTop + VIEW_H) continue;   // nur Gegner, die komplett im Bild sind
       const d = Math.hypot(e.x - p.x, e.y - p.y);
-      if (d < bd && visible(e)) { bd = d; best = e; }
+      if (d < bd && (visible(e) || e.type === 'kessel')) { bd = d; best = e; }   // der Kessel ist immer sichtbar markiert
     }
     if (best) { G.autoT = best; G.autoD = bd; p.aim = Math.atan2(best.y - p.y, best.x - p.x); }
   }
@@ -1091,14 +1091,15 @@ function update(dt) {
   if (p.reloadT > 0) {
     p.reloadT -= dt;
     if (p.reloadT <= 0) { p.reloadT = 0; p.mag = S.magSize; sfx('reload_done'); }
-  } else if (settings.autoaim && G.autoT && p.cooldown <= 0 && !isBlocking() && !isMeditating()
-             && (w.type === 'melee' ? G.autoD < w.reach * S.reachMul + G.autoT.r : G.autoD < w.range) && (w.type !== 'spell' || p.mana >= w.cost)) {
-    if (w.type === 'ranged' && p.mag <= 0) startReload(); else playerAttack();   // Nachladen automatisch, wenn leer
   } else if ((settings.autofire ? mouse.down : mouse.pressed) && p.cooldown <= 0 && !isBlocking() && !isMeditating()) {
+    p.aim = p.angle;   // eigener Klick: Schüsse gehen dorthin, wohin die Maus zielt
     if (w.type === 'ranged' && p.mag <= 0) sfx('empty_click');
     else if (w.type === 'spell' && p.mana < w.cost) sfx('empty_click');
     else playerAttack();
     mouse.pressed = false;
+  } else if (settings.autoaim && G.autoT && p.cooldown <= 0 && !isBlocking() && !isMeditating()
+             && (w.type === 'melee' ? G.autoD < w.reach * S.reachMul + G.autoT.r : G.autoD < w.range) && (w.type !== 'spell' || p.mana >= w.cost)) {
+    if (w.type === 'ranged' && p.mag <= 0) startReload(); else playerAttack();   // Nachladen automatisch, wenn leer
   }
 
   // Kamera: nur nach oben, ab oberem Drittel
@@ -3464,6 +3465,15 @@ function drawRails() {
   text('Im Deck: ' + G.library.length + ' Karten', 1180, 700, 14, '#b8c4d0', 'center', F_TEXT);
 }
 
+function drawKesselMark() {   // Kessel und Heilbereich bleiben auch im Dunkeln erkennbar
+  for (const k of G.enemies) {
+    if (k.type !== 'kessel' || k.hp <= 0) continue;
+    const x = k.x, y = k.y - G.camTop;
+    if (k.age >= 2) { ctx.strokeStyle = 'rgba(168,255,154,.45)'; ctx.lineWidth = 2; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.arc(x, y, 300, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+    ctx.save(); ctx.translate(0, -G.camTop); drawCauldron(k.x, k.y, 1, k.age >= 0.6); ctx.restore();
+    ctx.fillStyle = '#000'; ctx.fillRect(x - 22, y - k.r - 14, 44, 5); ctx.fillStyle = '#a8ff9a'; ctx.fillRect(x - 22, y - k.r - 14, 44 * Math.max(0, k.hp / k.maxHp), 5);
+  }
+}
 function drawWallWarn() {   // Warnband der Pfeilwand: auch außerhalb des Sichtkegels zu sehen (liegt über der Dunkelheit)
   for (const a of G.atk) {
     if (a.kind !== 'tele' || a.shape !== 'band') continue;
@@ -3496,7 +3506,7 @@ function drawStatus() {   // farbige Schrift unten links im Spielfeld, über der
   }
 }
 function drawFieldHUD() {
-  drawWallWarn(); drawStatus();
+  drawWallWarn(); drawKesselMark(); drawStatus();
   if (G.deltaT > 0) {   // Punktezuwachs neben der Punktezahl im Rahmen
     ctx.globalAlpha = Math.min(1, G.deltaT * 2.5);
     ctx.font = '30px ' + F_TITLE; ctx.textAlign = 'left'; ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 8; ctx.fillStyle = '#f2c14e';
@@ -4470,7 +4480,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.66';
+const VERSION = 'v0.68';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
