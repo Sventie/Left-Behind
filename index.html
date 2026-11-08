@@ -1811,7 +1811,7 @@ function updateHazards(dt) {
     sfx('spell_explode', 0.8);
     const pc = ELEM_COL[z.el] || ELEM_COL.feuer;
     for (let i = 0; i < 14; i++) G.parts.push({ x: z.x, y: z.y, vx: rand(-160, 160), vy: rand(-160, 160), life: 0.35, color: Math.random() < 0.5 ? pc.p1 : pc.p2 });
-    G.fires.push({ x: z.x, y: z.y, r: 52, t: 0, life: rand(5, 10), tick: 0.2, el: z.el || 'feuer' });   // hinterlässt eine Fläche: Feuer, Eis oder Gift
+    G.fires.push({ x: z.x, y: z.y, r: 52, t: 0, life: rand(4, 6), tick: 0.2, el: z.el || 'feuer' });   // hinterlässt eine Fläche: Feuer, Eis oder Gift
     if (Math.hypot(p.x - z.x, p.y - z.y) <= z.r + p.r * 0.5) {
       hurtPlayer(z.dmg, Math.atan2(z.y - p.y, z.x - p.x));
       if (z.el === 'frost') G.slowT = Math.max(G.slowT, 2); else if (z.el === 'gift') applyVenom(3);
@@ -4765,7 +4765,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.76';
+const VERSION = 'v0.77';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
