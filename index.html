@@ -1481,7 +1481,7 @@ function updateEnemies(dt) {
     if (e.type === 'boss') { updateBogen(e, dt); continue; }
     if (e.type === 'schild' && e.face === undefined && e.faceInit === undefined) e.faceInit = e.angle;
     e.hit = Math.max(0, e.hit - dt);
-    if (!e.in && e.y >= G.camTop + e.r) e.in = true;   // ab jetzt dürfen sie das Bild nicht mehr verlassen
+    if (!e.in && e.y >= G.camTop + e.r + 24) e.in = true;   // ab jetzt dürfen sie das Bild nicht mehr verlassen
     const dx = p.x - e.x, dy = p.y - e.y, dist = Math.hypot(dx, dy);
     const los = hasLOS(e.x, e.y, p.x, p.y);
 
@@ -4265,7 +4265,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.56';
+const VERSION = 'v0.57';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
