@@ -281,7 +281,7 @@ const SFX_IDS = ['ui_click', 'card_pick', 'card_flip', 'rare_reveal', 'pack_buy'
   'shoot_crossbow', 'reload_start', 'reload_done', 'empty_click', 'shoot_spell', 'spell_explode', 'sword_swing', 'sword_hit', 'block',
   'hit_enemy', 'enemy_die', 'enemy_shoot', 'player_hurt', 'player_die', 'dash', 'pickup_heal', 'horde_horn'];
 const DEFAULT_BINDS = { up: 'KeyW', left: 'KeyA', down: 'KeyS', right: 'KeyD', dash: 'Space', reload: 'KeyR', interact: 'KeyE', music: 'KeyM', sfx: 'KeyN' };
-const DEFAULT_SETTINGS = { master: 0.8, music: 0.5, sfx: 0.7, bgMute: true, bright: 100, hitfx: 2, hpbars: true, dmgnums: false, fps30: false, showfps: false, xhair: 0, xcol: '#fff3c8', autoPause: true, hints: true, autofire: true };
+const DEFAULT_SETTINGS = { autoaim: false, master: 0.8, music: 0.5, sfx: 0.7, bgMute: true, bright: 100, hitfx: 2, hpbars: true, dmgnums: false, fps30: false, showfps: false, xhair: 0, xcol: '#fff3c8', autoPause: true, hints: true, autofire: true };
 const settings = (() => {
   let s = {}; try { s = JSON.parse(localStorage.getItem('left-behind-settings')) || {}; } catch (e) {}
   return Object.assign({}, DEFAULT_SETTINGS, s, { binds: Object.assign({}, DEFAULT_BINDS, s.binds) });
@@ -955,7 +955,7 @@ function alertNear(radius) {
 function playerAttack() {
   const p = G.player, w = W();
   if (w.type === 'ranged') {
-    const a = p.angle + (Math.random() + Math.random() - 1) * currentSpread() * deg;
+    const a = p.aim + (Math.random() + Math.random() - 1) * currentSpread() * deg;
     addBullet(p.x, p.y, a, w.speed, w.damage * S.dmgMul, 'player', w.range, S.pierce);
     p.mag--;
     p.cooldown = w.interval;
@@ -967,7 +967,7 @@ function playerAttack() {
   } else if (w.type === 'spell') {
     if (p.mana < w.cost) return;
     p.mana -= w.cost; p.manaDelay = w.regenDelay;
-    const a = p.angle + (Math.random() + Math.random() - 1) * currentSpread() * deg;
+    const a = p.aim + (Math.random() + Math.random() - 1) * currentSpread() * deg;
     addBullet(p.x, p.y, a, w.speed, w.damage * S.dmgMul, 'player', w.range, S.pierce, { spell: true, splash: w.splash * S.splashMul });
     p.cooldown = w.interval;
     p.bloom = Math.min(w.bloomMax, p.bloom + w.bloomPerShot);
@@ -980,7 +980,7 @@ function playerAttack() {
 }
 function muzzle(a, color) {
   const p = G.player;
-  for (let i = 0; i < 3; i++) G.parts.push({ x: p.x + Math.cos(p.angle) * 20, y: p.y + Math.sin(p.angle) * 20, vx: Math.cos(a) * rand(60, 200) + rand(-40, 40), vy: Math.sin(a) * rand(60, 200) + rand(-40, 40), life: 0.1, color });
+  for (let i = 0; i < 3; i++) G.parts.push({ x: p.x + Math.cos(p.aim) * 20, y: p.y + Math.sin(p.aim) * 20, vx: Math.cos(a) * rand(60, 200) + rand(-40, 40), vy: Math.sin(a) * rand(60, 200) + rand(-40, 40), life: 0.1, color });
 }
 function meleeSwing() {
   const p = G.player, w = W();
@@ -991,7 +991,7 @@ function meleeSwing() {
     if (e.hp <= 0) continue;
     const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy);
     if (d > reach + e.r) continue;
-    if (Math.abs(normAngle(Math.atan2(dy, dx) - p.angle)) > arc / 2 + Math.atan2(e.r, Math.max(d, 1))) continue;
+    if (Math.abs(normAngle(Math.atan2(dy, dx) - p.aim)) > arc / 2 + Math.atan2(e.r, Math.max(d, 1))) continue;
     if (!hasLOS(p.x, p.y, e.x, e.y)) continue;
     damageEnemy(e, w.damage * S.dmgMul);
     if (S.chain > 0) chainLightning(e, w.damage * S.dmgMul * 0.5);
@@ -1057,7 +1057,17 @@ function update(dt) {
   p.swingT = Math.max(0, p.swingT - dt);
   p.y = clamp(p.y, G.camTop + p.r, G.camTop + VIEW_H - p.r);   // nicht aus dem Bild zurück
 
-  p.angle = Math.atan2(mouse.y + G.camTop - p.y, mouse.x - p.x);
+  p.angle = Math.atan2(mouse.y + G.camTop - p.y, mouse.x - p.x);   // Blick und Sichtkegel folgen immer der Maus
+  p.aim = p.angle; G.autoT = null;
+  if (settings.autoaim) {   // Automatisch zielen: nächster Gegner, den man sehen kann
+    let best = null, bd = 1e9;
+    for (const e of G.enemies) {
+      if (e.hp <= 0 || e.hidden || e.type === 'irrlicht') continue;
+      const d = Math.hypot(e.x - p.x, e.y - p.y);
+      if (d < bd && visible(e)) { bd = d; best = e; }
+    }
+    if (best) { G.autoT = best; G.autoD = bd; p.aim = Math.atan2(best.y - p.y, best.x - p.x); }
+  }
 
   // Waffe
   p.cooldown = Math.max(0, p.cooldown - dt);
@@ -1070,6 +1080,9 @@ function update(dt) {
   if (p.reloadT > 0) {
     p.reloadT -= dt;
     if (p.reloadT <= 0) { p.reloadT = 0; p.mag = S.magSize; sfx('reload_done'); }
+  } else if (settings.autoaim && G.autoT && p.cooldown <= 0 && !isBlocking() && !isMeditating()
+             && (w.type === 'melee' ? G.autoD < w.reach * S.reachMul + G.autoT.r : G.autoD < w.range) && (w.type !== 'spell' || p.mana >= w.cost)) {
+    if (w.type === 'ranged' && p.mag <= 0) startReload(); else playerAttack();   // Nachladen automatisch, wenn leer
   } else if ((settings.autofire ? mouse.down : mouse.pressed) && p.cooldown <= 0 && !isBlocking() && !isMeditating()) {
     if (w.type === 'ranged' && p.mag <= 0) sfx('empty_click');
     else if (w.type === 'spell' && p.mana < w.cost) sfx('empty_click');
@@ -2333,7 +2346,8 @@ function drawEntities() {
   ctx.globalAlpha = 1;
   drawAtk();
   if (G.area.id === 'moor') { drawWisps(); drawFogBanks(); drawHexeHazards(); }   // Angriffe der Hexe über dem Nebel, aber nur im Sichtkegel sichtbar
-  drawFigure(G.cls.id, p.x, p.y, p.angle, 1, {
+  if (G.autoT && G.autoT.hp > 0) { const t = G.autoT; ctx.strokeStyle = 'rgba(255,243,200,.75)'; ctx.lineWidth = 2; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.arc(t.x, t.y, t.r + 8, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+  drawFigure(G.cls.id, p.x, p.y, isBlocking() ? p.angle : (p.aim === undefined ? p.angle : p.aim), 1, {
     dash: p.dashT > 0,
     swing: p.swingT > 0 ? 1 - p.swingT / WEAPONS.schwert.swing : -1,
     block: isBlocking(), focus: isFocusing(), med: isMeditating()
@@ -4242,7 +4256,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.54';
+const VERSION = 'v0.55';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -4478,7 +4492,9 @@ function drawOptionsScreen() {
   y += rowSlider(x, y, colW, 'Effekte', 'Taste ' + keyLabel(bind('sfx')) + ' schaltet stumm', settings.sfx, 0, 1, 0.01, pct, v => chg('sfx', v));
   uiButton(x, y - 6, 110, 30, 'Probeton', () => { audioInit(); sfx('shoot_crossbow'); }, { size: 14 });
   y += 36;
-  rowToggle(x, y, colW, 'Ton im Hintergrund stumm', 'wenn das Fenster nicht aktiv ist', settings.bgMute, v => chg('bgMute', v));
+  y += rowToggle(x, y, colW, 'Ton im Hintergrund stumm', 'wenn das Fenster nicht aktiv ist', settings.bgMute, v => chg('bgMute', v));
+  secHead('Leistung', x, y + 30, colW); y += 54;
+  rowToggle(x, y, colW, 'Bildrate anzeigen', 'unten rechts, zum Prüfen der Leistung', settings.showfps, v => chg('showfps', v));
   // Anzeige
   x = cx(1); y = 214;
   secHead('Anzeige', x, 190, colW);
@@ -4498,7 +4514,7 @@ function drawOptionsScreen() {
   y += rowToggle(x, y, colW, 'Automatisch pausieren', 'wenn das Fenster den Fokus verliert', settings.autoPause, v => chg('autoPause', v));
   y += rowToggle(x, y, colW, 'Hinweise einblenden', 'z. B. „E · Handeln“ am Händler', settings.hints, v => chg('hints', v));
   y += rowToggle(x, y, colW, 'Dauerfeuer mit gedrückter Taste', 'aus: ein Klick, ein Schuss', settings.autofire, v => chg('autofire', v));
-  rowToggle(x, y, colW, 'Bildrate anzeigen', 'unten rechts, zum Prüfen der Leistung', settings.showfps, v => chg('showfps', v));
+  rowToggle(x, y, colW, 'Automatisch zielen und angreifen', 'Maus lenkt nur den Sichtkegel', settings.autoaim, v => chg('autoaim', v));
   // Fuß
   uiButton(110, 620, 210, 48, 'Steuerung ändern', () => { state = 'controls'; listenAct = null; controlsMsg = ''; }, { size: 17 });
   uiButton(334, 620, 190, 48, 'Standardwerte', () => { const b = settings.binds; Object.assign(settings, DEFAULT_SETTINGS, { binds: b }); saveSettings(); applySettings(); }, { size: 17 });
