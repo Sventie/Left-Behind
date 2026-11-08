@@ -2953,7 +2953,7 @@ function updateHexe(e, dt) {
     if (e.dive.t >= e.dive.T) hexeEmerge(e);
     return;
   }
-  if (!(ph2 && e.mode === 'fog') && e.reaction <= 0) {
+  if (!ph2 && e.reaction <= 0) {   // Abtauchen nur in Phase 1; Phase 2 hat das Nebelversteck
     e.diveCd = (e.diveCd === undefined ? rand(6, 9) : e.diveCd) - dt;
     if (e.diveCd <= 0 && !G.enemies.some(q => q.type === 'trug' && q.hp > 0)) hexeDive(e);   // solange Trugbilder leben, kommt kein neuer Tauchgang
   }
@@ -4449,7 +4449,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.63';
+const VERSION = 'v0.64';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
