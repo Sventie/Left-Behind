@@ -2997,7 +2997,7 @@ function hexeDive(e) {   // in die Pfütze abtauchen
 function hexeEmerge(e) {   // taucht auf und lässt zwei Trugbilder erscheinen
   const d = e.dive; e.dive = null; e.hidden = false; e.x = d.tx; e.y = d.ty;
   G.ripples.push({ x: e.x, y: e.y, t: 0, life: 1.2 }); sfx('stage_up', 0.8);
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < (e.phase === 2 ? 0 : 2); i++) {   // nur in Phase 1: Trugbilder
     for (let t = 0; t < 20; t++) {
       const a = Math.random() * 6.283, dd = rand(110, 190), x = clamp(e.x + Math.cos(a) * dd, 60, WORLD_W - 60), y = clamp(e.y + Math.sin(a) * dd, G.camTop + 60, G.camTop + VIEW_H - 60);
       if (G.enemies.some(q => q.type === 'trug' && Math.hypot(q.x - x, q.y - y) < 80) || Math.hypot(x - e.x, y - e.y) < 70) continue;
@@ -4449,7 +4449,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.62';
+const VERSION = 'v0.63';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
