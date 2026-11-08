@@ -1510,7 +1510,7 @@ function updateEnemies(dt) {
     e.angle = Math.atan2(dy, dx);
     if (e.type === 'schild') {   // der Schild dreht sich nur langsam mit: umlaufen lohnt sich
       if (e.face === undefined) e.face = e.faceInit !== undefined ? e.faceInit : e.angle;
-      e.face += clamp(normAngle(e.angle - e.face), -1.5 * dt, 1.5 * dt); e.angle = e.face;
+      e.face += clamp(normAngle(e.angle - e.face), -1.05 * dt, 1.05 * dt); e.angle = e.face;
     }
 
     let dirx = 0, diry = 0, speed = T.speed;
@@ -1668,7 +1668,7 @@ function spawnReinforcements() {
   if (G.time >= G.nextWave) {
     const n = G.endless ? Math.min(5 + Math.floor(over * 1.5), 40) : Math.min(2 + Math.floor(G.dist / 120), 5);
     for (let i = 0; i < n && G.enemies.length < 70; i++) spawnEnemy(rollType(rushP));
-    say('Eine Horde bricht aus dem Wald!'); sfx('horde_horn');
+    say(({ wald: 'Eine Horde bricht aus dem Wald!', moor: 'Eine Horde steigt aus dem Moor!', schloss: 'Eine Horde stürmt durch die Hallen!', kerker: 'Eine Horde bricht aus den Zellen!' })[G.area.id] || 'Eine Horde kommt!'); sfx('horde_horn');
     G.nextWave = G.time + Math.max(4, rand(22, 40) / speedUp);
   }
   if (G.time >= G.nextSingle) {
@@ -4475,7 +4475,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.69';
+const VERSION = 'v0.70';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
