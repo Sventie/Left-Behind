@@ -109,7 +109,7 @@ const AREA_BY_ID = Object.fromEntries(AREAS.map(a => [a.id, a]));
 const areaUnlocked = a => !a.after || !!(SAVE.bossDownBy && SAVE.bossDownBy[a.after]);
 // Punkte pro besiegtem Gegner (Rangliste); später je Gegner anders
 // Punkte und Mondsilber pro Gefallenem sind gleich
-const ENEMY_POINTS = { grunt: 1, rusher: 1, wolf: 1, schild: 2, magier: 2, heiler: 2, boss: 20, hexe: 20, herr: 20, irrlicht: 0, trug: 0, kessel: 0 };
+const ENEMY_POINTS = { grunt: 1, rusher: 1, wolf: 1, schild: 2, magier: 2, heiler: 2, boss: 20, hexe: 20, herr: 20, irrlicht: 0, trug: 0, kessel: 0, kriecher: 2, armbrust: 2, waechter: 3, folter: 3, schwarm: 2 };
 const ELITE_POINTS = 5;
 // Endlosmodus: so viele Gefallene zählen, dann muss man ENDLESS_UNLOCK_M weiterlaufen, bevor wieder Punkte und Mondsilber kommen
 const ENDLESS_KILL_LIMIT = 20, ENDLESS_UNLOCK_M = 10;
@@ -122,6 +122,11 @@ const ENEMY_TYPES = {
   heiler: { hp: 40, speed: 65, chase: 75, r: 13 },              // heilt Verbündete
   hexe:   { hp: 800, speed: 100, chase: 110, r: 26, boss: true },   // Moorhexe: Phase 1 mit 800, Phase 2 mit 1200 Leben
   irrlicht: { hp: 1, speed: 160, chase: 175, r: 9, mdmg: 10 },
+  kriecher: { hp: 70, speed: 38, chase: 52, r: 18, mdmg: 10 },   // Sumpfkriecher (Moor): langsam, Giftspur, explodiert
+  armbrust: { hp: 70, speed: 60, chase: 75, r: 15 },             // Armbrustschütze: Fächer aus 5 Bolzen, dann nachladen
+  waechter: { hp: 110, speed: 62, chase: 78, r: 17 },            // Rüstungswächter: hinter dem Schildträger, Sprung und Hieb
+  folter: { hp: 120, speed: 55, chase: 65, r: 18 },              // Folterknecht: Kette zieht den Spieler heran
+  schwarm: { hp: 60, speed: 100, chase: 105, r: 30 },            // Mückenschwarm (Moor): fliegt, Schaden und Gift im Schwarm
   trug:   { hp: 100, speed: 100, chase: 110, r: 22 },           // Trugbild der Moorhexe: wenig Leben, wirkt Zauber
   kessel: { hp: 300, speed: 0, chase: 0, r: 26 },               // Hexenkessel: heilt die Hexe, bis er zerstört ist
   herr:   { hp: 2000, speed: 62, chase: 70, r: 32, boss: true },   // Schlossherr: Phase 1 mit 2000, Phase 2 mit 2000 Leben
@@ -618,7 +623,7 @@ function newGame(cls, area) {
     kills: 0, dist: 0,
     merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
-    stage: 1, stageStart: 0, nextPick: stageLength(1), atk: [], fires: [], fallen: [], ripples: [], curseT: 0, bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
+    stage: 1, stageStart: 0, nextPick: stageLength(1), atk: [], fires: [], fallen: [], ripples: [], curseT: 0, trails: [], hooks: [], pull: null, bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
       x: WORLD_W / 2, y: -60, r: 14, hp: 1, angle: -Math.PI / 2,
@@ -652,20 +657,42 @@ function freeSpot(r, tries = 40, y0, y1) {
 // Endlosmodus: je 100 m nach dem Boss wird alles härter
 function endlessLevel() { return G && G.endless ? Math.max(0, G.dist - G.bossDist) / 100 : 0; }
 // Ab welcher Entfernung (m) welcher Gegner vorkommt, und wie oft im Vergleich
-const SPECIALS = [{ type: 'wolf', from: 100, w: 3 }, { type: 'schild', from: 150, w: 2 }, { type: 'magier', from: 200, w: 2 }, { type: 'heiler', from: 250, w: 1.2 }];
+const AREA_SPECIALS = {
+  wald:    [{ type: 'wolf', from: 100, w: 3 }, { type: 'schild', from: 150, w: 2 }, { type: 'magier', from: 200, w: 2 }, { type: 'heiler', from: 250, w: 1.2 }],
+  moor:    [{ type: 'kriecher', from: 100, w: 2.5 }, { type: 'schwarm', from: 120, w: 2 }, { type: 'wolf', from: 100, w: 1.2 }, { type: 'magier', from: 200, w: 2 }, { type: 'heiler', from: 250, w: 1.2 }],
+  schloss: [{ type: 'schild', from: 150, w: 2.5 }, { type: 'armbrust', from: 150, w: 2.5 }, { type: 'magier', from: 200, w: 2 }, { type: 'heiler', from: 250, w: 1.2 }],
+  kerker:  [{ type: 'wolf', from: 100, w: 3 }, { type: 'schild', from: 150, w: 2 }, { type: 'armbrust', from: 150, w: 2.5 }, { type: 'folter', from: 200, w: 2 }, { type: 'magier', from: 200, w: 2 }, { type: 'heiler', from: 250, w: 1.2 }]
+};
+const areaSpecials = () => AREA_SPECIALS[G.area.id] || AREA_SPECIALS.wald;
 function rollType(rushP) {
-  const m = G.dist, avail = SPECIALS.filter(q => m >= q.from);
+  const m = G.dist, avail = areaSpecials().filter(q => m >= q.from);
   if (avail.length && Math.random() < Math.min(0.45, 0.12 + (m - 100) / 700)) {
     let r = Math.random() * avail.reduce((a, q) => a + q.w, 0);
     for (const q of avail) { r -= q.w; if (r <= 0) return q.type; }
   }
-  return Math.random() < rushP ? 'rusher' : 'grunt';
+  const base = Math.random() < rushP ? 'rusher' : 'grunt';
+  if (base === 'grunt' && (G.area.id === 'schloss' || G.area.id === 'kerker') && m >= 100 && Math.random() < 0.15) return 'armbrust';   // ersetzt den Bogenschützen vereinzelt
+  return base;
+}
+function spawnType(type, x, y, alert) {   // fügt den Gegner und seine Begleiter hinzu
+  const area = G.area.id, out = [];
+  if (type === 'kriecher') {   // kommt aus Pfützen und Giftfeldern
+    const ps = G.patches.filter(q => (q.kind === 'pool' || q.kind === 'poison') && Math.hypot(q.x - x, q.y - y) < 500).sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y));
+    if (ps.length) { const q = ps[Math.floor(Math.random() * Math.min(2, ps.length))]; x = q.x + rand(-q.rx * 0.5, q.rx * 0.5); y = q.y + rand(-q.ry * 0.4, q.ry * 0.4); }
+  }
+  const e = makeEnemy(type, x, y, alert);
+  if (type === 'wolf' && area === 'kerker') { e.chain = { px: x, py: y, len: 220, n: 3 }; e.kh = true; }   // Kettenhund
+  out.push(e);
+  if (type === 'schild' && (area === 'schloss' || area === 'kerker')) out.push(makeEnemy('waechter', x, y + 38, alert));   // Rüstungswächter immer mit Schildträger
+  G.enemies.push(...out);
+  return out;
 }
 function makeEnemy(type, x, y, alert) {
   const t = ENEMY_TYPES[type], over = t.boss ? 0 : endlessLevel();
   const elite = !t.boss && (type === 'grunt' || type === 'rusher' || type === 'magier') && G.dist >= 300 && Math.random() < 0.07;
   const hpK = (1 + over * 0.2) * (elite ? 3 : 1);
   return {
+    el: type === 'magier' ? (G.area.id === 'wald' ? 'feuer' : G.area.id === 'moor' ? 'gift' : ['feuer', 'frost', 'gift'][Math.floor(Math.random() * 3)]) : undefined,
     type, x, y, r: t.r * (elite ? 1.25 : 1), hp: t.hp * hpK, maxHp: t.hp * hpK, dmgMul: (1 + over * 0.1) * (elite ? 1.3 : 1), elite,
     angle: rand(-Math.PI, Math.PI),
     state: alert ? 'alert' : 'idle',
@@ -711,12 +738,13 @@ function generate() {
         const rushP = Math.min(0.25 + k * 0.02 + endlessLevel() * 0.03, G.endless ? 0.7 : 0.45);
         let group = Math.random() < 0.35 ? 2 + Math.floor(Math.random() * 2) : 1;
         const lead = rollType(rushP);
-        if (lead === 'wolf') group = 3 + Math.floor(Math.random() * 2);
+        if (lead === 'wolf') group = G.area.id === 'kerker' ? 1 + Math.floor(Math.random() * 2) : 3 + Math.floor(Math.random() * 2);
+        if (lead === 'kriecher' || lead === 'schwarm') group = 1 + Math.floor(Math.random() * 2);
         for (let g = 0; g < group; g++) {
           const type = lead === 'wolf' ? 'wolf' : (g === 0 ? lead : (lead === 'heiler' ? (Math.random() < 0.5 ? 'grunt' : 'rusher') : rollType(rushP)));
           const gx = clamp(spot.x + rand(-60, 60), 40, WORLD_W - 40), gy = spot.y + rand(-40, 40);
           if (G.obstacles.some(o => gx > o.x - 20 && gx < o.x + o.w + 20 && gy > o.y - 20 && gy < o.y + o.h + 20)) continue;
-          G.enemies.push(makeEnemy(type, gx, gy, false));
+          spawnType(type, gx, gy, false);
         }
       }
     }
@@ -771,11 +799,42 @@ function genMoor(y0, y1, k) {
 }
 const inEll = (px, py, f, k) => ((px - f.x) / (f.rx * (k || 1))) ** 2 + ((py - f.y) / (f.ry * (k || 1))) ** 2 < 1;
 const inFog = (x, y) => G.fogs && G.fogs.some(f => inEll(x, y, f));
+function dotHit() { G.hurtT = Math.max(G.hurtT, 0.28); sfx('player_hurt', 0.4); }   // jeder Tick eines Dauerschadens: roter Rand und Ton, wiederholt
+function applyBurn(t) { G.burnT = Math.max(G.burnT || 0, t); }
+function updateDotFx(dt) {   // Gift: Blasen steigen auf; Feuer: Glut und kleine Flammen
+  const p = G.player;
+  G.bubs = G.bubs || [];
+  if (G.venomT > 0) { G.bubT = (G.bubT || 0) - dt; if (G.bubT <= 0) { G.bubT = 0.07; G.bubs.push({ x: p.x + rand(-16, 16), y: p.y + rand(-8, 10), vx: rand(-10, 10), vy: -rand(32, 58), life: 1.2, max: 1.2, r: rand(3, 7), kind: 'gift' }); } }
+  if (G.burnT > 0) { G.emberT = (G.emberT || 0) - dt; if (G.emberT <= 0) { G.emberT = 0.04; G.bubs.push({ x: p.x + rand(-14, 14), y: p.y + rand(-10, 8), vx: rand(-16, 16), vy: -rand(40, 85), life: 0.75, max: 0.75, r: rand(2, 4.2), kind: Math.random() < 0.3 ? 'flamme' : 'glut' }); } }
+  for (const b of G.bubs) { b.life -= dt; b.x += b.vx * dt; b.y += b.vy * dt; }
+  G.bubs = G.bubs.filter(b => b.life > 0);
+  if (G.burnT > 0) {
+    G.burnT -= dt; G.burnTick = (G.burnTick || 0) - dt;
+    if (G.burnTick <= 0) { G.burnTick = 0.5; if (!godMode) { p.hp -= 4; dotHit(); } }
+  }
+}
+function drawDotFx() {
+  for (const b of (G.bubs || [])) {
+    const k = b.life / b.max;
+    if (b.kind === 'gift') { ctx.fillStyle = 'rgba(160,255,140,' + 0.45 * k + ')'; ctx.strokeStyle = 'rgba(190,255,150,' + k + ')'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill(); ctx.stroke(); }
+    else if (b.kind === 'glut') { ctx.fillStyle = 'rgba(255,' + Math.round(120 + 100 * k) + ',50,' + k + ')'; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7); ctx.fill(); }
+    else { ctx.fillStyle = 'rgba(255,170,60,' + k + ')'; ctx.beginPath(); ctx.moveTo(b.x - b.r, b.y + b.r); ctx.quadraticCurveTo(b.x - b.r * 0.6, b.y - b.r * 1.2, b.x, b.y - b.r * 2.6); ctx.quadraticCurveTo(b.x + b.r * 0.8, b.y - b.r, b.x + b.r, b.y + b.r); ctx.closePath(); ctx.fill(); }
+  }
+}
+function applyVenom(t) { G.venomT = Math.max(G.venomT || 0, t); }   // Status „Vergiftet“: leichter Schaden, solange er anhält
+function updateVenom(dt) {
+  if (!(G.venomT > 0)) return;
+  G.venomT -= dt; G.venomTick = (G.venomTick || 0) - dt;
+  if (G.venomTick <= 0) { G.venomTick = 0.5; if (!godMode) { G.player.hp -= 2; dotHit(); } }
+}
 function updateMoor(dt) {
   const p = G.player;
-  G.slowT = Math.max(0, G.slowT - dt); G.rootT = Math.max(0, G.rootT - dt);
+  G.rootT = Math.max(0, G.rootT - dt);
   G.inPool = G.patches.some(q => q.kind === 'pool' && inEll(p.x, p.y, q));
   G.curseT = Math.max(0, G.curseT - dt);
+  for (const t of G.trails) t.t -= dt;   // Giftspur des Sumpfkriechers
+  G.trails = G.trails.filter(t => t.t > 0);
+  if (G.trails.some(t => Math.hypot(t.x - p.x, t.y - p.y) < 16 + p.r * 0.5) && !godMode) applyVenom(3);
   for (const f of G.fogs) {
     if (f.call) {   // vom Nebelruf: wandert langsam auf den Spieler zu, blendet ein und aus
       f.age += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.t = clamp(Math.min(f.age * 1.2, (f.life - f.age) / 1.5), 0, 1);
@@ -794,7 +853,7 @@ function updateMoor(dt) {
     G.poisonT = 0.5;
     const pz = G.patches.filter(q => q.kind === 'poison');
     if (pz.length) {
-      if (pz.some(q => inEll(p.x, p.y, q)) && !godMode) { p.hp -= 3; G.hurtT = Math.max(G.hurtT, 0.12); }
+      if (pz.some(q => inEll(p.x, p.y, q)) && !godMode) applyVenom(3);
       for (const e of G.enemies) if (e.hp > 0 && !e.hidden && !e.boss && pz.some(q => inEll(e.x, e.y, q))) damageEnemy(e, 4);
     }
   }
@@ -1045,13 +1104,19 @@ function update(dt) {
     return;
   }
   if (G.goT > 0) G.goT -= dt;
-  G.time += dt;
+  G.time += dt; G.slowT = Math.max(0, G.slowT - dt); updateVenom(dt); updateDotFx(dt);
 
   // Bewegung (WASD) oder Windstoß
   let mx = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
   let my = (held('down') ? 1 : 0) - (held('up') ? 1 : 0);
   let moved;
-  if (p.dashT > 0) {
+  if (G.pull && G.pull.t > 0) {   // Folterknecht zieht den Spieler heran, dann ein Hieb
+    const pu = G.pull, src = pu.src;
+    pu.t -= dt;
+    const ax = src.x - p.x, ay = src.y - p.y, al = Math.hypot(ax, ay) || 1, want = Math.max(0, al - 44), st = Math.min(want, 520 * dt);
+    moved = moveCircle(p, ax / al * st, ay / al * st);
+    if (pu.t <= 0) { G.pull = null; if (src.hp > 0) addAtk({ kind: 'wedge', x: src.x, y: src.y, ang: Math.atan2(p.y - src.y, p.x - src.x), reach: 70, arc: 1.9, T: 0.3, dmg: 16 * src.dmgMul }); }
+  } else if (p.dashT > 0) {
     p.dashT -= dt;
     const v = DASH.dist / DASH.time;
     moved = moveCircle(p, p.dashX * v * dt, p.dashY * v * dt);
@@ -1487,6 +1552,7 @@ function updateEnemies(dt) {
   const p = G.player;
   for (const e of G.enemies) {
     const T = ENEMY_TYPES[e.type];
+    if (e.aura > 0) e.aura -= dt;
     if (e.type === 'hexe') { updateHexe(e, dt); continue; }
     if (e.type === 'herr') { updateHerr(e, dt); continue; }
     if (e.type === 'trug') { updateTrug(e, dt); continue; }
@@ -1510,7 +1576,7 @@ function updateEnemies(dt) {
     e.angle = Math.atan2(dy, dx);
     if (e.type === 'schild') {   // der Schild dreht sich nur langsam mit: umlaufen lohnt sich
       if (e.face === undefined) e.face = e.faceInit !== undefined ? e.faceInit : e.angle;
-      e.face += clamp(normAngle(e.angle - e.face), -1.5 * dt, 1.5 * dt); e.angle = e.face;
+      e.face += clamp(normAngle(e.angle - e.face), -1.05 * dt, 1.05 * dt); e.angle = e.face;
     }
 
     let dirx = 0, diry = 0, speed = T.speed;
@@ -1537,24 +1603,40 @@ function updateEnemies(dt) {
         }
       } else if (td > 24) { dirx = tx / td; diry = ty / td; speed = T.chase; }
     } else if (e.type === 'wolf') {
-      e.melee = Math.max(0, e.melee - dt);
-      if (e.wolfT === undefined) { e.wolfT = rand(1, 2.5); e.lunge = 0; e.circ = Math.random() < 0.5 ? 1 : -1; }
-      e.wolfT -= dt;
-      if (e.lunge > 0) {   // Sprung auf den Spieler
-        e.lunge -= dt; dirx = e.lx; diry = e.ly; speed = 380;
-        if (dist < e.r + p.r + 6 && e.melee <= 0) { hurtPlayer(9 * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x)); e.melee = 0.6; e.lunge = 0; e.wolfT = rand(1.8, 3.2); e.circ *= -1; }
-        if (e.lunge <= 0 && e.wolfT < 0.5) e.wolfT = rand(1.8, 3.2);
-      } else if (los && dist < 640) {
-        const nx = dx / dist, ny = dy / dist;
-        if (dist > 260) { dirx = nx; diry = ny; speed = T.chase; }
-        else {   // umkreisen, Radius um 120
-          const k = clamp((dist - 120) / 160, -1, 1);
-          dirx = -ny * e.circ + nx * k; diry = nx * e.circ + ny * k;
-          const l = Math.hypot(dirx, diry) || 1; dirx /= l; diry /= l;
-          if (e.wolfT <= 0 && dist < 230) { e.lunge = 0.5; e.lx = nx; e.ly = ny; }
+      // Rudel: großer Kreis um den Spieler, einer lädt auf (roter Strich, friert 0,5 s vor dem Sprung ein), springt, verweilt, dann wieder kreisen
+      if (e.wst === undefined) { e.wst = 'circle'; e.cd = rand(0.8, 1.5); e.wt = 0; }
+      if (e.wst === 'charge') { dirx = diry = 0; }
+      else if (e.wst === 'jump') {
+        e.wt -= dt; dirx = e.jx; diry = e.jy; speed = 520; e.angle = Math.atan2(e.jy, e.jx);
+        if (!e.jhit && dist < e.r + p.r + 4) { e.jhit = true; hurtPlayer(9 * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x)); }
+        if (e.chain && Math.hypot(e.x - e.chain.px, e.y - e.chain.py) >= e.chain.len - 1) e.wt = 0;   // die Kette ist gespannt
+        if (e.wt <= 0) {
+          e.wst = 'linger'; e.wt = 0.9;
+          if (e.chain && --e.chain.n <= 0) {   // dritter Angriff: die Kette reißt
+            e.chain = null; e.cd = rand(1.5, 3); sfx('block', 0.9); G.shakeT = Math.max(G.shakeT, 0.15);
+            for (let k = 0; k < 10; k++) G.parts.push({ x: e.x, y: e.y, vx: rand(-120, 120), vy: rand(-120, 120), life: 0.4, color: '#c8ced6' });
+          }
+        }
+      } else if (e.wst === 'linger') { e.wt -= dt; if (e.wt <= 0) { e.wst = 'circle'; e.cd = rand(1.5, 2); } }
+      else if (los && dist < 640) {
+        const wolves = G.enemies.filter(o => o.type === 'wolf' && o.hp > 0 && !o.chain), idx = Math.max(0, wolves.indexOf(e)), n = wolves.length || 1;
+        const th = G.time * 0.25 + idx / n * 6.283;
+        let tx2 = clamp(p.x + Math.cos(th) * 250, 40, WORLD_W - 40), ty2 = clamp(p.y + Math.sin(th) * 250, G.camTop + 40, G.camTop + VIEW_H - 40);
+        if (e.chain) {   // an der Kette: wartet in Richtung des Spielers, ohne die Kette zu spannen
+          const pd = Math.hypot(p.x - e.chain.px, p.y - e.chain.py) || 1, k = Math.min(e.chain.len * 0.6, pd) / pd;
+          tx2 = e.chain.px + (p.x - e.chain.px) * k; ty2 = e.chain.py + (p.y - e.chain.py) * k;
+        }
+        const dd = Math.hypot(tx2 - e.x, ty2 - e.y);
+        if (dd > 10) { dirx = (tx2 - e.x) / dd; diry = (ty2 - e.y) / dd; speed = dd > 200 ? T.chase * 0.8 : 110; }
+        e.cd -= dt;
+        if (e.cd <= 0 && e.vis && dist < (e.chain ? e.chain.len + 120 : 430) && dist > 90 && G.time >= (G.wolfLock || 0)) {
+          e.wst = 'charge'; G.wolfLock = G.time + 0.8;
+          const len = e.chain ? Math.min(clamp(dist + 90, 240, 380), e.chain.len + 60) : clamp(dist + 90, 240, 380);
+          addAtk({ kind: 'tele', owner: e, shape: 'lane', x: e.x, y: e.y, ang: Math.atan2(p.y - e.y, p.x - e.x), len, w: 18, T: 1.2, lock: 0.5,
+            follow: a => { a.x = e.x; a.y = e.y; a.ang = Math.atan2(p.y - e.y, p.x - e.x); e.angle = a.ang; },
+            fire: a => { if (e.hp > 0) { e.wst = 'jump'; e.jx = Math.cos(a.ang); e.jy = Math.sin(a.ang); e.wt = a.len / 520; e.jhit = false; sfx('dash', 0.5); } } });
         }
       } else if (td > 24) { dirx = tx / td; diry = ty / td; speed = T.chase; }
-      if (dist < e.r + p.r + 2 && e.melee <= 0) { hurtPlayer(9 * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x)); e.melee = 0.6; }
     } else if (e.type === 'magier') {
       if (los && dist < 640) {
         e.strafeT -= dt;
@@ -1566,6 +1648,17 @@ function updateEnemies(dt) {
         if (e.cooldown <= 0 && e.vis && dist < 560) { castFireball(e); e.cooldown = rand(3, 4.2); }
       } else if (td > 24) { dirx = tx / td; diry = ty / td; speed = T.chase; }
     } else if (e.type === 'heiler') {
+      if (e.casting > 0) {   // Schutzaura wirken: Heilen pausiert, ein Treffer unterbricht
+        e.casting -= dt; dirx = diry = 0;
+        if (e.hit > 0) { e.casting = 0; e.auraCd = 3; }
+        else if (e.casting <= 0) {
+          const al = G.enemies.filter(o => o !== e && o.hp > 0 && o.type !== 'heiler' && Math.hypot(o.x - e.x, o.y - e.y) < 260).sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y)).slice(0, 3);
+          for (const o of al) { o.aura = 4; G.beams.push({ a: e, b: o, t: 0.4 }); }
+          e.auraCd = rand(7, 10);
+        }
+      } else {
+      e.auraCd = (e.auraCd === undefined ? rand(3, 5) : e.auraCd) - dt;
+      if (e.auraCd <= 0 && G.enemies.filter(o => o !== e && o.hp > 0 && o.type !== 'heiler' && Math.hypot(o.x - e.x, o.y - e.y) < 260).length >= 2) { e.casting = 1.5; e.castMax = 1.5; }
       let near = null, nd = Infinity;
       for (const o of G.enemies) { if (o === e || o.hp <= 0 || o.type === 'heiler') continue; const d = Math.hypot(o.x - e.x, o.y - e.y); if (d < nd) { nd = d; near = o; } }
       if (dist < 260 && los) { dirx = -dx / dist; diry = -dy / dist; speed = T.chase; }   // hält Abstand zum Spieler
@@ -1582,6 +1675,71 @@ function updateEnemies(dt) {
         }
         e.cooldown = hurt.length ? 1 / 3 : 0.2;   // drei Heilimpulse pro Sekunde
       }
+      }
+    } else if (e.type === 'kriecher') {   // Sumpfkriecher: langsam, Giftspur
+      if (td > 6) { dirx = tx / td; diry = ty / td; speed = T.chase; }
+      e.trailT = (e.trailT || 0) - dt; if (e.trailT <= 0) { e.trailT = 0.35; G.trails.push({ x: e.x, y: e.y, t: 10 }); }
+      e.melee = Math.max(0, e.melee - dt);
+      if (dist < e.r + p.r + 4 && e.melee <= 0) { hurtPlayer(T.mdmg * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x)); applyVenom(3); e.melee = 0.9; }
+    } else if (e.type === 'schwarm') {   // Mückenschwarm: Schaden und Gift, solange man im Schwarm steht
+      dirx = dx / (dist || 1); diry = dy / (dist || 1); speed = T.chase;
+      e.invT = Math.max(0, (e.invT || 0) - dt);
+      e.tick = (e.tick || 0) - dt;
+      if (dist < e.r + p.r * 0.4 && e.tick <= 0) { e.tick = 0.5; if (!godMode) { p.hp -= 3; dotHit(); } applyVenom(3); }
+    } else if (e.type === 'armbrust') {   // Armbrustschütze: Fächer aus 5 Bolzen, danach nachladen
+      if (e.aimT > 0) { e.aimT -= dt; dirx = diry = 0; }
+      else if (los && dist < 640) {
+        e.strafeT -= dt; if (e.strafeT <= 0) { e.strafe *= -1; e.strafeT = rand(1.2, 2.8); }
+        if (dist > 400) { dirx = dx / dist; diry = dy / dist; speed = T.chase; }
+        else if (dist < 250) { dirx = -dx / dist; diry = -dy / dist; }
+        else { dirx = -dy / dist * e.strafe; diry = dx / dist * e.strafe; speed = T.speed * 0.8; }
+        e.cooldown -= dt;
+        if (e.cooldown <= 0 && e.vis && dist < 560) {
+          const ang = Math.atan2(dy, dx); e.aimT = 0.9; e.reloading = false;
+          addAtk({ kind: 'tele', owner: e, shape: 'wedge', x: e.x, y: e.y, ang, reach: 420, arc: 0.98, T: 0.8, fire: () => {
+            if (e.hp <= 0) return;
+            for (let i = 0; i < 5; i++) addBullet(e.x, e.y, ang + (i - 2) * 0.17, 400, 9 * e.dmgMul, 'enemy', 900, 0, { rad: 5 });
+            sfx('enemy_shoot', 0.9); e.cooldown = 2.6; e.reloading = true;
+          } });
+          e.cooldown = 9;
+        }
+      } else if (td > 24) { dirx = tx / td; diry = ty / td; speed = T.chase; }
+      if (e.reloading && e.cooldown <= 0) e.reloading = false;
+    } else if (e.type === 'waechter') {   // Rüstungswächter: hinter dem Schildträger, Sprung nach vorn und Hieb von Seite zu Seite
+      const sh = G.enemies.filter(o => o.type === 'schild' && o.hp > 0).sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y))[0];
+      e.cd = (e.cd === undefined ? 1.5 : e.cd) - dt;
+      if (e.hopT > 0) {   // kleiner Sprung nach vorn, dann der Hieb
+        e.hopT -= dt; dirx = Math.cos(e.hopAng); diry = Math.sin(e.hopAng); speed = 330;
+        if (e.hopT <= 0) { addAtk({ kind: 'wedge', owner: e, sword: true, x: e.x, y: e.y, ang: e.hopAng, reach: 128, arc: 2.5, T: 0.55, dmg: 18 * e.dmgMul }); e.swingT = 0.9; }
+      } else if (e.swingT > 0) { e.swingT -= dt; dirx = diry = 0; if (e.swingT <= 0) e.cd = 2.5; }
+      else if (los && dist < 150 && e.cd <= 0 && e.vis) { e.hopAng = Math.atan2(dy, dx); e.hopT = 0.2; }
+      else if (sh) {   // bleibt in der Deckung des Schildträgers, von ihm aus gesehen hinter ihm
+        const ux = sh.x - p.x, uy = sh.y - p.y, ul = Math.hypot(ux, uy) || 1, bx = sh.x + ux / ul * (sh.r + e.r + 12), by = sh.y + uy / ul * (sh.r + e.r + 12), bd = Math.hypot(bx - e.x, by - e.y);
+        if (bd > 8) { dirx = (bx - e.x) / bd; diry = (by - e.y) / bd; speed = bd > 80 ? T.chase * 1.3 : T.chase; }
+      } else if (dist > 80) { dirx = dx / dist; diry = dy / dist; speed = T.chase; }
+    } else if (e.type === 'folter') {   // Folterknecht: wirft eine Kette, zieht den Spieler heran, schlägt zu
+      if (e.hookT > 0) { e.hookT -= dt; dirx = diry = 0; }
+      else if (e.strikeT > 0) { e.strikeT -= dt; dirx = diry = 0; }
+      else if (los && dist < 640) {
+        e.strafeT -= dt; if (e.strafeT <= 0) { e.strafe *= -1; e.strafeT = rand(1.2, 2.8); }
+        if (dist > 320) { dirx = dx / dist; diry = dy / dist; speed = T.chase; }
+        else if (dist < 170) { dirx = -dx / dist; diry = -dy / dist; }
+        else { dirx = -dy / dist * e.strafe; diry = dx / dist * e.strafe; speed = T.speed * 0.7; }
+        e.cooldown -= dt;
+        if (e.cooldown <= 0 && e.vis && dist < 400) {
+          e.hookT = 0.95;
+          addAtk({ kind: 'tele', owner: e, shape: 'lane', x: e.x, y: e.y, ang: Math.atan2(dy, dx), len: 340, w: 14, T: 0.9, lock: 0.3,
+            follow: a => { a.x = e.x; a.y = e.y; a.ang = Math.atan2(p.y - e.y, p.x - e.x); e.angle = a.ang; },
+            fire: a => {
+              if (e.hp <= 0) return;
+              G.hooks.push({ x: a.x, y: a.y, ang: a.ang, len: a.len, t: 0.18, T: 0.18 });
+              const rx = p.x - a.x, ry = p.y - a.y, along = Math.cos(a.ang) * rx + Math.sin(a.ang) * ry, off = Math.abs(-Math.sin(a.ang) * rx + Math.cos(a.ang) * ry);
+              if (along > 0 && along < a.len + 10 && off < 14 + p.r) { G.pull = { src: e, t: 0.3, T: 0.3 }; sfx('block', 0.8); e.strikeT = 0.8; }
+              e.cooldown = 3.5;
+            } });
+          e.cooldown = 9;
+        }
+      } else if (td > 24) { dirx = tx / td; diry = ty / td; speed = T.chase; }
     } else {
       if (td > 6) { dirx = tx / td; diry = ty / td; speed = T.chase; }
       if (e.type === 'irrlicht') {   // Schlangenlinien statt gerader Flug
@@ -1607,7 +1765,10 @@ function updateEnemies(dt) {
       if (e.x > WORLD_W - m && dirx > 0) dirx = 0;
     }
     if (dirx || diry) {
-      const moved = moveCircle(e, dirx * speed * dt, diry * speed * dt);
+      let moved;
+      if (e.type === 'schwarm') { e.x += dirx * speed * dt; e.y += diry * speed * dt; moved = speed * dt; }   // fliegt über alles
+      else moved = moveCircle(e, dirx * speed * dt, diry * speed * dt);
+      if (e.chain) { const cx = e.x - e.chain.px, cy = e.y - e.chain.py, cd2 = Math.hypot(cx, cy); if (cd2 > e.chain.len) { e.x = e.chain.px + cx / cd2 * e.chain.len; e.y = e.chain.py + cy / cd2 * e.chain.len; } }
       if (moved < speed * dt * 0.3) {
         e.stuckT += dt;
         if (e.stuckT > 0.3) { e.steerT = 0.8; e.steerDir = Math.random() < 0.5 ? 1 : -1; e.stuckT = 0; }
@@ -1634,17 +1795,27 @@ function castFireball(e) {   // 2 oder 3 Feuerbälle: einer auf den Spieler, die
       if (pts.every(q => Math.hypot(q.x - x, q.y - y) >= 2 * R + 6)) { pts.push({ x, y }); break; }
     }
   }
-  for (const q of pts) G.zones.push({ x0: e.x, y0: e.y, x: q.x, y: q.y, r: R, t: T, T, dmg: 20 * e.dmgMul });
+  for (const q of pts) G.zones.push({ x0: e.x, y0: e.y, x: q.x, y: q.y, r: R, t: T, T, dmg: (e.el === 'frost' ? 14 : e.el === 'gift' ? 10 : 20) * e.dmgMul, el: e.el || 'feuer' });
   sfx('enemy_shoot', 0.8);
 }
+const ELEM_COL = {
+  feuer: { fill: '255,90,60', line: '255,122,90', orb: '#ffc46a', orb2: '#a8431a', glow: '#ff8a3a', p1: '#ff8a3a', p2: '#ffc46a', rob: '#8a3a2a', rob2: '#5a2018', dk: '#2a0a06' },
+  frost: { fill: '90,170,255', line: '140,210,255', orb: '#bfe8ff', orb2: '#4a90c8', glow: '#8ee8ff', p1: '#bfe8ff', p2: '#8ee8ff', rob: '#4a7aa8', rob2: '#2e5078', dk: '#0e2038' },
+  gift: { fill: '120,220,90', line: '160,240,120', orb: '#a8ff7a', orb2: '#3a8a2a', glow: '#78dc5a', p1: '#a8ff7a', p2: '#78dc5a', rob: '#4a7a3a', rob2: '#2e5a24', dk: '#102a0a' }
+};
 function updateHazards(dt) {
   const p = G.player;
   for (const z of G.zones) {
     z.t -= dt;
     if (z.t > 0) continue;
     sfx('spell_explode', 0.8);
-    for (let i = 0; i < 14; i++) G.parts.push({ x: z.x, y: z.y, vx: rand(-160, 160), vy: rand(-160, 160), life: 0.35, color: Math.random() < 0.5 ? '#ff8a3a' : '#ffc46a' });
-    if (Math.hypot(p.x - z.x, p.y - z.y) <= z.r + p.r * 0.5) hurtPlayer(z.dmg, Math.atan2(z.y - p.y, z.x - p.x));
+    const pc = ELEM_COL[z.el] || ELEM_COL.feuer;
+    for (let i = 0; i < 14; i++) G.parts.push({ x: z.x, y: z.y, vx: rand(-160, 160), vy: rand(-160, 160), life: 0.35, color: Math.random() < 0.5 ? pc.p1 : pc.p2 });
+    G.fires.push({ x: z.x, y: z.y, r: 52, t: 0, life: rand(4, 6), tick: 0.2, el: z.el || 'feuer' });   // hinterlässt eine Fläche: Feuer, Eis oder Gift
+    if (Math.hypot(p.x - z.x, p.y - z.y) <= z.r + p.r * 0.5) {
+      hurtPlayer(z.dmg, Math.atan2(z.y - p.y, z.x - p.x));
+      if (z.el === 'frost') G.slowT = Math.max(G.slowT, 2); else if (z.el === 'gift') applyVenom(3);
+    }
   }
   G.zones = G.zones.filter(z => z.t > 0);
   for (const b of G.beams) b.t -= dt;
@@ -1657,8 +1828,8 @@ function spawnEnemy(type) {
   for (let t = 0; t < 20; t++) {
     const x = rand(70, WORLD_W - 70);
     if (G.obstacles.some(o => x > o.x - 30 && x < o.x + o.w + 30 && y > o.y - 30 && y < o.y + o.h + 30)) continue;
-    G.enemies.push(makeEnemy(type, x, y, true));
-    if (type === 'wolf') for (let i = 0; i < 2; i++) G.enemies.push(makeEnemy('wolf', clamp(x + rand(-50, 50), 40, WORLD_W - 40), y - rand(0, 40), true));   // Rudel
+    spawnType(type, x, y, true);
+    if (type === 'wolf' && G.area.id !== 'kerker') for (let i = 0; i < 2; i++) spawnType('wolf', clamp(x + rand(-50, 50), 40, WORLD_W - 40), y - rand(0, 40), true);   // Rudel
     return true;
   }
   return false;
@@ -1668,7 +1839,7 @@ function spawnReinforcements() {
   if (G.time >= G.nextWave) {
     const n = G.endless ? Math.min(5 + Math.floor(over * 1.5), 40) : Math.min(2 + Math.floor(G.dist / 120), 5);
     for (let i = 0; i < n && G.enemies.length < 70; i++) spawnEnemy(rollType(rushP));
-    say('Eine Horde bricht aus dem Wald!'); sfx('horde_horn');
+    say(({ wald: 'Eine Horde bricht aus dem Wald!', moor: 'Eine Horde steigt aus dem Moor!', schloss: 'Eine Horde stürmt durch die Hallen!', kerker: 'Eine Horde bricht aus den Zellen!' })[G.area.id] || 'Eine Horde kommt!'); sfx('horde_horn');
     G.nextWave = G.time + Math.max(4, rand(22, 40) / speedUp);
   }
   if (G.time >= G.nextSingle) {
@@ -1730,7 +1901,9 @@ function updateBullets(dt) {
         damageEnemy(target, b.dmg);
         if (S.chain > 0) chainLightning(target, b.dmg * 0.5);
         spark(hx, hy, '#e8e8e8');
-        if (b.pierce > 0) { b.pierce--; b.ignore.push(target); continue; }
+        // Das Schild des Schildträgers hält Pfeile auch mit Durchschuss auf (der Kettenblitz läuft trotzdem weiter)
+        const shieldStop = target.type === 'schild' && Math.abs(normAngle(Math.atan2(-b.vy, -b.vx) - target.angle)) < 62 * deg;
+        if (b.pierce > 0 && !shieldStop) { b.pierce--; b.ignore.push(target); continue; }
       }
     } else {
       const hx = b.px + (b.x - b.px) * tObs, hy = b.py + (b.y - b.py) * tObs;
@@ -1754,6 +1927,11 @@ function explode(x, y, dmg, R, target) {
 }
 function damageEnemy(e, dmg) {
   if (e.hp <= 0 || e.inv || e.hidden) return;
+  if (e.type === 'schwarm') {   // kein Lebensbalken: genau drei Treffer, nach jedem 0,3 s unverwundbar (Kettenblitz tötet ihn nicht sofort)
+    if (e.invT > 0) return;
+    e.invT = 0.3; e.hits = (e.hits || 0) + 1; spark(e.x, e.y, '#cfe6df');
+    dmg = e.hits >= 3 ? e.hp + 1 : e.maxHp / 3;
+  }
   if ((e.type === 'hexe' || e.type === 'herr') && e.phase === 1 && e.hp - dmg <= 0) { e.hp = 0.001; e.inv = true; e.phase = 1.5; e.tt = 0; e.hit = 0.3; e.act = null; sfx('enemy_die'); return; }
   if (e.air) return;
   if (e.type === 'schild') {   // Schild: von vorn kaum Schaden, von der Seite und hinten voll
@@ -1763,10 +1941,17 @@ function damageEnemy(e, dmg) {
       spark(e.x + Math.cos(toP) * (e.r + 8), e.y + Math.sin(toP) * (e.r + 8), '#f2c14e');
     }
   }
+  if (e.aura > 0) { dmg *= 0.7; sfx('block', 0.3); }   // Schutzaura des Heilers: 30 % weniger Schaden
   e.hp -= dmg; e.hit = 0.12;
   if (settings.dmgnums) G.floats.push({ x: e.x + e.r + 4, y: e.y - e.r * 0.4, vx: 30, t: 0.8, v: Math.max(1, Math.round(dmg)) });
   sfx(e.hp > 0 ? 'hit_enemy' : 'enemy_die', clamp(1 - Math.hypot(e.x - G.player.x, e.y - G.player.y) / 900, 0.3, 1));
   if (e.state === 'idle') alertEnemy(e);
+  if (e.hp <= 0 && e.type === 'kriecher') {   // Sumpfkriecher platzt und hinterlässt eine Giftwolke
+    G.clouds.push({ x: e.x, y: e.y, r: 62, t: 0, life: 10, warn: 0.05, still: true });
+    for (let k = 0; k < 18; k++) G.parts.push({ x: e.x, y: e.y, vx: rand(-160, 160), vy: rand(-160, 160), life: 0.5, color: Math.random() < 0.5 ? '#a8ff7a' : '#4a7a34' });
+    sfx('spell_explode', 0.6);
+    if (Math.hypot(G.player.x - e.x, G.player.y - e.y) < 70 && !godMode) { applyVenom(3); G.player.hp -= 6; G.hurtT = Math.max(G.hurtT, 0.15); }
+  }
   if (e.hp <= 0 && e.type === 'kessel') G.kesselGone = G.time;   // danach mindestens 8 s Pause für den nächsten Kessel
   if (e.hp <= 0 && (e.type === 'trug' || e.type === 'kessel')) { for (let k = 0; k < 14; k++) G.parts.push({ x: e.x, y: e.y, vx: rand(-160, 160), vy: rand(-160, 160), life: 0.5, color: e.type === 'trug' ? '#cfe6df' : '#a8ff9a' }); return; }
   if (e.hp <= 0) {
@@ -2318,6 +2503,7 @@ function drawEntities() {
     }
     if (e.type === 'hexe') { drawHexe(e); if (e.hit > 0) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, 7); ctx.fill(); ctx.globalAlpha = 1; } continue; }
     if (e.type === 'irrlicht') { drawIrrlicht(e); continue; }
+    if (e.type === 'schwarm') { drawSchwarm(e); continue; }
     if (e.type === 'boss') {
       const r0 = e.r, k = r0 / 14;
       const lf = 1 + 0.25 * (e.lift || 0);
@@ -2325,13 +2511,18 @@ function drawEntities() {
       e.r = 14; ctx.save(); ctx.translate(e.x, e.y); ctx.scale(k * lf, k * lf); ctx.translate(-e.x, -e.y); drawSkeleton(e);
       ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(e.x, e.y, 18, 0, 7); ctx.stroke(); ctx.restore(); e.r = r0;
     } else if (e.type === 'grunt') drawSkeleton(e);
-    else if (e.type === 'wolf') drawWolf(e);
+    else if (e.type === 'wolf') { if (e.chain) drawChain(e); drawWolf(e); }
+    else if (e.type === 'kriecher') drawKriecher(e);
+    else if (e.type === 'armbrust') drawArmbrust(e);
+    else if (e.type === 'waechter') drawWaechter(e);
+    else if (e.type === 'folter') drawFolter(e);
     else if (e.type === 'magier') drawMagier(e);
     else if (e.type === 'schild') drawSchild(e);
     else if (e.type === 'heiler') drawHeiler(e);
     else if (e.elite) drawGhoul(e, 0.76, '#7a4a46', '#9a6a5e', '#2a1214');
     else drawGhoul(e, 0.76, '#5f6f50', '#7a8a68', '#1c2414');
     if (e.hit > 0 && e.type !== 'boss') { ctx.globalAlpha = 0.65; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+    if (e.aura > 0) { ctx.strokeStyle = 'rgba(143,232,255,' + (0.55 + 0.25 * Math.sin(performance.now() / 120)) + ')'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(e.x, e.y, e.r + 7, 0, 7); ctx.stroke(); ctx.fillStyle = 'rgba(143,232,255,.12)'; ctx.fill(); }   // Schutzaura
     if (e.elite) { ctx.save(); ctx.translate(e.x, e.y - e.r - 16); ctx.fillStyle = '#f2c14e'; ctx.strokeStyle = '#7a5a1a'; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(-7, -8); ctx.lineTo(-3, -4); ctx.lineTo(0, -11); ctx.lineTo(3, -4); ctx.lineTo(7, -8); ctx.lineTo(9, 0); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
     if (settings.hpbars) {
       const bw = e.elite ? 40 : 28;
@@ -2357,12 +2548,13 @@ function drawEntities() {
   for (const z of G.zones) {   // Feuerball-Warnkreis und Flug
     if (!pointVisible(z.x, z.y) && !pointVisible(z.x0, z.y0)) continue;
     const f = 1 - z.t / z.T, pulse = 0.5 + 0.5 * Math.sin(performance.now() / 70);
-    ctx.fillStyle = 'rgba(255,90,60,' + (0.12 + 0.12 * f) + ')'; ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, 7); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,122,90,' + (0.6 + 0.4 * pulse) + ')'; ctx.lineWidth = 2.5; ctx.setLineDash([7, 5]); ctx.stroke(); ctx.setLineDash([]);
-    ctx.strokeStyle = 'rgba(255,122,90,.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(z.x, z.y, z.r * (1 - f), 0, 7); ctx.stroke();
+    const ec = ELEM_COL[z.el] || ELEM_COL.feuer, lc = ec.line;
+    ctx.fillStyle = 'rgba(' + ec.fill + ',' + (0.12 + 0.12 * f) + ')'; ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(' + lc + ',' + (0.6 + 0.4 * pulse) + ')'; ctx.lineWidth = 2.5; ctx.setLineDash([7, 5]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(' + lc + ',.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(z.x, z.y, z.r * (1 - f), 0, 7); ctx.stroke();
     const bx = z.x0 + (z.x - z.x0) * f, by = z.y0 + (z.y - z.y0) * f - Math.sin(f * Math.PI) * 30;
-    ctx.shadowColor = '#ff8a3a'; ctx.shadowBlur = 16; ctx.fillStyle = '#ffc46a'; ctx.beginPath(); ctx.arc(bx, by, 7, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
-    ctx.strokeStyle = '#a8431a'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.shadowColor = ec.glow; ctx.shadowBlur = 16; ctx.fillStyle = ec.orb; ctx.beginPath(); ctx.arc(bx, by, 7, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.strokeStyle = ec.orb2; ctx.lineWidth = 2; ctx.stroke();
   }
   for (const b of G.beams) {   // Heilstrahl
     if (!pointVisible(b.a.x, b.a.y) && !pointVisible(b.b.x, b.b.y)) continue;
@@ -2410,6 +2602,7 @@ function drawEntities() {
     swing: p.swingT > 0 ? 1 - p.swingT / WEAPONS.schwert.swing : -1,
     block: isBlocking(), focus: isFocusing(), med: isMeditating()
   });
+  drawDotFx();   // Giftblasen und Glut steigen über dem Spieler auf
 }
 // ---------- Gegner von oben (Blickrichtung = angle) ----------
 function eCirc(x, y, r, fill, stroke, lw) { ctx.beginPath(); ctx.arc(x, y, r, 0, 7); if (fill) { ctx.fillStyle = fill; ctx.fill(); } if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw || 2; ctx.stroke(); } }
@@ -2466,10 +2659,13 @@ function pillarsIn(x, y, reach, ang, arc) {   // Säulen im Hieb (arc = ganzer B
 }
 function updateFires(dt) {
   const p = G.player;
-  for (const f of G.fires) { f.t += dt; f.tick -= dt; if (f.tick <= 0) { f.tick = 0.5; if (Math.hypot(p.x - f.x, p.y - f.y) < f.r + p.r * 0.4) hurtPlayer(5, Math.atan2(f.y - p.y, f.x - p.x)); } }
+  for (const f of G.fires) { f.t += dt; f.tick -= dt; if (f.tick <= 0) { f.tick = 0.5; if (Math.hypot(p.x - f.x, p.y - f.y) < f.r + p.r * 0.4) { const el = f.el || 'feuer'; if (el === 'gift') applyVenom(3); else if (el === 'frost') G.slowT = Math.max(G.slowT, 0.6); else applyBurn(2); } } }
   G.fires = G.fires.filter(f => f.t < f.life);
 }
 function updateAtk(dt) {
+  if (G.atk.length) G.atk = G.atk.filter(a => !(a.owner && a.owner.hp <= 0));   // Warnungen verschwinden mit ihrem Gegner
+  for (const h of G.hooks) h.t -= dt;
+  G.hooks = G.hooks.filter(h => h.t > 0);
   if (G.fires.length) updateFires(dt);
   if (!G.atk.length) return;
   const p = G.player;
@@ -2510,7 +2706,23 @@ function drawCauldron(x, y, sc, cooking) {
 }
 function drawFires() {
   for (const f of G.fires) {
-    const k = Math.min(1, (f.life - f.t) / 1.5), fl = 0.85 + 0.15 * Math.sin(f.t * 9 + f.x);
+    const k = Math.min(1, (f.life - f.t) / 1.5), el = f.el || 'feuer';
+    if (el === 'gift') {
+      const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r); g.addColorStop(0, 'rgba(150,240,110,' + 0.5 * k + ')'); g.addColorStop(1, 'rgba(90,190,70,' + 0.2 * k + ')');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(160,240,120,' + 0.8 * k + ')'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
+      for (let i = 0; i < 5; i++) { const ph = (f.t * 0.8 + i * 0.2) % 1, a0 = i * 1.9 + f.x, bx = f.x + Math.cos(a0) * f.r * 0.55, by = f.y + Math.sin(a0) * f.r * 0.45 - ph * 10; ctx.fillStyle = 'rgba(190,255,150,' + 0.5 * k * (1 - ph) + ')'; ctx.strokeStyle = 'rgba(190,255,150,' + k * (1 - ph) + ')'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(bx, by, 3 + ph * 3, 0, 7); ctx.fill(); ctx.stroke(); }
+      continue;
+    }
+    if (el === 'frost') {
+      const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r); g.addColorStop(0, 'rgba(200,236,255,' + 0.6 * k + ')'); g.addColorStop(1, 'rgba(120,190,240,' + 0.25 * k + ')');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
+      ctx.strokeStyle = 'rgba(190,232,255,' + 0.9 * k + ')'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(235,248,255,' + 0.85 * k + ')'; ctx.strokeStyle = 'rgba(100,170,220,' + k + ')'; ctx.lineWidth = 1.2;
+      for (let i = 0; i < 5; i++) { const a0 = i * 1.26 + f.x, bx = f.x + Math.cos(a0) * f.r * 0.5, by = f.y + Math.sin(a0) * f.r * 0.5; ctx.beginPath(); ctx.moveTo(bx, by - 8); ctx.lineTo(bx + 3.5, by); ctx.lineTo(bx, by + 8); ctx.lineTo(bx - 3.5, by); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+      continue;
+    }
+    const fl = 0.85 + 0.15 * Math.sin(f.t * 9 + f.x);
     const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r); g.addColorStop(0, 'rgba(255,190,70,' + 0.7 * k * fl + ')'); g.addColorStop(1, 'rgba(255,90,30,' + 0.22 * k + ')');
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
     ctx.strokeStyle = 'rgba(255,154,74,' + 0.8 * k + ')'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
@@ -2520,6 +2732,11 @@ function drawFires() {
 }
 function drawAtk() {
   drawFires();
+  for (const h of G.hooks) {   // Kette des Folterknechts
+    const f = 1 - h.t / h.T, l = h.len * f; ctx.strokeStyle = '#0a0a0e'; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.lineTo(h.x + Math.cos(h.ang) * l, h.y + Math.sin(h.ang) * l); ctx.stroke();
+    ctx.strokeStyle = '#e8eef4'; ctx.lineWidth = 2.6; ctx.setLineDash([4, 2.5]); ctx.stroke(); ctx.setLineDash([]); eCirc(h.x + Math.cos(h.ang) * l, h.y + Math.sin(h.ang) * l, 5, '#8a929a', '#14171a', 2);
+  }
+  if (G.pull && G.pull.t > 0) { const p = G.player, s = G.pull.src; ctx.strokeStyle = '#0a0a0e'; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(p.x, p.y); ctx.stroke(); ctx.strokeStyle = '#e8eef4'; ctx.lineWidth = 2.6; ctx.setLineDash([4, 2.5]); ctx.stroke(); ctx.setLineDash([]); }
   for (const a of G.atk) {
     if (a.kind === 'tele') {
       const f = a.t / a.T, fill = 'rgba(255,90,60,' + (0.1 + 0.14 * f) + ')', line = 'rgba(255,122,90,.9)';
@@ -3076,7 +3293,7 @@ function updateHexeHazards(dt) {
   for (const f of G.fogs) if (f.hexe) f.t = Math.min(1, f.t + dt * 2);
   for (const c of G.clouds) {   // Giftwolke: kurz Vorwarnung, dann Schaden über Zeit, wandert langsam zum Spieler
     c.t += dt;
-    if (c.t > c.warn) { const d = Math.hypot(p.x - c.x, p.y - c.y) || 1; c.x += (p.x - c.x) / d * 16 * dt; c.y += (p.y - c.y) / d * 16 * dt; c.tick = (c.tick || 0) - dt; if (c.tick <= 0) { c.tick = 0.5; if (d < c.r + p.r * 0.5 && !godMode) { p.hp -= 5; G.hurtT = Math.max(G.hurtT, 0.15); } } }
+    if (c.t > c.warn) { const d = Math.hypot(p.x - c.x, p.y - c.y) || 1; if (!c.still) { c.x += (p.x - c.x) / d * 16 * dt; c.y += (p.y - c.y) / d * 16 * dt; } c.tick = (c.tick || 0) - dt; if (c.tick <= 0) { c.tick = 0.5; if (d < c.r + p.r * 0.5 && !godMode) { applyVenom(3); p.hp -= 3; dotHit(); } } }
   }
   G.clouds = G.clouds.filter(c => c.t < c.life);
   for (const h of G.hands) {   // Moorhände: Warnkreis, dann greift die Hand
@@ -3100,6 +3317,7 @@ function drawRipples() {
 }
 function drawHexeHazards() {
   drawRipples();
+  for (const tr of G.trails) { ctx.fillStyle = 'rgba(120,220,90,' + 0.32 * Math.min(1, tr.t / 1.5) + ')'; ctx.beginPath(); ctx.arc(tr.x, tr.y, 14, 0, 7); ctx.fill(); }   // Giftspur
   for (const c of G.clouds) {
     if (!pointVisible(c.x, c.y) && c.t < c.warn) { }
     const a = c.t < c.warn ? 0.25 : Math.min(1, (c.life - c.t) / 1.5);
@@ -3188,17 +3406,88 @@ function drawWolf(e) {
     for (const sy of [-1, 1]) { ctx.fillStyle = '#6a6f76'; ctx.strokeStyle = '#2a2e34'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(9, sy * 6); ctx.lineTo(13, sy * 12); ctx.lineTo(16, sy * 5); ctx.closePath(); ctx.fill(); ctx.stroke(); }   // Ohren
     ctx.fillStyle = '#a0a5ac'; ctx.strokeStyle = '#2a2e34'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(12, -5); ctx.lineTo(25, -2.5); ctx.quadraticCurveTo(27, 0, 25, 2.5); ctx.lineTo(12, 5); ctx.quadraticCurveTo(8, 0, 12, -5); ctx.fill(); ctx.stroke();
     eCirc(26, 0, 2, '#1c1a14'); eCirc(17, -3.5, 1.6, '#ff5a4a'); eCirc(17, 3.5, 1.6, '#ff5a4a');
+    if (e.kh) {   // Kettenhund: Halsband um den Hals (zieht sich quer über den Hals), nach dem Reißen hängt ein Kettenrest am Ring
+      ctx.lineCap = 'round'; ctx.strokeStyle = '#14100a'; ctx.lineWidth = 6.5; ctx.beginPath(); ctx.moveTo(12.5, -8); ctx.quadraticCurveTo(17, 0, 12.5, 8); ctx.stroke();
+      ctx.strokeStyle = '#d9a636'; ctx.lineWidth = 3.6; ctx.stroke(); eCirc(16, 0, 2.4, '#f4e8b0', '#14100a', 1.2);
+      if (!e.chain) { ctx.strokeStyle = '#0a0a0e'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(15, 1); ctx.quadraticCurveTo(0, -3, -14, 2); ctx.stroke(); ctx.strokeStyle = '#e8eef4'; ctx.lineWidth = 2; ctx.setLineDash([3, 2]); ctx.stroke(); ctx.setLineDash([]); }
+    }
   });
 }
+function drawChain(e) {   // Pfosten und Kette bis zum Halsband
+  const c = e.chain, hx = e.x + Math.cos(e.angle) * 12, hy = e.y + Math.sin(e.angle) * 12;
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(c.px + 3, c.py + 6, 9, 6, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#5a4630'; ctx.strokeStyle = '#1c140c'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(c.px, c.py, 8, 0, 7); ctx.fill(); ctx.stroke(); eCirc(c.px, c.py, 3, '#8a929a', '#14171a', 1.5);
+  ctx.lineCap = 'round'; ctx.strokeStyle = '#0a0a0e'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(c.px, c.py); ctx.lineTo(hx, hy); ctx.stroke();
+  ctx.strokeStyle = '#e8eef4'; ctx.lineWidth = 2.6; ctx.setLineDash([4, 2.5]); ctx.stroke(); ctx.setLineDash([]);
+  if (c.n < 3) { ctx.fillStyle = '#d9a636'; for (let i = 0; i < c.n; i++) { ctx.beginPath(); ctx.arc(c.px - 8 + i * 8, c.py - 14, 2.6, 0, 7); ctx.fill(); } }
+}
+function drawKriecher(e) {   // Blasen-Blob
+  const pu = 0.5 + 0.5 * Math.sin(performance.now() / 160 + e.x);
+  ctx.globalAlpha = 0.35 + 0.15 * pu; eCirc(e.x, e.y, 32, '#a8ff9a'); ctx.globalAlpha = 1;
+  enemyFrame(e, () => {
+    ctx.save(); ctx.scale(0.85, 0.85);
+    eLine([-4, -14, -10, -26], '#3a5a24', 4); eLine([4, 14, 10, 26], '#3a5a24', 4);
+    eEll(0, 0, 22, 18, '#4a7a34', '#14300e', 3);
+    eCirc(-6, -5, 7, 'rgba(180,255,150,.55)', '#a8ff9a', 1.5); eCirc(6, 5, 5, 'rgba(180,255,150,.55)', '#a8ff9a', 1.5); eCirc(-2, 8, 3.5, 'rgba(180,255,150,.55)', '#a8ff9a', 1.2); eCirc(10, -8, 3, 'rgba(180,255,150,.55)', '#a8ff9a', 1.2);
+    eCirc(14, -4.5, 2.4, '#f4ffb0'); eCirc(14, 4.5, 2.4, '#f4ffb0');
+    ctx.restore();
+  });
+}
+function drawArmbrust(e) {   // gepanzerter Schütze
+  enemyFrame(e, () => {
+    eLine([14, -14, 14, 14], '#4a4a52', 4); eLine([14, -14, 30, 0], '#d8d0b8', 1.2); eLine([14, 14, 30, 0], '#d8d0b8', 1.2); eLine([6, 0, 34, 0], '#8a6a3a', 4); eLine([30, -3, 36, 0], '#c8ced6', 2); eLine([30, 3, 36, 0], '#c8ced6', 2);
+    eEll(-4, 0, 10, 17, '#6a7078', '#14171a', 2.5);
+    eCirc(2, 0, 13, '#8a9098', '#14171a', 2.8);
+    ctx.fillStyle = '#6a7078'; ctx.strokeStyle = '#14171a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-8, -5); ctx.lineTo(14, -3); ctx.lineTo(14, 3); ctx.lineTo(-8, 5); ctx.closePath(); ctx.fill(); ctx.stroke();
+    eLine([-2, -16, -8, -24], '#8a2a30', 3);
+  });
+  if (e.reloading && e.cooldown > 0) { const k = 1 - e.cooldown / 2.6; ctx.strokeStyle = 'rgba(200,206,214,.85)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(e.x, e.y - e.r - 22, 6, -Math.PI / 2, -Math.PI / 2 + 6.283 * Math.max(0.05, k)); ctx.stroke(); }
+}
+function drawWaechter(e) {   // Plattenpanzer mit Hellebarde (doppelt lange Klinge)
+  enemyFrame(e, () => {
+    ctx.save(); ctx.scale(0.9, 0.9);
+    eLine([2, 18, 40, -4], '#8a6a3a', 4);
+    ctx.fillStyle = '#c8ced6'; ctx.strokeStyle = '#14171a'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(40, -4); ctx.lineTo(66, -20); ctx.lineTo(62, 4); ctx.lineTo(40, 4); ctx.lineTo(42, 8); ctx.lineTo(60, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#e8eef4'; ctx.beginPath(); ctx.moveTo(66, -20); ctx.lineTo(74, -2); ctx.lineTo(62, 4); ctx.closePath(); ctx.fill(); ctx.stroke();
+    eEll(0, -14, 10, 8, '#6a7078', '#14171a', 2.5); eEll(0, 14, 10, 8, '#6a7078', '#14171a', 2.5);
+    eCirc(0, 0, 18, '#5a6068', '#14171a', 3); eCirc(3, 0, 10, '#8a9098', '#14171a', 2.5);
+    eLine([8, -5, 14, -5], '#0a0b0e', 2.5); eLine([8, 5, 14, 5], '#0a0b0e', 2.5);
+    ctx.restore();
+  });
+}
+function drawFolter(e) {   // Henker mit Kapuze und Kette
+  enemyFrame(e, () => {
+    ctx.save(); ctx.scale(0.85, 0.85);
+    ctx.strokeStyle = '#8a929a'; ctx.lineWidth = 2.5; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.arc(-4, 22, 9, 0, 6.283); ctx.stroke(); ctx.setLineDash([]); eCirc(8, 24, 4, '#8a929a', '#14171a', 1.5);
+    eEll(0, -18, 12, 9, '#2a2a30', '#0a0a0e', 2.5); eEll(0, 18, 12, 9, '#2a2a30', '#0a0a0e', 2.5);
+    eCirc(0, 0, 20, '#3a3a40', '#0a0a0e', 3.5);
+    ctx.fillStyle = '#1a1a20'; ctx.strokeStyle = '#0a0a0e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-6, -10); ctx.lineTo(14, 0); ctx.lineTo(-6, 10); ctx.closePath(); ctx.fill(); ctx.stroke();
+    eCirc(6, 0, 12, '#1a1a20', '#000', 3); eCirc(11, -3.5, 2, '#ff5a4a'); eCirc(11, 3.5, 2, '#ff5a4a');
+    ctx.restore();
+  });
+}
+function drawSchwarm(e) {   // Mückenschwarm: zeigt keinen Lebensbalken, wird mit Schaden kleiner und heller
+  const k = Math.max(0.25, e.hp / e.maxHp), n = Math.round(8 + 20 * k), t = performance.now() / 1000;
+  ctx.globalAlpha = 0.3 * k + 0.1; eCirc(e.x, e.y, e.r + 6, '#a8ff9a'); ctx.globalAlpha = 1;
+  for (let i = 0; i < n; i++) {
+    const a = i * 2.399 + t * (1.6 + (i % 5) * 0.35), d = (e.r - 4) * (0.25 + 0.75 * ((i * 37) % 100) / 100) * (0.8 + 0.2 * Math.sin(t * 3 + i)), x = e.x + Math.cos(a) * d, y = e.y + Math.sin(a * 1.3) * d;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(a + 1.6);
+    ctx.fillStyle = '#2a2a1a'; ctx.beginPath(); ctx.ellipse(0, 0, 3, 1.6, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(220,240,230,.75)'; ctx.beginPath(); ctx.ellipse(-1, -3, 3, 1.2, 0, 0, 7); ctx.ellipse(-1, 3, 3, 1.2, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+}
 function drawMagier(e) {
+  const ec = ELEM_COL[e.el || 'feuer'];   // Robe und Stab in der Farbe des Elements
   enemyFrame(e, () => {
     eLine([2, 12, 34, 12], '#6a4a2a', 4);
-    ctx.globalAlpha = 0.28; eCirc(36, 12, 9, '#ff8a3a'); ctx.globalAlpha = 1;
-    eCirc(36, 12, 5, '#ffc46a', '#a8431a', 2);
-    eCirc(0, 0, 14, '#5a4a8a', '#231a40', 2.5);
-    ctx.fillStyle = '#3e3266'; ctx.strokeStyle = '#231a40'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-12, -6); ctx.quadraticCurveTo(-2, -17, 12, 0); ctx.quadraticCurveTo(-2, 17, -12, 6); ctx.quadraticCurveTo(-6, 0, -12, -6); ctx.fill(); ctx.stroke();
-    eCirc(2, 0, 5.5, '#2a2046'); eCirc(5, -2, 1.3, '#ffc46a'); eCirc(5, 2, 1.3, '#ffc46a');
-    eCirc(9, 11, 3.4, '#e8dfc4', '#231a40', 1.5);
+    ctx.globalAlpha = 0.28; eCirc(36, 12, 9, ec.glow); ctx.globalAlpha = 1;
+    eCirc(36, 12, 5, ec.orb, ec.orb2, 2);
+    eCirc(0, 0, 14, ec.rob, ec.dk, 2.5);
+    ctx.fillStyle = ec.rob2; ctx.strokeStyle = ec.dk; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-12, -6); ctx.quadraticCurveTo(-2, -17, 12, 0); ctx.quadraticCurveTo(-2, 17, -12, 6); ctx.quadraticCurveTo(-6, 0, -12, -6); ctx.fill(); ctx.stroke();
+    eCirc(2, 0, 5.5, ec.dk); eCirc(5, -2, 1.3, ec.orb); eCirc(5, 2, 1.3, ec.orb);
+    eCirc(9, 11, 3.4, '#e8dfc4', ec.dk, 1.5);
   });
 }
 function drawSchild(e) {
@@ -3212,6 +3501,7 @@ function drawSchild(e) {
   });
 }
 function drawHeiler(e) {
+  if (e.casting > 0) { const k = 1 - e.casting / (e.castMax || 1.5); ctx.strokeStyle = 'rgba(143,240,184,.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(e.x, e.y, 26, -Math.PI / 2, -Math.PI / 2 + 6.283 * k); ctx.stroke(); ctx.strokeStyle = 'rgba(143,240,184,.35)'; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.arc(e.x, e.y, 260, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
   ctx.globalAlpha = 0.16; eCirc(e.x, e.y, 22, '#6fe0a0'); ctx.globalAlpha = 1;
   ctx.strokeStyle = 'rgba(111,224,160,.7)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.arc(e.x, e.y, 22, 0, 7); ctx.stroke(); ctx.setLineDash([]);
   enemyFrame(e, () => {
@@ -3483,8 +3773,10 @@ function drawWallWarn() {   // Warnband der Pfeilwand: auch außerhalb des Sicht
 function statusList() {   // aktive Zustände des Spielers: Text, Farbe
   const p = G.player, out = [];
   if (G.rootT > 0) out.push(['Festgehalten', '#c898e0', G.rootT]);
+  if (G.pull && G.pull.t > 0) out.push(['Herangezogen', '#c8ced6', 0]);
   if (G.curseT > 0) out.push(['Verflucht · langsamer, kurze Warnzeiten', '#b070ff', G.curseT]);
-  if (G.patches && G.patches.some(q => q.kind === 'poison' && inEll(p.x, p.y, q)) || G.clouds && G.clouds.some(c => c.t > c.warn && Math.hypot(p.x - c.x, p.y - c.y) < c.r + p.r * 0.5)) out.push(['Vergiftet', '#78dc5a', 0]);
+  if (G.venomT > 0) out.push(['Vergiftet', '#78dc5a', G.venomT]);
+  if (G.burnT > 0) out.push(['Brennt', '#ff9a4a', G.burnT]);
   if (G.slowT > 0) out.push(['Verlangsamt', '#8ee8ff', G.slowT]);
   else if (G.inPool) out.push(['Im Wasser · langsamer', '#8ee8ff', 0]);
   if (G.fogs && G.fogs.length && inFog(p.x, p.y)) out.push(['Im Nebel · halbe Sicht', '#cfe6df', 0]);
@@ -4475,7 +4767,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.69';
+const VERSION = 'v0.79';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
