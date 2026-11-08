@@ -1766,6 +1766,7 @@ function damageEnemy(e, dmg) {
   if (settings.dmgnums) G.floats.push({ x: e.x + e.r + 4, y: e.y - e.r * 0.4, vx: 30, t: 0.8, v: Math.max(1, Math.round(dmg)) });
   sfx(e.hp > 0 ? 'hit_enemy' : 'enemy_die', clamp(1 - Math.hypot(e.x - G.player.x, e.y - G.player.y) / 900, 0.3, 1));
   if (e.state === 'idle') alertEnemy(e);
+  if (e.hp <= 0 && e.type === 'kessel') G.kesselGone = G.time;   // danach mindestens 8 s Pause für den nächsten Kessel
   if (e.hp <= 0 && (e.type === 'trug' || e.type === 'kessel')) { for (let k = 0; k < 14; k++) G.parts.push({ x: e.x, y: e.y, vx: rand(-160, 160), vy: rand(-160, 160), life: 0.5, color: e.type === 'trug' ? '#cfe6df' : '#a8ff9a' }); return; }
   if (e.hp <= 0) {
     G.kills++;
@@ -2928,7 +2929,7 @@ function hexeCast(e) {   // ein bis drei Zauber auf einmal; mit weniger Leben ö
   let n = 1; if (Math.random() < 0.3 + 0.2 * stg) n = 2; if (stg === 2 && Math.random() < 0.25) n = 3;
   const avail = ['gift', 'licht', 'haende'];
   if (G.fogs.filter(f => f.call).length < 2) avail.push('nebel');
-  if (!G.enemies.some(q => q.type === 'kessel' && q.hp > 0) && !G.atk.some(a => a.style === 'kessel')) avail.push('kessel');
+  if (!G.enemies.some(q => q.type === 'kessel' && q.hp > 0) && !G.atk.some(a => a.style === 'kessel') && G.time - (G.kesselGone === undefined ? -99 : G.kesselGone) >= 8) avail.push('kessel');
   if (G.obstacles.filter(o => o.sty === 'pilz').length < 3) avail.push('pilze');
   if (n > avail.length) n = avail.length;
   const rest = avail.filter(a => a !== e.last).sort(() => Math.random() - 0.5), opts = e.last && avail.includes(e.last) ? rest.concat([e.last]) : rest;
@@ -3474,8 +3475,28 @@ function drawWallWarn() {   // Warnband der Pfeilwand: auch außerhalb des Sicht
     for (let x = 30; x < VIEW_W; x += 40) { if (x > a.gx - 10 && x < a.gx + a.gw + 10) continue; ctx.beginPath(); ctx.moveTo(x - 6, y + a.h / 2 - 6); ctx.lineTo(x + 6, y + a.h / 2 - 6); ctx.lineTo(x, y + a.h / 2 + 8); ctx.closePath(); ctx.fill(); }
   }
 }
+function statusList() {   // aktive Zustände des Spielers: Text, Farbe
+  const p = G.player, out = [];
+  if (G.rootT > 0) out.push(['Festgehalten', '#c898e0', G.rootT]);
+  if (G.curseT > 0) out.push(['Verflucht · langsamer, kurze Warnzeiten', '#b070ff', G.curseT]);
+  if (G.patches && G.patches.some(q => q.kind === 'poison' && inEll(p.x, p.y, q)) || G.clouds && G.clouds.some(c => c.t > c.warn && Math.hypot(p.x - c.x, p.y - c.y) < c.r + p.r * 0.5)) out.push(['Vergiftet', '#78dc5a', 0]);
+  if (G.slowT > 0) out.push(['Verlangsamt', '#8ee8ff', G.slowT]);
+  else if (G.inPool) out.push(['Im Wasser · langsamer', '#8ee8ff', 0]);
+  if (G.fogs && G.fogs.length && inFog(p.x, p.y)) out.push(['Im Nebel · halbe Sicht', '#cfe6df', 0]);
+  return out;
+}
+function drawStatus() {   // farbige Schrift unten links im Spielfeld, über der Lebensleiste
+  if (state !== 'play' && state !== 'pause') return;
+  const list = statusList(); let y = VIEW_H - 16;
+  for (const [t, c, left] of list) {
+    const label = left > 0 ? t + ' ' + left.toFixed(1) + ' s' : t;
+    ctx.font = 'bold 16px ' + F_TEXT; const w = ctx.measureText(label).width + 20;
+    rr(10, y - 20, w, 26, 13); ctx.fillStyle = 'rgba(8,14,10,.78)'; ctx.fill(); ctx.strokeStyle = c; ctx.lineWidth = 1.5; ctx.stroke();
+    text(label, 20, y - 2, 16, c, 'left', F_TEXT, 'bold'); y -= 32;
+  }
+}
 function drawFieldHUD() {
-  drawWallWarn();
+  drawWallWarn(); drawStatus();
   if (G.deltaT > 0) {   // Punktezuwachs neben der Punktezahl im Rahmen
     ctx.globalAlpha = Math.min(1, G.deltaT * 2.5);
     ctx.font = '30px ' + F_TITLE; ctx.textAlign = 'left'; ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 8; ctx.fillStyle = '#f2c14e';
@@ -4449,7 +4470,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.64';
+const VERSION = 'v0.65';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
