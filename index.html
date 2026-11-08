@@ -1481,7 +1481,7 @@ function updateEnemies(dt) {
     if (e.type === 'boss') { updateBogen(e, dt); continue; }
     if (e.type === 'schild' && e.face === undefined && e.faceInit === undefined) e.faceInit = e.angle;
     e.hit = Math.max(0, e.hit - dt);
-    if (!e.in && e.y >= G.camTop + e.r + 24) e.in = true;   // ab jetzt dürfen sie das Bild nicht mehr verlassen
+    if (!e.in && e.y >= G.camTop + e.r) e.in = true;   // ab jetzt dürfen sie das Bild nicht mehr verlassen
     const dx = p.x - e.x, dy = p.y - e.y, dist = Math.hypot(dx, dy);
     const los = hasLOS(e.x, e.y, p.x, p.y);
 
@@ -1579,6 +1579,13 @@ function updateEnemies(dt) {
       const sx = dirx, sy = diry;
       dirx = -sy * e.steerDir; diry = sx * e.steerDir;
     }
+    {   // Nicht aus dem Bild weglaufen: nahe am Rand zählt keine Bewegung weiter nach außen (Abstand halten, Ausweichen)
+      const m = e.r + 24, top = G.camTop + m, bot = G.camTop + VIEW_H - m;
+      if (e.y < top && diry < 0) diry = 0;
+      if (e.y > bot && diry > 0) diry = 0;
+      if (e.x < m && dirx < 0) dirx = 0;
+      if (e.x > WORLD_W - m && dirx > 0) dirx = 0;
+    }
     if (dirx || diry) {
       const moved = moveCircle(e, dirx * speed * dt, diry * speed * dt);
       if (moved < speed * dt * 0.3) {
@@ -1591,7 +1598,7 @@ function updateEnemies(dt) {
       const ox = e.x - o.x, oy = e.y - o.y, od = Math.hypot(ox, oy);
       if (od > 0 && od < e.r + o.r) moveCircle(e, ox / od * 40 * dt, oy / od * 40 * dt);
     }
-    if (e.in) { e.x = clamp(e.x, e.r, WORLD_W - e.r); e.y = clamp(e.y, G.camTop + e.r + 24, G.camTop + VIEW_H - e.r); }   // oben bleibt Platz für die Lebensleiste
+    if (e.in) { e.x = clamp(e.x, e.r, WORLD_W - e.r); const fl = G.camTop + e.r + 24; if (e.y < fl) e.y = Math.min(fl, e.y + 70 * dt); e.y = Math.min(e.y, G.camTop + VIEW_H - e.r); }   // oben bleibt Platz für die Lebensleiste, sanft statt mit Sprung   // oben bleibt Platz für die Lebensleiste
     if (e.lostT > 6 && e.type === 'grunt') { e.state = 'idle'; e.reaction = 0.7; }
   }
 }
@@ -4265,7 +4272,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.57';
+const VERSION = 'v0.58';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
