@@ -1481,12 +1481,13 @@ function updateEnemies(dt) {
     if (e.type === 'boss') { updateBogen(e, dt); continue; }
     if (e.type === 'schild' && e.face === undefined && e.faceInit === undefined) e.faceInit = e.angle;
     e.hit = Math.max(0, e.hit - dt);
-    if (!e.in && e.y >= G.camTop + e.r) e.in = true;   // ab jetzt dürfen sie das Bild nicht mehr verlassen
+    if (!e.in && e.y >= G.camTop + e.r) e.in = true;
+    e.vis = e.y + e.r > G.camTop;   // teilweise oder ganz im Bild: dann darf er schon alarmieren und schießen   // ab jetzt dürfen sie das Bild nicht mehr verlassen
     const dx = p.x - e.x, dy = p.y - e.y, dist = Math.hypot(dx, dy);
     const los = hasLOS(e.x, e.y, p.x, p.y);
 
     if (e.state === 'idle') {
-      if (los && dist < 440 && e.in) { e.reaction -= dt; if (e.reaction <= 0) alertEnemy(e); }
+      if (los && dist < 440 && e.vis) { e.reaction -= dt; if (e.reaction <= 0) alertEnemy(e); }
       else e.reaction = Math.min(0.7, e.reaction + dt);
       continue;
     }
@@ -1513,7 +1514,7 @@ function updateEnemies(dt) {
         else if (dist < 230) { dirx = -dx / dist; diry = -dy / dist; }
         else { dirx = -dy / dist * e.strafe; diry = dx / dist * e.strafe; speed = T.speed * 0.8; }
         e.cooldown -= dt;
-        if (e.reaction <= 0 && e.cooldown <= 0 && e.in) {
+        if (e.reaction <= 0 && e.cooldown <= 0 && e.vis) {
           const a = e.angle + (Math.random() + Math.random() - 1) * 6 * deg;
           if (T.boss) addBullet(e.x, e.y, a, 400, 16, 'enemy', 900, 0, { rad: 7, big: true });
           else addBullet(e.x, e.y, a, 430, 8 * e.dmgMul, 'enemy', 760, 0);
@@ -1549,7 +1550,7 @@ function updateEnemies(dt) {
         else if (dist < 280) { dirx = -dx / dist; diry = -dy / dist; }
         else { dirx = -dy / dist * e.strafe; diry = dx / dist * e.strafe; speed = T.speed * 0.8; }
         e.cooldown -= dt;
-        if (e.cooldown <= 0 && e.in && dist < 560) { castFireball(e); e.cooldown = rand(3, 4.2); }
+        if (e.cooldown <= 0 && e.vis && dist < 560) { castFireball(e); e.cooldown = rand(3, 4.2); }
       } else if (td > 24) { dirx = tx / td; diry = ty / td; speed = T.chase; }
     } else if (e.type === 'heiler') {
       let near = null, nd = Infinity;
@@ -1579,6 +1580,7 @@ function updateEnemies(dt) {
       const sx = dirx, sy = diry;
       dirx = -sy * e.steerDir; diry = sx * e.steerDir;
     }
+    if (e.state === 'alert' && e.y < G.camTop + e.r + 24) { dirx = 0; diry = 1; speed = Math.max(speed, T.speed); }   // bewusst den Schritt ins Spielfeld machen, zu Fuß statt Sprung
     {   // Nicht aus dem Bild weglaufen: nahe am Rand zählt keine Bewegung weiter nach außen (Abstand halten, Ausweichen)
       const m = e.r + 24, top = G.camTop + m, bot = G.camTop + VIEW_H - m;
       if (e.y < top && diry < 0) diry = 0;
@@ -4272,7 +4274,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.58';
+const VERSION = 'v0.59';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
