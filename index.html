@@ -1075,7 +1075,7 @@ function update(dt) {
       if (e.hp <= 0 || e.hidden) continue;
       if (e.x - e.r < 0 || e.x + e.r > WORLD_W || e.y - e.r < G.camTop || e.y + e.r > G.camTop + VIEW_H) continue;   // nur Gegner, die komplett im Bild sind
       const d = Math.hypot(e.x - p.x, e.y - p.y);
-      if (d < bd && (visible(e) || e.type === 'kessel')) { bd = d; best = e; }   // der Kessel ist immer sichtbar markiert
+      if (d < bd && visible(e)) { bd = d; best = e; }
     }
     if (best) { G.autoT = best; G.autoD = bd; p.aim = Math.atan2(best.y - p.y, best.x - p.x); }
   }
@@ -2894,7 +2894,8 @@ function hexeSpell(e, a) {
       G.fogs.push({ x, y, rx: rand(110, 140), ry: rand(55, 70), vx: dx / l * 22, vy: dy / l * 22, dense: 0, call: true, age: 0, life: 14, t: 0 });
     }
   } else if (a === 'kessel') {   // Hexenkessel fällt vom Himmel
-    addAtk({ kind: 'tele', shape: 'circle', style: 'kessel', x: p.x, y: p.y, r: 50, T: 1.1, fire: t => {
+    const kx = clamp(p.x, 110, WORLD_W - 110), ky = clamp(p.y, G.camTop + 120, G.camTop + VIEW_H - 110);   // nicht zu nah am Rand, sonst wird er nicht anvisiert
+    addAtk({ kind: 'tele', shape: 'circle', style: 'kessel', x: kx, y: ky, r: 50, T: 1.1, fire: t => {
       sfx('block', 1); G.shakeT = Math.max(G.shakeT, 0.25);
       for (let k = 0; k < 14; k++) G.parts.push({ x: t.x, y: t.y, vx: rand(-150, 150), vy: rand(-150, 150), life: 0.4, color: '#8a8e96' });
       if (Math.hypot(p.x - t.x, p.y - t.y) < t.r + p.r * 0.5) hurtPlayer(22, Math.atan2(t.y - p.y, t.x - p.x));
@@ -3112,6 +3113,9 @@ function drawHexeHazards() {
       ctx.fillStyle = 'rgba(255,90,60,' + (0.1 + 0.12 * f) + ')'; ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, 7); ctx.fill();
       ctx.strokeStyle = 'rgba(255,122,90,.9)'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 5]); ctx.stroke(); ctx.setLineDash([]);
       ctx.strokeStyle = 'rgba(255,122,90,.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(h.x, h.y, h.r * (1 - f), 0, 7); ctx.stroke();
+      ctx.save(); ctx.translate(h.x, h.y); ctx.scale(0.5, 0.5); ctx.globalAlpha = 0.65 + 0.3 * f; ctx.strokeStyle = '#d8f0c0'; ctx.fillStyle = '#7aa05a'; ctx.lineWidth = 4.5; ctx.lineCap = 'round';   // Hand in halber Größe: zeigt, was kommt
+      ctx.beginPath(); ctx.moveTo(-10, 8); ctx.lineTo(-12, -16); ctx.moveTo(-3, 8); ctx.lineTo(-3, -20); ctx.moveTo(5, 8); ctx.lineTo(9, -18); ctx.moveTo(12, 8); ctx.lineTo(18, -12); ctx.stroke();
+      ctx.beginPath(); ctx.arc(1, 6, 11, 0, 7); ctx.fill(); ctx.stroke(); ctx.restore();
     } else {
       ctx.save(); ctx.translate(h.x, h.y); ctx.strokeStyle = '#2a3a1c'; ctx.fillStyle = '#4a6a2c'; ctx.lineWidth = 4; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(-10, 8); ctx.lineTo(-12, -16); ctx.moveTo(-3, 8); ctx.lineTo(-3, -20); ctx.moveTo(5, 8); ctx.lineTo(9, -18); ctx.moveTo(12, 8); ctx.lineTo(18, -12); ctx.stroke();
@@ -3465,15 +3469,6 @@ function drawRails() {
   text('Im Deck: ' + G.library.length + ' Karten', 1180, 700, 14, '#b8c4d0', 'center', F_TEXT);
 }
 
-function drawKesselMark() {   // Kessel und Heilbereich bleiben auch im Dunkeln erkennbar
-  for (const k of G.enemies) {
-    if (k.type !== 'kessel' || k.hp <= 0) continue;
-    const x = k.x, y = k.y - G.camTop;
-    if (k.age >= 2) { ctx.strokeStyle = 'rgba(168,255,154,.45)'; ctx.lineWidth = 2; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.arc(x, y, 300, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
-    ctx.save(); ctx.translate(0, -G.camTop); drawCauldron(k.x, k.y, 1, k.age >= 0.6); ctx.restore();
-    ctx.fillStyle = '#000'; ctx.fillRect(x - 22, y - k.r - 14, 44, 5); ctx.fillStyle = '#a8ff9a'; ctx.fillRect(x - 22, y - k.r - 14, 44 * Math.max(0, k.hp / k.maxHp), 5);
-  }
-}
 function drawWallWarn() {   // Warnband der Pfeilwand: auch außerhalb des Sichtkegels zu sehen (liegt über der Dunkelheit)
   for (const a of G.atk) {
     if (a.kind !== 'tele' || a.shape !== 'band') continue;
@@ -3506,7 +3501,7 @@ function drawStatus() {   // farbige Schrift unten links im Spielfeld, über der
   }
 }
 function drawFieldHUD() {
-  drawWallWarn(); drawKesselMark(); drawStatus();
+  drawWallWarn(); drawStatus();
   if (G.deltaT > 0) {   // Punktezuwachs neben der Punktezahl im Rahmen
     ctx.globalAlpha = Math.min(1, G.deltaT * 2.5);
     ctx.font = '30px ' + F_TITLE; ctx.textAlign = 'left'; ctx.shadowColor = 'rgba(0,0,0,.85)'; ctx.shadowBlur = 8; ctx.fillStyle = '#f2c14e';
@@ -4480,7 +4475,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.68';
+const VERSION = 'v0.69';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
