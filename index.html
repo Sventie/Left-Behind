@@ -1072,7 +1072,7 @@ function update(dt) {
   if (settings.autoaim) {   // Automatisch zielen: nächster Gegner, den man sehen kann
     let best = null, bd = 1e9;
     for (const e of G.enemies) {
-      if (e.hp <= 0 || e.hidden || e.type === 'irrlicht') continue;
+      if (e.hp <= 0 || e.hidden) continue;
       if (e.x - e.r < 0 || e.x + e.r > WORLD_W || e.y - e.r < G.camTop || e.y + e.r > G.camTop + VIEW_H) continue;   // nur Gegner, die komplett im Bild sind
       const d = Math.hypot(e.x - p.x, e.y - p.y);
       if (d < bd && visible(e)) { bd = d; best = e; }
@@ -4470,7 +4470,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.65';
+const VERSION = 'v0.66';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
