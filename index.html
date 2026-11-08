@@ -109,7 +109,7 @@ const AREA_BY_ID = Object.fromEntries(AREAS.map(a => [a.id, a]));
 const areaUnlocked = a => !a.after || !!(SAVE.bossDownBy && SAVE.bossDownBy[a.after]);
 // Punkte pro besiegtem Gegner (Rangliste); später je Gegner anders
 // Punkte und Mondsilber pro Gefallenem sind gleich
-const ENEMY_POINTS = { grunt: 1, rusher: 1, wolf: 1, schild: 2, magier: 2, heiler: 2, boss: 20, hexe: 20, herr: 20, irrlicht: 0 };
+const ENEMY_POINTS = { grunt: 1, rusher: 1, wolf: 1, schild: 2, magier: 2, heiler: 2, boss: 20, hexe: 20, herr: 20, irrlicht: 0, trug: 0, kessel: 0 };
 const ELITE_POINTS = 5;
 // Endlosmodus: so viele Gefallene zählen, dann muss man ENDLESS_UNLOCK_M weiterlaufen, bevor wieder Punkte und Mondsilber kommen
 const ENDLESS_KILL_LIMIT = 20, ENDLESS_UNLOCK_M = 10;
@@ -122,6 +122,8 @@ const ENEMY_TYPES = {
   heiler: { hp: 40, speed: 65, chase: 75, r: 13 },              // heilt Verbündete
   hexe:   { hp: 800, speed: 100, chase: 110, r: 26, boss: true },   // Moorhexe: Phase 1 mit 800, Phase 2 mit 1200 Leben
   irrlicht: { hp: 1, speed: 160, chase: 175, r: 9, mdmg: 10 },
+  trug:   { hp: 100, speed: 100, chase: 110, r: 22 },           // Trugbild der Moorhexe: wenig Leben, wirkt Zauber
+  kessel: { hp: 300, speed: 0, chase: 0, r: 26 },               // Hexenkessel: heilt die Hexe, bis er zerstört ist
   herr:   { hp: 2000, speed: 62, chase: 70, r: 32, boss: true },   // Schlossherr: Phase 1 mit 2000, Phase 2 mit 2000 Leben
   boss:   { hp: 900, speed: 70, chase: 85, r: 30, boss: true }   // Bogenmeister: eine Phase, 900 Leben, große Pfeile, Angriffsmuster mit Deckung (updateBogen)
 };
@@ -616,7 +618,7 @@ function newGame(cls, area) {
     kills: 0, dist: 0,
     merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
-    stage: 1, stageStart: 0, nextPick: stageLength(1), atk: [], fires: [], fallen: [], bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
+    stage: 1, stageStart: 0, nextPick: stageLength(1), atk: [], fires: [], fallen: [], ripples: [], curseT: 0, bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
       x: WORLD_W / 2, y: -60, r: 14, hp: 1, angle: -Math.PI / 2,
@@ -773,7 +775,15 @@ function updateMoor(dt) {
   const p = G.player;
   G.slowT = Math.max(0, G.slowT - dt); G.rootT = Math.max(0, G.rootT - dt);
   G.inPool = G.patches.some(q => q.kind === 'pool' && inEll(p.x, p.y, q));
-  for (const f of G.fogs) { f.x += f.vx * dt; if (f.x < 80 || f.x > WORLD_W - 80) f.vx *= -1; }
+  G.curseT = Math.max(0, G.curseT - dt);
+  for (const f of G.fogs) {
+    if (f.call) {   // vom Nebelruf: wandert langsam auf den Spieler zu, blendet ein und aus
+      f.age += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.t = clamp(Math.min(f.age * 1.2, (f.life - f.age) / 1.5), 0, 1);
+      continue;
+    }
+    f.x += f.vx * dt; if (f.x < 80 || f.x > WORLD_W - 80) f.vx *= -1;
+  }
+  G.fogs = G.fogs.filter(f => !f.call || f.age < f.life);
   for (const w of G.wisps) {
     w.ph += dt; if (w.hid > 0) { w.hid -= dt; continue; }
     if (Math.hypot(w.x - p.x, w.y - p.y) < 20) { G.slowT = 1.5; w.hid = 5; sfx('block', 0.4); }
@@ -1048,7 +1058,7 @@ function update(dt) {
   } else {
     const len = Math.hypot(mx, my) || 1;
     let sp = S.moveSpeed * (p.reloadT > 0 ? 0.9 : 1);
-    if (G.rootT > 0) sp = 0; else { if (G.inPool) sp *= 0.7; if (G.slowT > 0) sp *= 0.6; }
+    if (G.rootT > 0) sp = 0; else { if (G.inPool) sp *= 0.7; if (G.slowT > 0) sp *= 0.6; if (G.curseT > 0) sp *= 0.7; }
     if (isBlocking()) sp *= 0.55; else if (isFocusing()) sp *= 0.65; else if (isMeditating()) sp *= 0.5;
     moved = moveCircle(p, mx / len * sp * dt, my / len * sp * dt);
   }
@@ -1161,7 +1171,7 @@ function winRun() {
   if (G.bossOnly) { G.won = true; G.enemies = G.enemies.filter(e => e.hp > 0 && e.type !== 'irrlicht'); G.clouds = []; G.hands = []; G.atk = []; G.fires = []; sfx('stage_up'); finishRun(); state = 'dead'; return; }
   G.atk = []; G.fires = [];
   if (G.hallGate) { G.obstacles = G.obstacles.filter(o => o !== G.hallGate); G.hallGate = null; if (G.hall && G.hall.topWall) G.hall.topWall.closed = false; }
-  G.enemies = G.enemies.filter(e => e.type !== 'irrlicht'); G.clouds = []; G.hands = []; G.fogs = G.fogs.filter(f => !f.hexe); G.rootT = 0;
+  G.enemies = G.enemies.filter(e => e.type !== 'irrlicht' && e.type !== 'trug' && e.type !== 'kessel'); G.clouds = []; G.hands = []; G.fogs = G.fogs.filter(f => !f.hexe && !f.call); G.obstacles = G.obstacles.filter(o => o.sty !== 'pilz'); G.rootT = 0; G.curseT = 0;
   const first = !SAVE.bossDown;
   const nextA = AREAS.find(a => a.after === G.area.id), newArea = nextA && !SAVE.bossDownBy[G.area.id];
   G.won = true; SAVE.bossDown = true; SAVE.bossDownBy[G.area.id] = true; persist(); G.endless = true; G.camLock = false;
@@ -1478,6 +1488,8 @@ function updateEnemies(dt) {
     const T = ENEMY_TYPES[e.type];
     if (e.type === 'hexe') { updateHexe(e, dt); continue; }
     if (e.type === 'herr') { updateHerr(e, dt); continue; }
+    if (e.type === 'trug') { updateTrug(e, dt); continue; }
+    if (e.type === 'kessel') { updateKessel(e, dt); continue; }
     if (e.type === 'boss') { updateBogen(e, dt); continue; }
     if (e.type === 'schild' && e.face === undefined && e.faceInit === undefined) e.faceInit = e.angle;
     e.hit = Math.max(0, e.hit - dt);
@@ -1754,6 +1766,7 @@ function damageEnemy(e, dmg) {
   if (settings.dmgnums) G.floats.push({ x: e.x + e.r + 4, y: e.y - e.r * 0.4, vx: 30, t: 0.8, v: Math.max(1, Math.round(dmg)) });
   sfx(e.hp > 0 ? 'hit_enemy' : 'enemy_die', clamp(1 - Math.hypot(e.x - G.player.x, e.y - G.player.y) / 900, 0.3, 1));
   if (e.state === 'idle') alertEnemy(e);
+  if (e.hp <= 0 && (e.type === 'trug' || e.type === 'kessel')) { for (let k = 0; k < 14; k++) G.parts.push({ x: e.x, y: e.y, vx: rand(-160, 160), vy: rand(-160, 160), life: 0.5, color: e.type === 'trug' ? '#cfe6df' : '#a8ff9a' }); return; }
   if (e.hp <= 0) {
     G.kills++;
     let pts = e.elite ? ELITE_POINTS : ENEMY_POINTS[e.type] !== undefined ? ENEMY_POINTS[e.type] : 3;
@@ -2172,6 +2185,12 @@ function drawCastleProp(o) {
   } else if (o.sty === 'fallen') {
     ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(o.x + 4, o.y + 7, o.w, o.h); ctx.fillStyle = '#6a6e76'; ctx.strokeStyle = '#14171a'; ctx.lineWidth = 3; rr(o.x, o.y, o.w, o.h, 6); ctx.fill(); ctx.stroke();
     ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 2; ctx.beginPath(); if (o.w > o.h) { ctx.moveTo(o.x + o.w * 0.25, o.y + 2); ctx.lineTo(o.x + o.w * 0.3, o.y + o.h - 2); ctx.moveTo(o.x + o.w * 0.7, o.y + o.h - 2); ctx.lineTo(o.x + o.w * 0.65, o.y + 2); } else { ctx.moveTo(o.x + 2, o.y + o.h * 0.25); ctx.lineTo(o.x + o.w - 2, o.y + o.h * 0.3); ctx.moveTo(o.x + o.w - 2, o.y + o.h * 0.7); ctx.lineTo(o.x + 2, o.y + o.h * 0.65); } ctx.stroke();
+  } else if (o.sty === 'pilz') {
+    const fz = o.fuse > 0, pu = fz ? 0.5 + 0.5 * Math.sin(performance.now() / 50) : 0;
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(o.cx + 4, o.cy + 7, o.r, o.r * 0.8, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = fz ? 'rgb(' + Math.round(150 + 90 * pu) + ',70,110)' : '#8a4a6a'; ctx.strokeStyle = '#2a1020'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(o.cx, o.cy, o.r, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#e8c8d8'; for (const [ax, ay, ar] of [[-0.35, -0.3, 0.2], [0.3, 0.2, 0.15], [-0.1, 0.4, 0.12]]) { ctx.beginPath(); ctx.arc(o.cx + ax * o.r, o.cy + ay * o.r, Math.max(1.5, ar * o.r), 0, 7); ctx.fill(); }
+    if (fz) { ctx.strokeStyle = 'rgba(200,140,230,.9)'; ctx.lineWidth = 2.5; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.arc(o.cx, o.cy, o.r + 55, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
   } else if (o.sty === 'schild') {
     drawShieldAt(cx, cy, 0.95, 0.43);
   } else if (o.sty === 'throne') {
@@ -2282,6 +2301,19 @@ function drawEntities() {
   for (const e of G.enemies) {
     if (e.hp <= 0 || e.hidden || !visible(e)) continue;
     if (e.type === 'herr') { drawHerr(e); if (e.hit > 0) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, 7); ctx.fill(); ctx.globalAlpha = 1; } continue; }
+    if (e.type === 'trug') {   // Trugbild: durchscheinend, mit kleinem Lebensbalken
+      ctx.globalAlpha = 0.6; drawHexe(e); ctx.globalAlpha = 1;
+      if (e.hit > 0) { ctx.globalAlpha = 0.4; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+      ctx.fillStyle = '#000'; ctx.fillRect(e.x - 18, e.y - e.r - 12, 36, 5); ctx.fillStyle = '#7fe0d0'; ctx.fillRect(e.x - 18, e.y - e.r - 12, 36 * Math.max(0, e.hp / e.maxHp), 5);
+      continue;
+    }
+    if (e.type === 'kessel') {
+      drawCauldron(e.x, e.y, 1, e.age >= 0.6);
+      if (e.age >= 2) { ctx.strokeStyle = 'rgba(168,255,154,.35)'; ctx.lineWidth = 2; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.arc(e.x, e.y, 300, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+      if (e.hit > 0) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+      ctx.fillStyle = '#000'; ctx.fillRect(e.x - 22, e.y - e.r - 14, 44, 5); ctx.fillStyle = '#a8ff9a'; ctx.fillRect(e.x - 22, e.y - e.r - 14, 44 * Math.max(0, e.hp / e.maxHp), 5);
+      continue;
+    }
     if (e.type === 'hexe') { drawHexe(e); if (e.hit > 0) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, 7); ctx.fill(); ctx.globalAlpha = 1; } continue; }
     if (e.type === 'irrlicht') { drawIrrlicht(e); continue; }
     if (e.type === 'boss') {
@@ -2370,6 +2402,7 @@ function drawEntities() {
   drawAtk();
   if (G.area.id === 'moor') { drawWisps(); drawFogBanks(); drawHexeHazards(); }   // Angriffe der Hexe über dem Nebel, aber nur im Sichtkegel sichtbar
   if (G.autoT && G.autoT.hp > 0) { const t = G.autoT; ctx.strokeStyle = 'rgba(255,243,200,.75)'; ctx.lineWidth = 2; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.arc(t.x, t.y, t.r + 8, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+  if (G.curseT > 0) { const t = performance.now() / 600; ctx.strokeStyle = 'rgba(176,112,255,' + (0.5 + 0.3 * Math.sin(t * 4)) + ')'; ctx.lineWidth = 2.5; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.arc(p.x, p.y, 24, t, t + 6.28); ctx.stroke(); ctx.setLineDash([]); ctx.beginPath(); for (let i = 0; i < 3; i++) { const a = t + i * 2.094; ctx.moveTo(p.x + Math.cos(a) * 24, p.y + Math.sin(a) * 24); ctx.lineTo(p.x + Math.cos(a) * 32, p.y + Math.sin(a) * 32); } ctx.stroke(); }
   drawFigure(G.cls.id, p.x, p.y, isBlocking() ? p.angle : (p.aim === undefined ? p.angle : p.aim), 1, {
     dash: p.dashT > 0,
     swing: p.swingT > 0 ? 1 - p.swingT / WEAPONS.schwert.swing : -1,
@@ -2464,6 +2497,15 @@ function updateAtk(dt) {
   }
   G.atk = G.atk.filter(a => a.kind === 'tele' ? !a.done : a.kind === 'wave' ? a.t < a.warn + a.T + 0.2 : a.kind === 'lane' ? a.t < a.T : (!a.done || a.show > 0));
 }
+function drawCauldron(x, y, sc, cooking) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc); ctx.lineCap = 'round';
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(4, 8, 26, 16, 0, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#050403'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-26, 12); ctx.lineTo(-30, 20); ctx.moveTo(26, 12); ctx.lineTo(30, 20); ctx.moveTo(0, 22); ctx.lineTo(0, 28); ctx.stroke();
+  ctx.fillStyle = '#14120e'; ctx.beginPath(); ctx.arc(0, 0, 24, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = cooking ? '#4fae4a' : '#2e5a2e'; ctx.beginPath(); ctx.arc(0, 0, 16, 0, 7); ctx.fill();
+  if (cooking) { const t = performance.now() / 200; for (let i = 0; i < 3; i++) { ctx.fillStyle = '#a8ff9a'; ctx.beginPath(); ctx.arc(Math.cos(t + i * 2.1) * 7, Math.sin(t * 1.3 + i * 2.1) * 6, 3 + (i % 2), 0, 7); ctx.fill(); } }
+  ctx.restore();
+}
 function drawFires() {
   for (const f of G.fires) {
     const k = Math.min(1, (f.life - f.t) / 1.5), fl = 0.85 + 0.15 * Math.sin(f.t * 9 + f.x);
@@ -2482,7 +2524,11 @@ function drawAtk() {
       ctx.fillStyle = fill; ctx.strokeStyle = line; ctx.lineWidth = 2;
       if (a.shape === 'wedge') { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.arc(a.x, a.y, a.reach, a.ang - a.arc / 2, a.ang + a.arc / 2); ctx.closePath(); ctx.fill(); ctx.setLineDash([6, 5]); ctx.stroke(); ctx.setLineDash([]); }
       else if (a.shape === 'lane') { ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(a.ang); ctx.fillRect(0, -a.w / 2, a.len, a.w); ctx.setLineDash([6, 5]); ctx.strokeRect(0, -a.w / 2, a.len, a.w); ctx.setLineDash([]); ctx.restore(); }
-      else if (a.shape === 'circle' && a.style === 'brand') {   // Brandpfeil: orange, Flammenzacken am Rand, pulsierender Glutkern
+      else if (a.shape === 'circle' && a.style === 'kessel') {   // Hexenkessel fällt: Schatten wächst, der Kessel kommt von oben
+        ctx.fillStyle = 'rgba(255,90,60,' + (0.12 + 0.16 * f) + ')'; ctx.beginPath(); ctx.arc(a.x, a.y, a.r, 0, 7); ctx.fill(); ctx.strokeStyle = 'rgba(255,122,90,.9)'; ctx.lineWidth = 2.5; ctx.setLineDash([6, 5]); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(0,0,0,' + 0.25 * f + ')'; ctx.beginPath(); ctx.ellipse(a.x, a.y, a.r * 0.5 * f, a.r * 0.3 * f, 0, 0, 7); ctx.fill();
+        drawCauldron(a.x, a.y - (1 - f) * (1 - f) * 260, 0.7 + 0.5 * (1 - f), false);
+      } else if (a.shape === 'circle' && a.style === 'brand') {   // Brandpfeil: orange, Flammenzacken am Rand, pulsierender Glutkern
         const pu = 0.5 + 0.5 * Math.sin(a.t * 14), g = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, a.r);
         g.addColorStop(0, 'rgba(255,200,80,' + (0.35 + 0.3 * pu) + ')'); g.addColorStop(1, 'rgba(255,110,30,' + (0.14 + 0.14 * f) + ')');
         ctx.fillStyle = g; ctx.beginPath(); ctx.arc(a.x, a.y, a.r, 0, 7); ctx.fill();
@@ -2831,16 +2877,45 @@ function drawHerr(e) {
 // Phase 2: doppelt so schnell; sie versteckt sich mehrere Sekunden im Nebel (unverwundbar, jede Sekunde ein Ghul am Rand), taucht woanders wieder auf.
 const HEXE = { hp1: 800, hp2: 1200, hideT: 6, showT: 15, ghoulMax: 8 };
 function hexeSpell(e, a) {
-  const p = G.player, ph2 = e.phase === 2;
-  if (a === 'gift') G.clouds.push({ x: e.x + (p.x - e.x) * 0.5, y: e.y + (p.y - e.y) * 0.5, r: 78, t: 0, life: 9, warn: 0.9 });
-  else if (a === 'licht') {   // drei Irrlichter links, rechts und etwas versetzt neben der Hexe, nicht aus ihrer Mitte
+  const p = G.player, ph2 = e.phase === 2, cur = G.curseT > 0 ? 0.4 : 0;   // Fluch: kürzere Vorwarnung
+  if (a === 'gift') G.clouds.push({ x: e.x + (p.x - e.x) * 0.5, y: e.y + (p.y - e.y) * 0.5, r: 78, t: 0, life: 9, warn: 0.9 - cur });
+  else if (a === 'nebel') {   // Nebelruf: Bänke tauchen am Rand auf und wandern auf den Spieler zu, nie direkt unter ihm
+    const n = hexeStage(e) === 2 ? 3 : 2;
+    for (let i = 0; i < n; i++) {
+      let x = 0, y = 0;
+      for (let t = 0; t < 20; t++) {   // mindestens 250 px vom Spieler entfernt, auch nach dem Begrenzen auf das Feld
+        const ang = Math.random() * 6.283, d = rand(280, 360);
+        x = clamp(p.x + Math.cos(ang) * d, 100, WORLD_W - 100); y = clamp(p.y + Math.sin(ang) * d, G.camTop + 60, G.camTop + VIEW_H - 60);
+        if (Math.hypot(x - p.x, y - p.y) >= 250) break;
+      }
+      const dx = p.x - x, dy = p.y - y, l = Math.hypot(dx, dy) || 1;
+      G.fogs.push({ x, y, rx: rand(110, 140), ry: rand(55, 70), vx: dx / l * 22, vy: dy / l * 22, dense: 0, call: true, age: 0, life: 14, t: 0 });
+    }
+  } else if (a === 'kessel') {   // Hexenkessel fällt vom Himmel
+    addAtk({ kind: 'tele', shape: 'circle', style: 'kessel', x: p.x, y: p.y, r: 50, T: 1.1, fire: t => {
+      sfx('block', 1); G.shakeT = Math.max(G.shakeT, 0.25);
+      for (let k = 0; k < 14; k++) G.parts.push({ x: t.x, y: t.y, vx: rand(-150, 150), vy: rand(-150, 150), life: 0.4, color: '#8a8e96' });
+      if (Math.hypot(p.x - t.x, p.y - t.y) < t.r + p.r * 0.5) hurtPlayer(22, Math.atan2(t.y - p.y, t.x - p.x));
+      const k = makeEnemy('kessel', t.x, t.y, true); k.in = true; k.age = 0; k.tick = 0; G.enemies.push(k);
+    } });
+  } else if (a === 'pilze') {   // Sporenpilze wachsen an zufälligen Stellen
+    const n = hexeStage(e) === 0 ? 4 : 5;
+    for (let i = 0; i < n; i++) for (let t = 0; t < 20; t++) {
+      const x = rand(90, WORLD_W - 90), y = rand(G.camTop + 90, G.camTop + VIEW_H - 90);
+      if (Math.hypot(x - p.x, y - p.y) < 150 || Math.hypot(x - e.x, y - e.y) < 60) continue;
+      if (G.obstacles.some(o => x > o.x - 60 && x < o.x + o.w + 60 && y > o.y - 60 && y < o.y + o.h + 60)) continue;
+      const r0 = 10; G.obstacles.push({ kind: 'tree', sty: 'pilz', seed: Math.random(), age: 0, fuse: 0, r: r0, cx: x, cy: y, x: x - r0, y: y - r0, w: r0 * 2, h: r0 * 2 });
+      break;
+    }
+    sfx('block', 0.4);
+  } else if (a === 'licht') {   // drei Irrlichter links, rechts und etwas versetzt neben der Hexe, nicht aus ihrer Mitte
     const base = Math.atan2(p.y - e.y, p.x - e.x);
     for (const [ox, oy] of [[-120, rand(-20, 20)], [120, rand(-20, 20)], [Math.random() < 0.5 ? -190 : 190, rand(-60, 60)]]) {
       const sx = clamp(e.x + ox, 30, WORLD_W - 30), sy = clamp(e.y + oy, G.camTop + 30, G.camTop + VIEW_H - 30), sp = makeEnemy('irrlicht', sx, sy, true);
       sp.in = true; sp.dmgMul = 1; sp.angle = base; sp.life = 9; G.enemies.push(sp);
     }
   } else {
-    const warn = ph2 ? 0.9 : 1.3;   // in Phase 2 kommen die Hände schneller aus dem Boden
+    const warn = (ph2 ? 0.9 : 1.3) - cur;   // in Phase 2 kommen die Hände schneller aus dem Boden
     for (let i = 0; i < 3; i++) {
       const hx = i === 0 ? p.x : p.x + rand(-110, 110), hy = i === 0 ? p.y : p.y + rand(-110, 110);
       G.hands.push({ x: clamp(hx, 50, WORLD_W - 50), y: clamp(hy, G.camTop + 40, G.camTop + VIEW_H - 40), r: 34, t: warn, T: warn, hit: false });
@@ -2851,7 +2926,12 @@ const hexeStage = e => e.hp > e.maxHp * 0.66 ? 0 : e.hp > e.maxHp * 0.33 ? 1 : 2
 function hexeCast(e) {   // ein bis drei Zauber auf einmal; mit weniger Leben öfter und mehr
   const stg = hexeStage(e);
   let n = 1; if (Math.random() < 0.3 + 0.2 * stg) n = 2; if (stg === 2 && Math.random() < 0.25) n = 3;
-  const rest = ['gift', 'licht', 'haende'].filter(a => a !== e.last).sort(() => Math.random() - 0.5), opts = e.last && !rest.includes(e.last) ? rest.concat([e.last]) : rest;
+  const avail = ['gift', 'licht', 'haende'];
+  if (G.fogs.filter(f => f.call).length < 2) avail.push('nebel');
+  if (!G.enemies.some(q => q.type === 'kessel' && q.hp > 0) && !G.atk.some(a => a.style === 'kessel')) avail.push('kessel');
+  if (G.obstacles.filter(o => o.sty === 'pilz').length < 3) avail.push('pilze');
+  if (n > avail.length) n = avail.length;
+  const rest = avail.filter(a => a !== e.last).sort(() => Math.random() - 0.5), opts = e.last && avail.includes(e.last) ? rest.concat([e.last]) : rest;
   const pick = opts.slice(0, n); e.last = pick[pick.length - 1];
   sfx('enemy_shoot', 0.9);
   for (const a of pick) hexeSpell(e, a);
@@ -2860,13 +2940,23 @@ function updateHexe(e, dt) {
   const p = G.player, T = ENEMY_TYPES.hexe;
   e.hit = Math.max(0, e.hit - dt);
   if (e.phase === 1.5) {   // Verwandlung: 1 s Stillstand, ~2 s Auffüllen, 1 s Pause
-    e.tt += dt; e.angle = Math.atan2(p.y - e.y, p.x - e.x);
+    e.tt += dt; e.angle = Math.atan2(p.y - e.y, p.x - e.x); e.dive = null; e.hidden = false;
+    for (const q of G.enemies) if (q.type === 'trug' || q.type === 'kessel') q.hp = 0;   // Verwandlung räumt Trugbilder und Kessel weg
     if (e.tt >= 1 && e.form === 'a') { e.form = 'c'; e.maxHp = HEXE.hp2; sfx('stage_up'); for (let i = 0; i < 24; i++) G.parts.push({ x: e.x, y: e.y, vx: rand(-200, 200), vy: rand(-200, 200), life: 0.6, color: '#7fff9f' }); }
     if (e.tt >= 1) e.hp = Math.max(0.001, e.maxHp * clamp((e.tt - 1) / 2, 0, 1));
     if (e.tt >= 4) { e.phase = 2; e.inv = false; e.hp = e.maxHp; e.mode = 'fog'; e.modeT = 0; e.cast = 1.2; sfx('horde_horn'); hexeHide(e); }
     return;
   }
   const ph2 = e.phase === 2, speed = ph2 ? T.speed * 1.7 : T.speed;
+  if (e.dive) {   // unter Wasser: unsichtbar und unverwundbar, taucht in einer anderen Pfütze wieder auf
+    e.dive.t += dt;
+    if (e.dive.t >= e.dive.T) hexeEmerge(e);
+    return;
+  }
+  if (!(ph2 && e.mode === 'fog') && e.reaction <= 0) {
+    e.diveCd = (e.diveCd === undefined ? rand(6, 9) : e.diveCd) - dt;
+    if (e.diveCd <= 0 && !G.enemies.some(q => q.type === 'trug' && q.hp > 0)) hexeDive(e);   // solange Trugbilder leben, kommt kein neuer Tauchgang
+  }
   if (ph2) {
     e.modeT += dt;
     if (e.mode === 'fog') {   // versteckt im Nebel: unverwundbar, Ghule vom Rand
@@ -2881,13 +2971,60 @@ function updateHexe(e, dt) {
     const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy) || 1;
     e.strafeT -= dt; if (e.strafeT <= 0) { e.strafe *= -1; e.strafeT = rand(1.5, 3); }
     let vx, vy;
-    if (d > 420) { vx = dx / d; vy = dy / d; } else if (d < 260) { vx = -dx / d; vy = -dy / d; } else { vx = -dy / d * e.strafe; vy = dx / d * e.strafe; }
+    const kz = G.enemies.find(q => q.type === 'kessel' && q.hp > 0);
+    if (kz) {   // bleibt beim Kessel, damit er sie heilen kann, und hält trotzdem Abstand zum Spieler
+      const kd = Math.hypot(kz.x - e.x, kz.y - e.y) || 1;
+      if (d < 200) { vx = -dx / d; vy = -dy / d; } else if (kd > 200) { vx = (kz.x - e.x) / kd; vy = (kz.y - e.y) / kd; } else { vx = -dy / d * e.strafe; vy = dx / d * e.strafe; }
+    } else if (d > 420) { vx = dx / d; vy = dy / d; } else if (d < 260) { vx = -dx / d; vy = -dy / d; } else { vx = -dy / d * e.strafe; vy = dx / d * e.strafe; }
     moveCircle(e, vx * speed * dt, vy * speed * dt);
     e.x = clamp(e.x, e.r, WORLD_W - e.r); e.y = clamp(e.y, G.camTop + e.r + 30, G.camTop + VIEW_H - e.r);
   }
   e.cast -= dt;
   if (e.cast <= 0 && e.reaction <= 0) { hexeCast(e); e.cast = (ph2 ? rand(1.8, 2.6) : rand(2.8, 3.8)) * [1, 0.8, 0.62][hexeStage(e)]; }
   else if (e.reaction > 0) e.reaction -= dt;
+}
+function hexeDive(e) {   // in die Pfütze abtauchen
+  const p = G.player; let tx, ty;
+  const pools = G.patches.filter(q => q.kind === 'pool' && q.y > G.camTop + 60 && q.y < G.camTop + VIEW_H - 60 && Math.hypot(q.x - p.x, q.y - p.y) > 200 && Math.hypot(q.x - e.x, q.y - e.y) > 200);
+  if (pools.length) { const q = pools[Math.floor(Math.random() * pools.length)]; tx = q.x; ty = q.y; }
+  else {   // keine passende Pfütze im Bild: es bildet sich eine neue
+    for (let t = 0; t < 30; t++) { tx = rand(120, WORLD_W - 120); ty = rand(G.camTop + 100, G.camTop + VIEW_H - 120); if (Math.hypot(tx - p.x, ty - p.y) > 240 && Math.hypot(tx - e.x, ty - e.y) > 200) break; }
+    G.patches.push({ kind: 'pool', x: tx, y: ty, rx: 70, ry: 38, seed: Math.random() });
+  }
+  e.dive = { t: 0, T: 0.9, tx, ty }; e.hidden = true; e.diveCd = rand(11, 15);
+  G.ripples.push({ x: e.x, y: e.y, t: 0, life: 1.2 }); sfx('block', 0.5);
+}
+function hexeEmerge(e) {   // taucht auf und lässt zwei Trugbilder erscheinen
+  const d = e.dive; e.dive = null; e.hidden = false; e.x = d.tx; e.y = d.ty;
+  G.ripples.push({ x: e.x, y: e.y, t: 0, life: 1.2 }); sfx('stage_up', 0.8);
+  for (let i = 0; i < 2; i++) {
+    for (let t = 0; t < 20; t++) {
+      const a = Math.random() * 6.283, dd = rand(110, 190), x = clamp(e.x + Math.cos(a) * dd, 60, WORLD_W - 60), y = clamp(e.y + Math.sin(a) * dd, G.camTop + 60, G.camTop + VIEW_H - 60);
+      if (G.enemies.some(q => q.type === 'trug' && Math.hypot(q.x - x, q.y - y) < 80) || Math.hypot(x - e.x, y - e.y) < 70) continue;
+      const q = makeEnemy('trug', x, y, true); q.in = true; q.phase = e.phase; q.form = e.form; q.cast = rand(2, 3); q.strafe = Math.random() < 0.5 ? 1 : -1; q.strafeT = rand(1, 2.5);
+      G.enemies.push(q); G.ripples.push({ x, y, t: 0, life: 1.0 });
+      break;
+    }
+  }
+}
+function updateTrug(e, dt) {   // Trugbild: bewegt sich wie die Hexe und wirkt einfache Zauber
+  const p = G.player, T = ENEMY_TYPES.trug, ph2 = e.phase === 2;
+  e.hit = Math.max(0, e.hit - dt); e.angle = Math.atan2(p.y - e.y, p.x - e.x);
+  const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy) || 1;
+  e.strafeT -= dt; if (e.strafeT <= 0) { e.strafe *= -1; e.strafeT = rand(1.5, 3); }
+  let vx, vy; if (d > 420) { vx = dx / d; vy = dy / d; } else if (d < 260) { vx = -dx / d; vy = -dy / d; } else { vx = -dy / d * e.strafe; vy = dx / d * e.strafe; }
+  moveCircle(e, vx * T.speed * (ph2 ? 1.5 : 1) * dt, vy * T.speed * (ph2 ? 1.5 : 1) * dt);
+  e.x = clamp(e.x, e.r, WORLD_W - e.r); e.y = clamp(e.y, G.camTop + e.r + 30, G.camTop + VIEW_H - e.r);
+  e.cast -= dt;
+  if (e.cast <= 0) { hexeSpell(e, ['gift', 'licht', 'haende'][Math.floor(Math.random() * 3)]); sfx('enemy_shoot', 0.6); e.cast = rand(4, 6); }
+}
+function updateKessel(e, dt) {
+  e.hit = Math.max(0, e.hit - dt); e.age += dt; e.tick -= dt;
+  const h = G.boss;
+  if (e.age >= 2 && e.tick <= 0 && h && h.type === 'hexe' && h.hp > 0 && !h.inv && h.phase !== 1.5 && !h.hidden && Math.hypot(h.x - e.x, h.y - e.y) < 300) {
+    e.tick = 0.25; h.hp = Math.min(h.maxHp, h.hp + 15); G.beams.push({ a: e, b: h, t: 0.25 });   // heilt etwa 60 Leben pro Sekunde
+  }
+  if (e.age < 2 && Math.random() < dt * 8) G.parts.push({ x: e.x + rand(-8, 8), y: e.y - 6, vx: rand(-10, 10), vy: -rand(20, 50), life: 0.6, color: 'rgba(200,230,200,.6)' });
 }
 function hexeHide(e) {   // in den Nebel: Bank an der Stelle, Hexe unsichtbar und unverwundbar
   e.mode = 'fog'; e.modeT = 0; e.hidden = true; e.ghT = 0.5;
@@ -2915,6 +3052,24 @@ function hexeGhoul() {
 }
 function updateHexeHazards(dt) {
   const p = G.player;
+  for (const rp of G.ripples) rp.t += dt;
+  G.ripples = G.ripples.filter(rp => rp.t < rp.life);
+  let burst = false;
+  for (const o of G.obstacles) {   // Sporenpilze wachsen, platzen zu groß oder wenn der Spieler hineinläuft; wer dann noch drin steht, ist verflucht
+    if (o.sty !== 'pilz') continue;
+    o.age += dt; o.r = 10 + 52 * Math.min(1, o.age / 7); o.x = o.cx - o.r; o.y = o.cy - o.r; o.w = o.h = o.r * 2;
+    if (!o.fuse && (Math.hypot(p.x - o.cx, p.y - o.cy) < o.r + 40 || o.age >= 7.5)) { o.fuse = 0.6; sfx('block', 0.3); }
+    if (o.fuse > 0) {
+      o.fuse -= dt;
+      if (o.fuse <= 0) {
+        const R = o.r + 55; o.gone = true; burst = true;
+        G.rings.push({ x: o.cx, y: o.cy, r: R, life: 0.3, max: 0.3 }); sfx('spell_explode', 0.6);
+        for (let k = 0; k < 18; k++) G.parts.push({ x: o.cx, y: o.cy, vx: rand(-180, 180), vy: rand(-180, 180), life: 0.5, color: Math.random() < 0.5 ? '#c898e0' : '#8a4a6a' });
+        if (Math.hypot(p.x - o.cx, p.y - o.cy) < R + p.r * 0.5) { G.curseT = 6; hurtPlayer(6, Math.atan2(o.cy - p.y, o.cx - p.x)); say('Verflucht'); }
+      }
+    }
+  }
+  if (burst) G.obstacles = G.obstacles.filter(o => !o.gone);
   for (const f of G.fogs) if (f.hexe) f.t = Math.min(1, f.t + dt * 2);
   for (const c of G.clouds) {   // Giftwolke: kurz Vorwarnung, dann Schaden über Zeit, wandert langsam zum Spieler
     c.t += dt;
@@ -2933,7 +3088,15 @@ function updateHexeHazards(dt) {
   // Irrlichter: nach 9 s vergehen sie, bei Berührung verschwinden sie
   for (const e of G.enemies) if (e.type === 'irrlicht') { e.life -= dt; if (e.life <= 0) e.hp = 0; if (e.melee > 0.5) e.hp = 0; }
 }
+function drawRipples() {
+  for (const rp of G.ripples) {
+    const k = rp.t / rp.life;
+    ctx.strokeStyle = 'rgba(180,230,230,' + 0.8 * (1 - k) + ')'; ctx.lineWidth = 3;
+    for (let i = 0; i < 2; i++) { const kk = clamp(k * 1.4 - i * 0.25, 0, 1); ctx.beginPath(); ctx.ellipse(rp.x, rp.y, 12 + 42 * kk, 6 + 21 * kk, 0, 0, 7); ctx.stroke(); }
+  }
+}
 function drawHexeHazards() {
+  drawRipples();
   for (const c of G.clouds) {
     if (!pointVisible(c.x, c.y) && c.t < c.warn) { }
     const a = c.t < c.warn ? 0.25 : Math.min(1, (c.life - c.t) / 1.5);
@@ -4286,7 +4449,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.60';
+const VERSION = 'v0.62';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
