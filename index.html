@@ -689,7 +689,7 @@ function newGame(cls, area) {
       dashT: 0, dashCd: 0, dashX: 0, dashY: -1, swingT: 0
     }
   };
-  recomputeStats();
+  recomputeStats(); G.rerolls = S.rerolls;
   const p = G.player;
   p.hp = S.maxHp; p.mag = S.magSize; p.mana = S.manaMax;
   G.camTop = p.y - VIEW_H * 0.78;
@@ -1359,9 +1359,9 @@ function say(t) { G.msg = t; G.msgT = 2.2; }
 
 // ---------- Kartenwahl ----------
 // Die Auswahl kommt aus dem Kartenbuch des Streiters: mehr Kopien = höhere Chance
-function rollOffers() {
-  const n = 3 + S.extraChoices;
-  const ids = [...new Set(G.library)];
+function rollOffers(exclude) {   // exclude: bisher gesehene Karten (beim Neuwurf)
+  const n = 3 + S.extraChoices, ex = (exclude || []).map(c => c.id);
+  const ids = [...new Set(G.library)].filter(id => !ex.includes(id));
   const out = [];
   while (out.length < n && ids.length) {
     const weights = ids.map(id => G.library.filter(x => x === id).length);
@@ -1369,7 +1369,14 @@ function rollOffers() {
     for (; idx < ids.length; idx++) { r -= weights[idx]; if (r <= 0) break; }
     out.push(CARD_BY_ID[ids.splice(Math.min(idx, ids.length - 1), 1)[0]]);
   }
+  for (const c of (exclude || [])) if (out.length < n && !out.includes(c)) out.push(c);   // zu wenig Neues: alte Karten füllen auf
   return out;
+}
+function rerollOffers() {   // Neuwurf: alle Karten ersetzen, die gerade gesehenen sind ausgeschlossen
+  if (!(G.rerolls > 0) || !G.offers.length) { sfx('empty_click'); return; }
+  const nw = rollOffers(G.offers);
+  if (nw.length === G.offers.length && nw.every(c => G.offers.includes(c))) { sfx('empty_click'); return; }   // nichts Neues im Deck
+  G.rerolls--; G.offers = nw; pickHover = -1; sfx('card_flip');
 }
 function openPick() {
   G.offers = rollOffers();
@@ -3825,7 +3832,8 @@ function drawRails() {
     text('deine erste Karte.', 1180, 166, 15, '#b8c4d0', 'center', F_TEXT);
   }
   ctx.fillStyle = '#9a7a3a'; ctx.fillRect(1092, 676, 176, 1);
-  text('Im Deck: ' + G.library.length + ' Karten', 1180, 700, 14, '#b8c4d0', 'center', F_TEXT);
+  text('Im Deck: ' + G.library.length + ' Karten', 1180, 694, 14, '#b8c4d0', 'center', F_TEXT);
+  text('Neuwurf: ' + (G.rerolls > 0 ? G.rerolls + ' übrig' : 'verbraucht'), 1180, 713, 13, G.rerolls > 0 ? '#4fd08a' : '#8a9aa0', 'center', F_TEXT);
 }
 
 function drawWallWarn() {   // Warnband der Pfeilwand: auch außerhalb des Sichtkegels zu sehen (liegt über der Dunkelheit)
@@ -3948,6 +3956,7 @@ function overlay(alpha) {
   ctx.fillStyle = 'rgba(2,5,4,' + alpha + ')'; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
 }
 function drawPickScreen() {
+  uiBtns = [];
   overlay(0.82);
   ctx.beginPath(); ctx.arc(640, 400, 330, 0, 7); ctx.strokeStyle = 'rgba(142,232,255,.3)'; ctx.setLineDash([8, 8]); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
   text('KARTENWAHL · ' + Math.floor(G.dist) + ' M', 640, 62, 19, '#8ee8ff', 'center', F_TEXT, '500');
@@ -3963,7 +3972,10 @@ function drawPickScreen() {
     drawCard(L.c, L.x, L.y + (hover ? -10 : 0), L.k, hover);
     text(String(i + 1), L.x + L.w / 2, L.y + L.h + 34, 18, hover ? '#f2c14e' : '#b8c4d0', 'center', F_TITLE);
   });
-  text('1 · 2 · 3' + (lay.length > 3 ? ' · 4' : '') + ' oder Klick  ·  Die Karte wirkt bis zum Ende des Durchlaufs  ·  Die Zeit steht still', 640, 660, 17, '#c8d4de', 'center', F_TEXT);
+  const rl = G.rerolls > 0;
+  uiButton(490, 594, 300, 44, rl ? 'Neu würfeln · ' + keyLabel(bind('reload')) + ' · ' + G.rerolls + ' übrig' : 'Neuwurf verbraucht', rerollOffers, { primary: rl, disabled: !rl, size: 16 });
+  if (rl) { ctx.save(); ctx.translate(506, 604); ctx.strokeStyle = '#2a1c08'; ctx.lineWidth = 1.8; rr(0, 0, 24, 24, 5); ctx.stroke(); ctx.fillStyle = '#2a1c08'; for (const [dx, dy] of [[7, 7], [17, 7], [12, 12], [7, 17], [17, 17]]) { ctx.beginPath(); ctx.arc(dx, dy, 1.8, 0, 7); ctx.fill(); } ctx.restore(); }
+  text('1 · 2 · 3' + (lay.length > 3 ? ' · 4' : '') + ' oder Klick  ·  ' + keyLabel(bind('reload')) + ': neu würfeln  ·  Die Zeit steht still', 640, 672, 16, '#c8d4de', 'center', F_TEXT);
 }
 
 // Charakterwahl
@@ -4937,7 +4949,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.82';
+const VERSION = 'v0.83';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -5802,6 +5814,7 @@ addEventListener('keydown', e => {
     if (e.code === bind('dash')) tryDash();
   }
   if (state === 'pick' && /^Digit[1-4]$/.test(e.code)) choosePick(Number(e.code.slice(5)) - 1);
+  if (state === 'pick' && e.code === bind('reload')) rerollOffers();
   if ((e.code === 'Escape' || e.code === 'KeyP') && (state === 'play' || state === 'pause')) { if (state === 'play') state = 'pause'; else resumeRun(); }
 });
 addEventListener('keyup', e => keys[e.code] = false);
@@ -5854,7 +5867,7 @@ canvas.addEventListener('mousedown', e => {
     return;
   }
   if (state === 'dead') { uiClick(); return; }
-  if (state === 'pick') { if (pickHover >= 0) choosePick(pickHover); return; }
+  if (state === 'pick') { if (uiClick()) return; if (pickHover >= 0) choosePick(pickHover); return; }
   mouse.down = true; mouse.pressed = true;
 });
 addEventListener('mouseup', e => { if (e.button === 0) { areaDrag = null; areaHold = null; if (packOpen) packOpen.drag = false; mouse.down = false; mouse.pressed = false; dragSlider = null; } if (e.button === 2) mouse.rdown = false; });
