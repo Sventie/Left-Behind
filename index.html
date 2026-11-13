@@ -119,6 +119,18 @@ const levelCap = () => 5 + 5 * AREAS.filter(a => SAVE.bossDownBy && SAVE.bossDow
 const accLevel = () => Math.min(levelCap(), levelRaw(SAVE.xp || 0));
 // ---------- Fähigkeiten (Skilltree) ----------
 // Stufe 1–5: Werte · Stufe 6–10 (Wald-Boss): Gabelung links Angriff / rechts Überleben · Stufe 11–15 (Moor-Boss): Besonderes. Ein Punkt je Konto-Stufe.
+// ---------- Gegnerstufe ----------
+// Jedes Gebiet startet höher; jede Kartenwahl (auch ohne Karte) bringt eine Stufe. Boss: feste Stufe. Endlos: doppelt so schnell.
+const AREA_STAGE = { wald: 0, moor: 3, schloss: 6, kerker: 10 };
+const PICKS_PER_AREA = 8;
+const bossStageOf = a => (AREA_STAGE[a.id] || 0) + PICKS_PER_AREA;
+function enemyStage() {
+  if (!G) return 0;
+  const s0 = AREA_STAGE[G.area.id] || 0;
+  if (G.bossOnly) return bossStageOf(G.area);
+  if (!G.bossSpawned) return s0 + Math.min(PICKS_PER_AREA, G.stage - 1);
+  return bossStageOf(G.area) + (G.endless ? 2 * Math.floor(Math.max(0, G.dist - G.bossDist) / G.pickStep) : 0);
+}
 const SKILLS = [
   { id: 'schaden', tier: 1, name: 'Schaden', text: '+4 % Schaden', max: 3, x: 330, y: 451, apply: (S, r) => { S.dmgMul *= 1 + 0.04 * r; } },
   { id: 'leben', tier: 1, name: 'Leben', text: '+6 % Leben', max: 3, x: 520, y: 451, apply: (S, r) => { S.maxHp = Math.round(S.maxHp * (1 + 0.06 * r)); } },
@@ -241,7 +253,7 @@ const DECK_SIZE = 12;
 // Wie oft eine Karte ins Deck darf, richtet sich nach der Seltenheit (eine Karte kann mit `limit` ein eigenes Limit bekommen)
 const DECK_LIMIT = { gewoehnlich: 4, selten: 3, episch: 2, legendaer: 1 };
 // Startsammlung: drei Karten (Lauftempo, Leben, Sichtkegel), je zweimal. Den Rest findest du in Kartenpacks der Bibliothek.
-const STARTER = { stiefel: 2, schild: 2, falke: 2 };
+const STARTER = { stiefel: 2, schild: 2, bolzen: 1, koecher: 1 };   // nur Karten der niedrigsten Seltenheit
 const START_SILVER = 150;
 const MERCHANT_PRICE = { gewoehnlich: 40, selten: 100, episch: 260, legendaer: 600 };
 const MERCHANT_DISCOUNT = 0.7;        // 30 % Rabatt
@@ -663,13 +675,13 @@ function stageLength(stage) { return 30 + Math.floor((stage - 1) / 3) * STAGE_ST
 function newGame(cls, area) {
   area = area || AREAS[0]; floorPattern = null;
   G = {
-    cls, area, bossDist: area.len, arenaTop: -area.len * PX_PER_M - VIEW_H / 3, arenaBuilt: false,
+    cls, area, bossDist: area.len, pickStep: area.len / (PICKS_PER_AREA + 0.5), stageBlink: 0, arenaTop: -area.len * PX_PER_M - VIEW_H / 3, arenaBuilt: false,
     time: 0, camTop: 0, genTop: 0,
     obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
     kills: 0, dist: 0,
     merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()),
-    stage: 1, stageStart: 0, nextPick: stageLength(1), atk: [], fires: [], fallen: [], ripples: [], curseT: 0, trails: [], hooks: [], pull: null, bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
+    stage: 1, stageStart: 0, nextPick: area.len / (PICKS_PER_AREA + 0.5), atk: [], fires: [], fallen: [], ripples: [], curseT: 0, trails: [], hooks: [], pull: null, bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
       x: WORLD_W / 2, y: -60, r: 14, hp: 1, angle: -Math.PI / 2,
@@ -736,10 +748,10 @@ function spawnType(type, x, y, alert) {   // fügt den Gegner und seine Begleite
 function makeEnemy(type, x, y, alert) {
   const t = ENEMY_TYPES[type], over = t.boss ? 0 : endlessLevel();
   const elite = !t.boss && (type === 'grunt' || type === 'rusher' || type === 'magier') && G.dist >= 300 && Math.random() < 0.07;
-  const hpK = (1 + over * 0.2) * (elite ? 3 : 1);
+  const st = t.boss ? 0 : enemyStage(), hpK = Math.pow(1.05, st) * (elite ? 3 : 1);   // je Stufe +5 % Leben, +2 % Schaden
   return {
     el: type === 'magier' ? (G.area.id === 'wald' ? 'feuer' : G.area.id === 'moor' ? 'gift' : ['feuer', 'frost', 'gift'][Math.floor(Math.random() * 3)]) : undefined,
-    type, x, y, r: t.r * (elite ? 1.25 : 1), hp: t.hp * hpK, maxHp: t.hp * hpK, dmgMul: (1 + over * 0.1) * (elite ? 1.3 : 1), elite,
+    type, x, y, r: t.r * (elite ? 1.25 : 1), hp: t.hp * hpK, maxHp: t.hp * hpK, dmgMul: Math.pow(1.02, st) * (elite ? 1.3 : 1), elite,
     angle: rand(-Math.PI, Math.PI),
     state: alert ? 'alert' : 'idle',
     reaction: alert ? 0.4 : 0.7,
@@ -1150,7 +1162,7 @@ function update(dt) {
     return;
   }
   if (G.goT > 0) G.goT -= dt;
-  G.time += dt; G.slowT = Math.max(0, G.slowT - dt); updateVenom(dt); updateDotFx(dt);
+  G.time += dt; if (G.stageBlink > 0) G.stageBlink -= dt; G.slowT = Math.max(0, G.slowT - dt); updateVenom(dt); updateDotFx(dt);
 
   // Bewegung (WASD) oder Windstoß
   let mx = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
@@ -1369,8 +1381,8 @@ function openPick() {
 }
 function advanceStage() {
   G.stageStart = G.nextPick;
-  G.stage++;
-  G.nextPick += Math.min(stageLength(G.stage), 80);
+  G.stage++; G.stageBlink = 2.5;
+  G.nextPick += G.pickStep;
 }
 function choosePick(i) {
   const card = G.offers[i];
@@ -1408,7 +1420,7 @@ let areaHold = null;   // Knopf „Nur Boss“ gedrückt gehalten: {id, t0}
 const bossTrainOpen = a => !!(SAVE.bossReached[a.id] || SAVE.bossDownBy[a.id]);
 function areaChoose(a, bossOnly) {
   if (!areaUnlocked(a) || !a.ready) return;
-  curArea = a; curBossOnly = !!bossOnly; selectHover = lastClass; state = 'select';
+  curArea = a; curBossOnly = !!bossOnly; selectHover = classLocked(lastClass) ? CLASSES.findIndex(c => c.id === 'waldlaeufer') : lastClass; state = 'select';
 }
 function areaKey(e) {
   const i = AREAS.findIndex(a => a.id === areaSel);
@@ -1585,11 +1597,14 @@ function selectLayout() {
   return CLASSES.map((c, i) => ({ c, i, x: x0 + i * (SEL.w + SEL.gap), y: SEL.y, w: SEL.w, h: SEL.h }));
 }
 let curArea = AREAS[0], curBossOnly = false;
+const classLocked = i => !!CLASSES[i] && CLASSES[i].id !== 'waldlaeufer';   // vorerst nur der Fernkämpfer
 function startRun(i) {
+  if (classLocked(i)) { sfx('empty_click'); return; }
   if (curBossOnly) { openBossCards(i); return; }
   lastClass = i;
   try { localStorage.setItem('left-behind-class', CLASSES[i].id); } catch (e) {}
   newGame(CLASSES[i], curArea);
+  G.banner = { t: 4.5, head: curArea.name.toUpperCase(), sub: 'Gegner: Stufe ' + enemyStage() + ' · mit jeder Kartenwahl werden sie stärker' };
   mouse.down = false; mouse.rdown = false;
   state = 'play';
 }
@@ -3699,14 +3714,21 @@ function drawRails() {
   ctx.textAlign = 'center'; ctx.fillStyle = silverGrad(30, 62); ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 4; ctx.fillText(sc, 58, 60); ctx.shadowBlur = 0;
   text(Math.floor(G.dist) + ' m', 58, 88, 22, '#f0e6c8', 'center', F_TITLE);
   text(G.kills + ' Gefallene', 58, 111, 15, '#c8d4de', 'center', F_TEXT);
+  { // Gegnerstufe
+    const es = enemyStage(), blink = G.stageBlink > 0 && Math.floor(G.time * 6) % 2 === 0;
+    rr(10, 120, 100, 54, 10); ctx.fillStyle = '#2a1618'; ctx.fill(); ctx.strokeStyle = '#ff7a5a'; ctx.lineWidth = 2; ctx.stroke();
+    text(G.bossSpawned && !G.endless ? 'BOSS' : 'GEGNER', 60, 138, 11, '#ff9a8a', 'center', F_TITLE);
+    text('Stufe ' + es, 60, 163, 22, '#ffb0a0', 'center', F_TITLE);
+    if (blink) text('▲', 98, 136, 12, '#ffd2c8', 'center', F_TEXT);
+  }
   if (G.endless) {   // Limit-Balken: gold = noch Punkte frei, rot = gesperrt, füllt sich beim Weiterlaufen
     const f = G.limitLock ? 1 - (G.limitLock - G.dist) / ENDLESS_UNLOCK_M : 1 - G.limitCount / ENDLESS_KILL_LIMIT;
-    rr(14, 118, 92, 6, 3); ctx.fillStyle = '#050a07'; ctx.fill();
-    rr(14, 118, Math.max(6, 92 * clamp(f, 0, 1)), 6, 3); ctx.fillStyle = G.limitLock ? '#d8584f' : '#f2c14e'; ctx.fill();
+    rr(14, 180, 92, 6, 3); ctx.fillStyle = '#050a07'; ctx.fill();
+    rr(14, 180, Math.max(6, 92 * clamp(f, 0, 1)), 6, 3); ctx.fillStyle = G.limitLock ? '#d8584f' : '#f2c14e'; ctx.fill();
   }
-  ctx.fillStyle = '#2e3e32'; ctx.fillRect(14, 130, 92, 1);
+  ctx.fillStyle = '#2e3e32'; ctx.fillRect(14, 192, 92, 1);
   // Entfernungsmesser bis zum Boss. Danach bleibt der Balken voll, die Marken (immer fünf, oben die letzte volle 100) rücken zur 0 hin.
-  const GY = 146, GH = 428, D = G.dist, maxPos = Math.max(G.bossDist, D), top = Math.max(G.bossDist, 100 * Math.floor(D / 100)), prog = clamp(D / G.bossDist, 0, 1);
+  const GY = 208, GH = 366, D = G.dist, maxPos = Math.max(G.bossDist, D), top = Math.max(G.bossDist, 100 * Math.floor(D / 100)), prog = clamp(D / G.bossDist, 0, 1);
   rr(49, GY, 22, GH, 11); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
   if (prog > 0) {
     const fh = Math.max(14, (GH - 8) * prog);
@@ -3720,7 +3742,7 @@ function drawRails() {
   const my = GY + GH - 2 - Math.min(1, D / maxPos) * (GH - 4);
   rr(4, my - 10, 42, 20, 10); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 1; ctx.stroke();
   text(String(Math.floor(G.dist)), 25, my + 4, 12, '#f0e6c8', 'center', F_TITLE);
-  text(G.bossSpawned && !G.endless ? 'ENDKAMPF' : 'NÄCHSTE KARTE', 60, 606, 10, '#b8c4d0', 'center', F_TITLE);
+  text(G.bossSpawned && !G.endless ? 'ENDKAMPF' : G.stage <= PICKS_PER_AREA ? 'KARTE ' + G.stage + ' VON ' + PICKS_PER_AREA : 'NÄCHSTE KARTE', 60, 606, 10, '#b8c4d0', 'center', F_TITLE);
   text(G.bossSpawned && !G.endless ? 'Boss' : 'bei ' + Math.ceil(G.nextPick) + ' m', 60, 630, 17, '#8ee8ff', 'center', F_TITLE);
   text('Rekord ' + Math.floor(best) + ' m', 60, 664, 15, '#b8c4d0', 'center', F_TEXT);
 
@@ -3860,7 +3882,7 @@ function drawFieldHUD() {
     ctx.beginPath(); ctx.arc(bx, by, G.boss.r + 10 + pul * 4, 0, 7); ctx.stroke();
     }
     const f = G.boss.hp / G.boss.maxHp;
-    text(G.area.boss.toUpperCase(), VIEW_W / 2, 24, 14, '#f0e6c8', 'center', F_TITLE);
+    text(G.area.boss.toUpperCase() + ' · STUFE ' + bossStageOf(G.area), VIEW_W / 2, 24, 14, '#f0e6c8', 'center', F_TITLE);
     rr(VIEW_W / 2 - 200, 32, 400, 12, 6); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
     rr(VIEW_W / 2 - 198, 34, Math.max(8, 396 * f), 8, 4); ctx.fillStyle = '#d9473f'; ctx.fill();
   }
@@ -3946,6 +3968,7 @@ function drawPickScreen() {
 
 // Charakterwahl
 function drawSelectScreen() {
+  uiBtns = [];
   let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
   g.addColorStop(0, '#0c1a2a'); g.addColorStop(0.5, '#12283a'); g.addColorStop(1, '#0a110d');
   ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
@@ -3961,7 +3984,7 @@ function drawSelectScreen() {
   ctx.shadowBlur = 0;
 
   selectLayout().forEach(L => {
-    const c = L.c, hover = selectHover === L.i;
+    const c = L.c, hover = selectHover === L.i && !classLocked(L.i);
     const lift = hover ? -10 : 0;
     ctx.save(); ctx.translate(L.x, L.y + lift);
     ctx.shadowColor = hover ? c.accent : 'rgba(0,0,0,.65)'; ctx.shadowBlur = hover ? 36 : 18; ctx.shadowOffsetY = hover ? 0 : 8;
@@ -4007,13 +4030,26 @@ function drawSelectScreen() {
     text(c.special, L.w / 2, 458, 14, '#6a3a1a', 'center', F_TEXT, 'bold');
     ctx.restore();
     text(String(L.i + 1), L.x + L.w / 2, L.y + L.h + 34, 18, hover ? '#f2c14e' : '#b8c4d0', 'center', F_TITLE);
+    if (classLocked(L.i)) {   // gesperrt: abgedunkelt mit Schloss
+      ctx.save(); ctx.translate(L.x, L.y); rr(0, 0, L.w, L.h, 14); ctx.fillStyle = 'rgba(6,10,8,.72)'; ctx.fill();
+      ctx.strokeStyle = '#c8a860'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(L.w / 2, 180, 30, 0, 7); ctx.fillStyle = '#1a1410'; ctx.fill(); ctx.stroke();
+      ctx.save(); ctx.translate(L.w / 2 - 15, 165); ctx.scale(1.25, 1.25); ctx.strokeStyle = '#c8a860'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke(new Path2D(ICONS.lock)); ctx.restore();
+      text('Bald verfügbar', L.w / 2, 250, 17, '#e8dcbc', 'center', F_TITLE); ctx.restore();
+    } else {
+      const lv = accLevel(), fp = skillPointsFree();
+      const label = 'Stufe ' + lv + (fp > 0 ? ' · ' + fp + (fp === 1 ? ' offener Punkt' : ' offene Punkte') : '');
+      ctx.font = '14px ' + F_TEXT; const tw = ctx.measureText(label).width + 28, bx = L.x + L.w / 2 - tw / 2, by = L.y + L.h + 70;
+      rr(bx, by, tw, 28, 14); ctx.fillStyle = fp > 0 ? '#143a28' : '#101a14'; ctx.fill(); ctx.strokeStyle = fp > 0 ? '#4fd08a' : '#9a7a3a'; ctx.lineWidth = 1.5; ctx.stroke();
+      text(label, L.x + L.w / 2, by + 19, 14, fp > 0 ? '#d0f0dc' : '#e8dcbc', 'center', F_TEXT);
+      uiHit(bx, by, tw, 28, () => openSkills('select'));
+    }
     const dn = deckOf(c).length;
     text('Deck ' + dn + ' / ' + DECK_SIZE, L.x + L.w / 2, L.y + L.h + 58, 15, dn < DECK_SIZE ? '#f2c14e' : '#8ee8ff', 'center', F_TEXT);
   });
   // Zurück
   rr(40, 36, 120, 40, 20); ctx.fillStyle = selectHover === -2 ? '#1e2c22' : '#101a14'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
   text('‹ Zurück', 100, 62, 17, '#e8dcbc', 'center', F_TITLE);
-  text('1 · 2 · 3 oder Klick  ·  Weitere Streiter folgen später', 640, 692, 17, '#c8d4de', 'center', F_TEXT);
+  text('Klick oder Enter  ·  Weitere Streiter folgen später', 640, 134, 16, '#c8d4de', 'center', F_TEXT);
 }
 
 // ---------- Kartenbuch (Sammlung) und Deck ----------
@@ -4695,7 +4731,7 @@ function drawSilverTotal(rx, y) {
 // ---------- Bildschirm „Fähigkeiten“ ----------
 let skillFrom = 'menu', skillHover = null;
 function openSkills(from) { skillFrom = from || 'menu'; skillHover = null; state = 'skills'; }
-function closeSkills() { state = skillFrom === 'dead' && G ? 'dead' : 'menu'; }
+function closeSkills() { state = skillFrom === 'dead' && G ? 'dead' : skillFrom === 'select' ? 'select' : 'menu'; }
 function drawSkillScreen() {
   uiBtns = [];
   let g = ctx.createLinearGradient(0, 0, 0, FRAME_H); g.addColorStop(0, '#0c1a2a'); g.addColorStop(0.5, '#12283a'); g.addColorStop(1, '#0a110d');
@@ -4901,7 +4937,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.81';
+const VERSION = 'v0.82';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -5812,6 +5848,7 @@ canvas.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
   if (state === 'menu') { const bt = boardTabRects.find(r => mouse.fx >= r.x && mouse.fx <= r.x + r.w && mouse.fy >= r.y && mouse.fy <= r.y + r.h); if (bt) { sfx('ui_click'); if (bt.id === 'open') openRanking('menu'); else boardTab = bt.id; return; } const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
   if (state === 'select') {
+    if (uiClick()) return;   // Stufe-Abzeichen → Fähigkeiten
     if (selectHover === -2) { state = 'areas'; return; }
     if (selectHover >= 0) { sfx('ui_click'); startRun(selectHover); }
     return;
