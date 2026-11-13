@@ -112,7 +112,7 @@ const AREAS = [
 const AREA_BY_ID = Object.fromEntries(AREAS.map(a => [a.id, a]));
 // ---------- Konto-Level ----------
 // 1 EP je Meter und die Punkte der Gegner (1 bis 20), auch beim Tod. Stufe n braucht XP_K · n^1,176 EP. Die Stufengrenze steigt mit jedem besiegten Boss um 5.
-const XP_K = 612, XP_P = 1.176;
+const XP_K = 551, XP_P = 1.176;   // 10 % niedriger als zuvor (612)
 const xpFor = L => Math.round(XP_K * Math.pow(L, XP_P));
 function levelRaw(xp) { let L = 0; while (xpFor(L + 1) <= xp) L++; return L; }
 const levelCap = () => 5 + 5 * AREAS.filter(a => SAVE.bossDownBy && SAVE.bossDownBy[a.id]).length;
@@ -123,6 +123,8 @@ const accLevel = () => Math.min(levelCap(), levelRaw(SAVE.xp || 0));
 // Jedes Gebiet startet höher; jede Kartenwahl (auch ohne Karte) bringt eine Stufe. Boss: feste Stufe. Endlos: doppelt so schnell.
 const AREA_STAGE = { wald: 0, moor: 3, schloss: 6, kerker: 10 };
 const PICKS_PER_AREA = 8;
+const ENEMY_HP_STEP = 1.065, ENEMY_DMG_STEP = 1.026;   // je Gegnerstufe: +6,5 % Leben, +2,6 % Schaden
+const bossDmgK = () => Math.pow(ENEMY_DMG_STEP, bossStageOf(G.area));   // Schadensfaktor der Bossangriffe (feste Bossstufe)
 const bossStageOf = a => (AREA_STAGE[a.id] || 0) + PICKS_PER_AREA;
 function enemyStage() {
   if (!G) return 0;
@@ -748,10 +750,10 @@ function spawnType(type, x, y, alert) {   // fügt den Gegner und seine Begleite
 function makeEnemy(type, x, y, alert) {
   const t = ENEMY_TYPES[type], over = t.boss ? 0 : endlessLevel();
   const elite = !t.boss && (type === 'grunt' || type === 'rusher' || type === 'magier') && G.dist >= 300 && Math.random() < 0.07;
-  const st = t.boss ? bossStageOf(G.area) : enemyStage(), hpK = Math.pow(1.05, st) * (elite ? 3 : 1);   // je Stufe +5 % Leben, +2 % Schaden
+  const st = t.boss ? bossStageOf(G.area) : enemyStage(), hpK = Math.pow(ENEMY_HP_STEP, st) * (elite ? 3 : 1);
   return {
     el: type === 'magier' ? (G.area.id === 'wald' ? 'feuer' : G.area.id === 'moor' ? 'gift' : ['feuer', 'frost', 'gift'][Math.floor(Math.random() * 3)]) : undefined,
-    type, x, y, r: t.r * (elite ? 1.25 : 1), hp: t.hp * hpK, maxHp: t.hp * hpK, dmgMul: Math.pow(1.02, st) * (elite ? 1.3 : 1), elite, bossK: t.boss ? hpK : 1,
+    type, x, y, r: t.r * (elite ? 1.25 : 1), hp: t.hp * hpK, maxHp: t.hp * hpK, dmgMul: Math.pow(ENEMY_DMG_STEP, st) * (elite ? 1.3 : 1), elite, bossK: t.boss ? hpK : 1,
     angle: rand(-Math.PI, Math.PI),
     state: alert ? 'alert' : 'idle',
     reaction: alert ? 0.4 : 0.7,
@@ -1929,7 +1931,6 @@ function hurtPlayer(d, srcAngle) {
     spark(p.x + Math.cos(p.angle) * 18, p.y + Math.sin(p.angle) * 18, '#fff3c8');
     if (d < 1) return;
   }
-  if (G.boss && G.boss.hp > 0 && !G.endless) d *= Math.pow(1.02, bossStageOf(G.area));   // Bosskampf: Schaden passend zur festen Bossstufe
   p.hp -= d;
   G.hurtT = 0.35; G.shakeT = 0.25;
   sfx('player_hurt');
@@ -2703,7 +2704,7 @@ function drawSkeleton(e) {
 
 // ---------- Angriffe der Bosse: Warnung, dann Treffer ----------
 // kind: 'debris' (Trümmer), 'wedge' (Hieb), 'wave' (Schockwelle), 'circle' (Landung), 'lane' (Sturmbahn, nur Warnung)
-function addAtk(o) { o.t = 0; G.atk.push(o); return o; }
+function addAtk(o) { o.t = 0; if (o.dmg && !o.owner) o.dmg *= bossDmgK(); G.atk.push(o); return o; }   // Bossangriffe (ohne Besitzer) skalieren mit der Bossstufe
 function fellPillar(o, fx, fy) {   // Säule fällt um (genau von der Quelle weg) und bleibt als schräges Hindernis liegen
   const i = G.obstacles.indexOf(o); if (i < 0) return;
   G.obstacles.splice(i, 1);
@@ -2901,7 +2902,7 @@ function bogenArena() {   // Boss-Arena im Wald: nur 6 bis 8 Bäume, locker im K
 // Angriffe: Dreierschuss, Fächerschuss, Pfeilregen, Kreissalve, Pfeilwand, Scharfschuss, Brandpfeile (zufällig nach Gewicht, nie zweimal derselbe).
 const BOGEN_ATK = [['dreier', 20], ['faecher', 17], ['regen', 13], ['kreis', 12], ['wand', 8], ['scharf', 15], ['brand', 28]];
 const bogenStage = e => e.hp > e.maxHp * 0.66 ? 0 : e.hp > e.maxHp * 0.33 ? 1 : 2;   // Druck steigt in Stufen, keine Phase
-function bogenArrow(e, ang, sp, dmg, extra) { addBullet(e.x + Math.cos(ang) * e.r, e.y + Math.sin(ang) * e.r, ang, sp * (1 + 0.12 * bogenStage(e)), dmg, 'enemy', 4000, 0, Object.assign({ rad: 7, big: true, cull: true }, extra || {})); }   // fliegt über die ganze Karte, bis er den Rand verlässt
+function bogenArrow(e, ang, sp, dmg, extra) { addBullet(e.x + Math.cos(ang) * e.r, e.y + Math.sin(ang) * e.r, ang, sp * (1 + 0.12 * bogenStage(e)), dmg * bossDmgK(), 'enemy', 4000, 0, Object.assign({ rad: 7, big: true, cull: true }, extra || {})); }   // fliegt über die ganze Karte, bis er den Rand verlässt
 function bogenPick(e) {
   const list = BOGEN_ATK.filter(w => w[0] !== e.last), tot = list.reduce((s, w) => s + w[1], 0);
   let r = Math.random() * tot;
@@ -2957,7 +2958,7 @@ function bogenStart(e, name) {
     e.act.ring = ring; ring(0, 0); e.act.dur = 2.1;
   } else if (name === 'wand') {
     const gx = clamp(p.x - 65 + rand(-160, 160), 20, WORLD_W - 150), y0 = G.camTop;
-    addAtk({ kind: 'tele', shape: 'band', y: y0, h: 70, gx, gw: 130, T: 1.0, fire: () => { for (let x = 20; x < WORLD_W; x += 40) { if (x > gx - 10 && x < gx + 140) continue; addBullet(x, y0 + 10, Math.PI / 2, 230 * (1 + 0.12 * stg), 12, 'enemy', 4000, 0, { rad: 6, big: true, cull: true, over: true }); } sfx('enemy_shoot', 0.9); } });
+    addAtk({ kind: 'tele', shape: 'band', y: y0, h: 70, gx, gw: 130, T: 1.0, fire: () => { for (let x = 20; x < WORLD_W; x += 40) { if (x > gx - 10 && x < gx + 140) continue; addBullet(x, y0 + 10, Math.PI / 2, 230 * (1 + 0.12 * stg), 12 * bossDmgK(), 'enemy', 4000, 0, { rad: 6, big: true, cull: true, over: true }); } sfx('enemy_shoot', 0.9); } });
     e.act.dur = 1.3;
   } else if (name === 'scharf') {
     const t = addAtk({ kind: 'tele', shape: 'lane', x: e.x, y: e.y, ang, len: 700, w: 26, T: 1.2, lock: 0.25, follow: a => { a.ang = Math.atan2(p.y - e.y, p.x - e.x); e.angle = a.ang; }, fire: a => { bogenArrow(e, a.ang, 1000, 30, { through: true, rad: 9 }); sfx('enemy_shoot', 1); G.shakeT = Math.max(G.shakeT, 0.1); } });
@@ -2982,14 +2983,14 @@ function bogenAct(e, dt) {
   else if (a.name === 'regen') {
     while (a.n < 4 && a.t >= 0.3 + a.n * 0.5) {
       a.n++; const q = a.predict(0.9 + a.n * 0.1);
-      addAtk({ kind: 'tele', shape: 'circle', x: q.x, y: q.y, r: 44, T: 0.9, fire: t => { sfx('hit_enemy', 0.5); for (let k = 0; k < 6; k++) G.parts.push({ x: t.x, y: t.y, vx: rand(-100, 100), vy: rand(-100, 100), life: 0.3, color: '#e8dcb8' }); if (Math.hypot(p.x - t.x, p.y - t.y) < t.r + p.r * 0.5) hurtPlayer(14, Math.atan2(t.y - p.y, t.x - p.x)); } });
+      addAtk({ kind: 'tele', shape: 'circle', x: q.x, y: q.y, r: 44, T: 0.9, fire: t => { sfx('hit_enemy', 0.5); for (let k = 0; k < 6; k++) G.parts.push({ x: t.x, y: t.y, vx: rand(-100, 100), vy: rand(-100, 100), life: 0.3, color: '#e8dcb8' }); if (Math.hypot(p.x - t.x, p.y - t.y) < t.r + p.r * 0.5) hurtPlayer(14 * bossDmgK(), Math.atan2(t.y - p.y, t.x - p.x)); } });
     }
   } else if (a.name === 'kreis') { if (a.t >= 1.0 && !a.r2) { a.r2 = true; a.ring(0, 0.5); } }
   else if (a.name === 'brand') {
     while (a.n < 3 && a.t >= 0.2 + a.n * 0.45) {
       const ang = a.th + a.n * 2.094, q0 = a.predict(0.6), q = { x: clamp(q0.x + Math.cos(ang) * 90, 50, WORLD_W - 50), y: clamp(q0.y + Math.sin(ang) * 90, G.camTop + 40, G.camTop + VIEW_H - 40) };
       a.n++;
-      addAtk({ kind: 'tele', shape: 'circle', style: 'brand', x: q.x, y: q.y, r: 40, T: 0.8, fire: t => { sfx('hit_enemy', 0.6); G.fires.push({ x: t.x, y: t.y, r: 46, t: 0, life: 20, tick: 0.2 }); if (Math.hypot(p.x - t.x, p.y - t.y) < t.r + p.r * 0.5) hurtPlayer(10, Math.atan2(t.y - p.y, t.x - p.x)); } });
+      addAtk({ kind: 'tele', shape: 'circle', style: 'brand', x: q.x, y: q.y, r: 40, T: 0.8, fire: t => { sfx('hit_enemy', 0.6); G.fires.push({ x: t.x, y: t.y, r: 46, t: 0, life: 20, tick: 0.2 }); if (Math.hypot(p.x - t.x, p.y - t.y) < t.r + p.r * 0.5) hurtPlayer(10 * bossDmgK(), Math.atan2(t.y - p.y, t.x - p.x)); } });
     }
   }
   const more = e.queue && e.queue.length;
@@ -3084,7 +3085,7 @@ function updateHerrAct(e, dt) {
     else if (!a.stun) {
       e.crouch = 0; e.angle = a.ang;
       const sp = ph2 ? 640 : 520, mv = moveCircle(e, Math.cos(a.ang) * sp * dt, Math.sin(a.ang) * sp * dt); a.run = (a.run || 0) + mv;
-      if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + p.r + 4 && !a.hurt) { a.hurt = true; hurtPlayer(32, a.ang); }
+      if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + p.r + 4 && !a.hurt) { a.hurt = true; hurtPlayer(32 * bossDmgK(), a.ang); }
       const cols = pillarsIn(e.x, e.y, e.r + 14, null, null);
       if (cols.length) { for (const o of cols) fellPillar(o, e.x - Math.cos(a.ang) * 30, e.y - Math.sin(a.ang) * 30); a.stun = true; e.stun = ph2 ? 1.0 : 2.0; e.act = null; e.cool = 0.4; sfx('hit_enemy', 0.9); return; }
       if (a.run > 640 || mv < sp * dt * 0.35) { e.act = null; e.cool = ph2 ? 0.4 : 0.7; if (e.cyc === 'endsturm') e.cyc = 'stoss'; }
@@ -3185,7 +3186,7 @@ function hexeSpell(e, a) {
     addAtk({ kind: 'tele', shape: 'circle', style: 'kessel', x: kx, y: ky, r: 50, T: 1.1, fire: t => {
       sfx('block', 1); G.shakeT = Math.max(G.shakeT, 0.25);
       for (let k = 0; k < 14; k++) G.parts.push({ x: t.x, y: t.y, vx: rand(-150, 150), vy: rand(-150, 150), life: 0.4, color: '#8a8e96' });
-      if (Math.hypot(p.x - t.x, p.y - t.y) < t.r + p.r * 0.5) hurtPlayer(22, Math.atan2(t.y - p.y, t.x - p.x));
+      if (Math.hypot(p.x - t.x, p.y - t.y) < t.r + p.r * 0.5) hurtPlayer(22 * bossDmgK(), Math.atan2(t.y - p.y, t.x - p.x));
       const k = makeEnemy('kessel', t.x, t.y, true); k.in = true; k.age = 0; k.tick = 0; G.enemies.push(k);
     } });
   } else if (a === 'pilze') {   // Sporenpilze wachsen an zufälligen Stellen
@@ -3202,7 +3203,7 @@ function hexeSpell(e, a) {
     const base = Math.atan2(p.y - e.y, p.x - e.x);
     for (const [ox, oy] of [[-120, rand(-20, 20)], [120, rand(-20, 20)], [Math.random() < 0.5 ? -190 : 190, rand(-60, 60)]]) {
       const sx = clamp(e.x + ox, 30, WORLD_W - 30), sy = clamp(e.y + oy, G.camTop + 30, G.camTop + VIEW_H - 30), sp = makeEnemy('irrlicht', sx, sy, true);
-      sp.in = true; sp.dmgMul = 1; sp.angle = base; sp.life = 9; G.enemies.push(sp);
+      sp.in = true; sp.angle = base; sp.life = 9; G.enemies.push(sp);
     }
   } else {
     const warn = (ph2 ? 0.9 : 1.3) - cur;   // in Phase 2 kommen die Hände schneller aus dem Boden
@@ -3355,7 +3356,7 @@ function updateHexeHazards(dt) {
         const R = o.r + 55; o.gone = true; burst = true;
         G.rings.push({ x: o.cx, y: o.cy, r: R, life: 0.3, max: 0.3 }); sfx('spell_explode', 0.6);
         for (let k = 0; k < 18; k++) G.parts.push({ x: o.cx, y: o.cy, vx: rand(-180, 180), vy: rand(-180, 180), life: 0.5, color: Math.random() < 0.5 ? '#c898e0' : '#8a4a6a' });
-        if (Math.hypot(p.x - o.cx, p.y - o.cy) < R + p.r * 0.5) { G.curseT = 6; hurtPlayer(6, Math.atan2(o.cy - p.y, o.cx - p.x)); say('Verflucht'); }
+        if (Math.hypot(p.x - o.cx, p.y - o.cy) < R + p.r * 0.5) { G.curseT = 6; hurtPlayer(6 * bossDmgK(), Math.atan2(o.cy - p.y, o.cx - p.x)); say('Verflucht'); }
       }
     }
   }
@@ -3370,7 +3371,7 @@ function updateHexeHazards(dt) {
     h.t -= dt;
     if (h.t <= 0 && !h.done) {
       h.done = true; h.show = 0.5; sfx('hit_enemy', 0.6);
-      if (Math.hypot(p.x - h.x, p.y - h.y) < h.r + p.r * 0.5) { G.rootT = 1.0; hurtPlayer(8, Math.atan2(h.y - p.y, h.x - p.x)); }
+      if (Math.hypot(p.x - h.x, p.y - h.y) < h.r + p.r * 0.5) { G.rootT = 1.0; hurtPlayer(8 * bossDmgK(), Math.atan2(h.y - p.y, h.x - p.x)); }
     }
     if (h.done) h.show -= dt;
   }
@@ -4950,7 +4951,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.84';
+const VERSION = 'v0.85';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
