@@ -61,7 +61,11 @@ const BASE = {                          // Basiswerte, Klasse und Karten veränd
   pierce: 0,                            // durchschlagene Gegner
   chain: 0,                             // Kettenblitz-Ziele
   dash: false,                          // Windstoß freigeschaltet
-  extraChoices: 0                       // zusätzliche Karte in der Wahl
+  extraChoices: 0,                      // zusätzliche Karte in der Wahl
+  rateMul: 1.0,                         // Feuerrate (Fähigkeiten)
+  dashMul: 1.0,                         // Abklingzeit des Windstoßes
+  priceMul: 1.0,                        // Händlerpreise
+  rerolls: 1                            // Neuwürfe der Kartenwahl pro Lauf
 };
 const WEAPONS = {
   schwert:  { type: 'melee',  name: 'Langschwert',      damage: 38, interval: 0.55, reach: 62, arc: 110, swing: 0.18 },
@@ -106,6 +110,45 @@ const AREAS = [
   { id: 'kerker', name: 'Der Kerker', sub: 'Tief unten, ohne Himmel und ohne Gnade.', boss: 'Kerkermeister', len: 700, ready: false, x: 800, y: 235, after: 'schloss', need: 'Boss im Schloss besiegen' }
 ];
 const AREA_BY_ID = Object.fromEntries(AREAS.map(a => [a.id, a]));
+// ---------- Konto-Level ----------
+// 1 EP je Meter und je Gefallenem, auch beim Tod. Stufe n braucht XP_K · n^1,176 EP. Die Stufengrenze steigt mit jedem besiegten Boss um 5.
+const XP_K = 612, XP_P = 1.176;
+const xpFor = L => Math.round(XP_K * Math.pow(L, XP_P));
+function levelRaw(xp) { let L = 0; while (xpFor(L + 1) <= xp) L++; return L; }
+const levelCap = () => 5 + 5 * AREAS.filter(a => SAVE.bossDownBy && SAVE.bossDownBy[a.id]).length;
+const accLevel = () => Math.min(levelCap(), levelRaw(SAVE.xp || 0));
+// ---------- Fähigkeiten (Skilltree) ----------
+// Stufe 1–5: Werte · Stufe 6–10 (Wald-Boss): Gabelung links Angriff / rechts Überleben · Stufe 11–15 (Moor-Boss): Besonderes. Ein Punkt je Konto-Stufe.
+const SKILLS = [
+  { id: 'schaden', tier: 1, name: 'Schaden', text: '+4 % Schaden', max: 3, x: 330, y: 451, apply: (S, r) => { S.dmgMul *= 1 + 0.04 * r; } },
+  { id: 'leben', tier: 1, name: 'Leben', text: '+6 % Leben', max: 3, x: 520, y: 451, apply: (S, r) => { S.maxHp = Math.round(S.maxHp * (1 + 0.06 * r)); } },
+  { id: 'tempo', tier: 1, name: 'Lauftempo', text: '+2 % Tempo', max: 3, x: 710, y: 451, apply: (S, r) => { S.moveSpeed *= 1 + 0.02 * r; } },
+  { id: 'rate', tier: 1, name: 'Schussrate', text: '+3 % Feuerrate', max: 3, x: 330, y: 356, apply: (S, r) => { S.rateMul *= 1 + 0.03 * r; } },
+  { id: 'laden', tier: 1, name: 'Nachladen', text: '−4 % Ladezeit', max: 3, x: 520, y: 356, apply: (S, r) => { S.reloadMul *= 1 - 0.04 * r; } },
+  { id: 'sicht', tier: 1, name: 'Sicht', text: '+3 % Weite', max: 3, x: 710, y: 356, apply: (S, r) => { S.rangeMul *= 1 + 0.03 * r; } },
+  { id: 'angriff', tier: 2, side: 'L', name: 'Angriff', text: '+8 % Schaden', max: 3, x: 400, y: 241, apply: (S, r) => { S.dmgMul *= 1 + 0.08 * r; } },
+  { id: 'scharf', tier: 2, side: 'L', name: 'Scharfschütze', text: '−8 % Streuung', max: 3, x: 400, y: 160, apply: (S, r) => { S.spreadMul *= 1 - 0.08 * r; } },
+  { id: 'ueber', tier: 2, side: 'R', name: 'Überleben', text: '+12 % Leben', max: 3, x: 640, y: 241, apply: (S, r) => { S.maxHp = Math.round(S.maxHp * (1 + 0.12 * r)); } },
+  { id: 'wander', tier: 2, side: 'R', name: 'Zäher Läufer', text: 'Windstoß −8 % Pause', max: 3, x: 640, y: 160, apply: (S, r) => { S.dashMul *= 1 - 0.08 * r; } },
+  { id: 'neuwurf', tier: 3, name: 'Zweiter Wurf', text: 'Neuwurf +1 je Lauf', max: 1, x: 400, y: 76, apply: (S, r) => { S.rerolls += r; } },
+  { id: 'rabatt', tier: 3, name: 'Feilscher', text: 'Händler −10 % Preis', max: 1, x: 640, y: 76, apply: (S, r) => { S.priceMul *= 1 - 0.1 * r; } }
+];
+const SKILL_BY_ID = Object.fromEntries(SKILLS.map(k => [k.id, k]));
+const TIER_NEED = { 1: 0, 2: 10, 3: 15 };   // nötige Stufengrenze (also besiegte Bosse)
+const skillRank = id => (SAVE.skills && SAVE.skills[id]) || 0;
+const skillPointsSpent = () => SKILLS.reduce((a, k) => a + skillRank(k.id), 0);
+const skillPointsFree = () => Math.max(0, accLevel() - skillPointsSpent());
+function skillLock(k) {   // null = frei, sonst Grund
+  if (levelCap() < TIER_NEED[k.tier]) return TIER_NEED[k.tier] === 10 ? 'Wald-Boss besiegen' : 'Moor-Boss besiegen';
+  if (k.side && SKILLS.some(o => o.side && o.side !== k.side && skillRank(o.id) > 0)) return 'andere Seite gewählt';
+  return null;
+}
+function skillBuy(k) {
+  if (skillLock(k) || skillRank(k.id) >= k.max || skillPointsFree() <= 0) return;
+  SAVE.skills[k.id] = skillRank(k.id) + 1; persist(); sfx('card_pick');
+}
+function skillReset() { SAVE.skills = {}; persist(); sfx('ui_click'); }
+function applySkills(S) { for (const k of SKILLS) { const r = skillRank(k.id); if (r > 0) k.apply(S, r); } }
 const areaUnlocked = a => !a.after || !!(SAVE.bossDownBy && SAVE.bossDownBy[a.after]);
 // Punkte pro besiegtem Gegner (Rangliste); später je Gegner anders
 // Punkte und Mondsilber pro Gefallenem sind gleich
@@ -240,6 +283,8 @@ function loadSave() {
   if (typeof sv.silver !== 'number') sv.silver = START_SILVER;
   sv.maxStage = sv.maxStage || 1;
   sv.bossReached = sv.bossReached || {};   // je Gebiet: in einem echten Lauf bis zum Boss gekommen (schaltet „Nur Boss“ frei)
+  sv.xp = Math.max(0, Number(sv.xp) || 0);   // Erfahrung des Kontos (EP)
+  sv.skills = sv.skills || {};   // Fähigkeiten: Knoten-Id → Rang
   sv.bossDownBy = sv.bossDownBy || {};   // je Gebiet: Boss besiegt
   if (sv.bossDown) sv.bossDownBy.wald = true;   // ältere Spielstände: der erste Boss ist der im Wald
   sv.records = sv.records || {};   // je Gebiet: bester Weg und beste Punktzahl
@@ -424,7 +469,7 @@ const MUSIC_DEFS = {
 function musicFor(st) {
   if (!gestureDone) return;
   if (['options', 'controls', 'feedback'].includes(st)) return;
-  const want = ['menu', 'select', 'areas', 'bosscards', 'ranking', 'intro', 'book', 'deck', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause', 'victory'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
+  const want = ['menu', 'select', 'areas', 'bosscards', 'ranking', 'skills', 'intro', 'book', 'deck', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause', 'victory'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
   if (MUSIC.name === want) return;
   stopMusic(); MUSIC.name = want;
   if (!want) return;
@@ -609,6 +654,7 @@ const isMeditating = () => state === 'play' && wtype() === 'spell' && mouse.rdow
 
 function recomputeStats() {
   S = Object.assign({}, BASE, G.cls.base);
+  applySkills(S);
   for (const id of G.cards) CARD_BY_ID[id].apply(S);
   for (const id of G.buffs || []) BUFF_BY_ID[id].apply(S);
 }
@@ -915,7 +961,7 @@ function makeMerchantOffers() {
       const it = pickByRarity(pool, rollRarityKey(odds), used);
       if (!it) break;
       used.push(it);
-      out.push({ kind, item: it, price: Math.round(MERCHANT_PRICE[it.rarity] * (kind === 'buff' ? 0.6 : 1)), sold: false });
+      out.push({ kind, item: it, price: Math.round(MERCHANT_PRICE[it.rarity] * (kind === 'buff' ? 0.6 : 1) * S.priceMul), sold: false });
     }
     if (out.length) { const d = out[Math.floor(Math.random() * out.length)]; d.old = d.price; d.price = Math.round(d.price * MERCHANT_DISCOUNT); }
     return out;
@@ -1027,7 +1073,7 @@ function playerAttack() {
     const a = p.aim + (Math.random() + Math.random() - 1) * currentSpread() * deg;
     addBullet(p.x, p.y, a, w.speed, w.damage * S.dmgMul, 'player', w.range, S.pierce);
     p.mag--;
-    p.cooldown = w.interval;
+    p.cooldown = w.interval / S.rateMul;
     p.bloom = Math.min(w.bloomMax, p.bloom + w.bloomPerShot);
     muzzle(a, '#ffe9a8');
     sfx('shoot_crossbow');
@@ -1038,7 +1084,7 @@ function playerAttack() {
     p.mana -= w.cost; p.manaDelay = w.regenDelay;
     const a = p.aim + (Math.random() + Math.random() - 1) * currentSpread() * deg;
     addBullet(p.x, p.y, a, w.speed, w.damage * S.dmgMul, 'player', w.range, S.pierce, { spell: true, splash: w.splash * S.splashMul });
-    p.cooldown = w.interval;
+    p.cooldown = w.interval / S.rateMul;
     p.bloom = Math.min(w.bloomMax, p.bloom + w.bloomPerShot);
     muzzle(a, '#c9c0ff');
     sfx('shoot_spell');
@@ -1053,7 +1099,7 @@ function muzzle(a, color) {
 }
 function meleeSwing() {
   const p = G.player, w = W();
-  p.cooldown = w.interval; p.swingT = w.swing;
+  p.cooldown = w.interval / S.rateMul; p.swingT = w.swing;
   sfx('sword_swing');
   const reach = w.reach * S.reachMul, arc = (w.arc + S.arcAdd) * deg;
   for (const e of G.enemies) {
@@ -1087,7 +1133,7 @@ function tryDash() {
   if (!mx && !my) { mx = Math.cos(p.angle); my = Math.sin(p.angle); }
   const l = Math.hypot(mx, my);
   p.dashX = mx / l; p.dashY = my / l;
-  p.dashT = DASH.time; p.dashCd = DASH.cooldown;
+  p.dashT = DASH.time; p.dashCd = DASH.cooldown * S.dashMul;
   sfx('dash');
   for (let i = 0; i < 10; i++) G.parts.push({ x: p.x, y: p.y, vx: rand(-60, 60) - p.dashX * 100, vy: rand(-60, 60) - p.dashY * 100, life: 0.35, color: '#9af0c0' });
 }
@@ -1991,6 +2037,7 @@ function finishRun() {
   if (G.finished) return;
   G.finished = true;
   if (G.bossOnly) { G.earned = 0; return; }   // Boss-Training: kein Mondsilber, kein Rekord, keine Rangliste
+  G.lvBefore = accLevel(); G.xpGain = Math.floor(G.dist) + G.kills; SAVE.xp = (SAVE.xp || 0) + G.xpGain; G.lvAfter = accLevel();   // Erfahrung: 1 EP je Meter und Gefallenem, auch beim Tod
   G.earned = Math.max(0, Math.round(G.dist + G.killSilver) - G.spent);   // 1 Mondsilber pro Meter, je Gefallenem wie die Punkte, abzüglich Händler
   SAVE.silver += G.earned;
   SAVE.maxStage = Math.max(SAVE.maxStage || 1, G.stage);
@@ -4645,17 +4692,97 @@ function drawSilverTotal(rx, y) {
   text('davon ' + runSilver() + ' aus diesem Lauf', rx, y + 56, 13, '#8a9aa0', 'right', F_TEXT, 'italic');
 }
 
+// ---------- Bildschirm „Fähigkeiten“ ----------
+let skillFrom = 'menu', skillHover = null;
+function openSkills(from) { skillFrom = from || 'menu'; skillHover = null; state = 'skills'; }
+function closeSkills() { state = skillFrom === 'dead' && G ? 'dead' : 'menu'; }
+function drawSkillScreen() {
+  uiBtns = [];
+  let g = ctx.createLinearGradient(0, 0, 0, FRAME_H); g.addColorStop(0, '#0c1a2a'); g.addColorStop(0.5, '#12283a'); g.addColorStop(1, '#0a110d');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  for (const st of stars) { ctx.fillStyle = 'rgba(255,255,255,' + st[3] * 0.6 + ')'; ctx.fillRect(st[0], st[1], st[2], st[2]); }
+  g = ctx.createRadialGradient(640, 420, 100, 640, 420, 700); g.addColorStop(0, 'rgba(60,110,120,.2)'); g.addColorStop(1, 'rgba(2,5,4,.7)'); ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  kicker('HAUPTMENÜ · FÄHIGKEITEN', 40, 32, 'left');
+  titleText('Fähigkeiten', 40, 76, 40, 'left');
+  uiButton(1130, 36, 110, 40, 'Zurück', closeSkills, { size: 15 });
+  const lv = accLevel(), cap = levelCap(), xp = SAVE.xp || 0, free = skillPointsFree();
+  // linke Leiste
+  rr(40, 96, 250, 560, 14); ctx.fillStyle = '#101a14'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
+  text('Stufe ' + lv, 54, 148, 38, '#f2c14e', 'left', F_TITLE);
+  text('Konto-Level, für alle Streiter', 54, 170, 13, '#8a9aa0', 'left', F_TEXT);
+  const atCap = lv >= cap, lo = xpFor(lv), hi = xpFor(lv + 1), fr = atCap ? 1 : clamp((xp - lo) / (hi - lo), 0, 1);
+  rr(54, 182, 222, 14, 7); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 1.5; ctx.stroke();
+  if (fr > 0.02) { rr(55, 183, 220 * fr, 12, 6); const bg = ctx.createLinearGradient(0, 183, 0, 195); bg.addColorStop(0, '#8ee8ff'); bg.addColorStop(1, '#4a90c8'); ctx.fillStyle = bg; ctx.fill(); }
+  text(atCap ? 'Stufengrenze erreicht' : xp.toLocaleString('de-DE') + ' / ' + hi.toLocaleString('de-DE') + ' EP bis Stufe ' + (lv + 1), 54, 216, 13, atCap ? '#f2c14e' : '#c8d4de', 'left', F_TEXT);
+  rr(54, 232, 222, 52, 10); ctx.fillStyle = free ? '#1a2a1e' : '#101a14'; ctx.fill(); ctx.strokeStyle = free ? '#4fd08a' : '#2e3e32'; ctx.lineWidth = 1.5; ctx.stroke();
+  text(free ? free + (free === 1 ? ' Punkt offen' : ' Punkte offen') : 'Keine Punkte offen', 66, 254, 16, free ? '#4fd08a' : '#8a9aa0', 'left', F_TITLE);
+  text(lv + ' erspielt, ' + skillPointsSpent() + ' verteilt', 66, 274, 12.5, '#c8d4de', 'left', F_TEXT);
+  text('Stufengrenze', 54, 318, 14, '#f2c14e', 'left', F_TITLE);
+  [['Jetzt bis Stufe ' + cap, '#f0e6c8'], ['Wald-Boss: bis 10', SAVE.bossDownBy.wald ? '#4fd08a' : '#8a9aa0'], ['Moor-Boss: bis 15', SAVE.bossDownBy.moor ? '#4fd08a' : '#8a9aa0'], ['Schloss-Boss: bis 20', SAVE.bossDownBy.schloss ? '#4fd08a' : '#8a9aa0'], ['Kerker-Boss: bis 25', SAVE.bossDownBy.kerker ? '#4fd08a' : '#8a9aa0']].forEach((l, i) => text(l[0], 54, 342 + i * 20, 13.5, l[1], 'left', F_TEXT));
+  text('EP bekommen', 54, 460, 14, '#f2c14e', 'left', F_TITLE);
+  ['1 EP je Meter', '1 EP je Gefallenem', 'auch beim Tod'].forEach((l, i) => text(l, 54, 484 + i * 20, 13.5, '#c8d4de', 'left', F_TEXT));
+  uiButton(54, 592, 222, 46, 'Zurücksetzen · kostenlos', skillReset, { danger: true, size: 13, disabled: skillPointsSpent() === 0 });
+  // Linien
+  const cx = 587, nodeBy = id => SKILL_BY_ID[id];
+  const line = (x1, y1, x2, y2, on) => { ctx.strokeStyle = on ? '#f2c14e' : '#3a4a40'; ctx.lineWidth = 3; ctx.setLineDash(on ? [] : [5, 4]); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]); };
+  line(cx, 590, cx, 548, true); line(cx, 548, 397, 515, true); line(cx, 548, 587, 515, true); line(cx, 548, 777, 515, true);
+  for (const x of [397, 587, 777]) line(x, 451, x, 420, true);
+  const t2on = levelCap() >= 10, t3on = levelCap() >= 15;
+  line(587, 356, 587, 330, t2on); line(587, 330, 467, 305, t2on); line(587, 330, 707, 305, t2on);
+  line(467, 241, 467, 224, t2on); line(707, 241, 707, 224, t2on); line(467, 160, 467, 140, t3on); line(707, 160, 707, 140, t3on);
+  line(467, 140, 467, 140, t3on); line(467, 140, 587, 118, t3on); line(707, 140, 587, 118, t3on);
+  // Stufenbeschriftung
+  const vtext = (str, y, h, col) => { ctx.save(); ctx.translate(310, y + h); ctx.rotate(-Math.PI / 2); text(str, h / 2, 0, 11, col, 'center', F_TITLE); ctx.restore(); };
+  vtext('STUFE 1–5 · WERTE', 356, 170, '#f2c14e'); vtext('6–10 · GABELUNG', 160, 145, t2on ? '#f2c14e' : '#6a7a70'); vtext('BESONDERES', 76, 64, t3on ? '#f2c14e' : '#6a7a70');
+  // Startknoten
+  ctx.beginPath(); ctx.ellipse(cx, 621, 47, 31, 0, 0, 7); ctx.fillStyle = '#2a2314'; ctx.fill(); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 3; ctx.stroke(); text('Start', cx, 626, 14, '#f2c14e', 'center', F_TITLE);
+  // Knoten
+  skillHover = null;
+  for (const k of SKILLS) {
+    const lock = skillLock(k), rank = skillRank(k.id), x = k.x, ny = k.y;
+    const hov = inside(x, ny, 134, 64);
+    if (hov) skillHover = k;
+    const can = !lock && rank < k.max && free > 0;
+    uiHit(x, ny, 134, 64, () => skillBuy(k));
+    rr(x, ny, 134, 64, 12); ctx.fillStyle = lock ? '#0e1511' : rank ? '#173a2a' : '#14211a'; ctx.fill();
+    ctx.strokeStyle = lock ? '#3a4a40' : rank >= k.max ? '#4fd08a' : can ? (hov ? '#fbe08a' : '#f2c14e') : rank ? '#4fd08a' : '#7a6a3a'; ctx.lineWidth = hov && can ? 3 : 2; ctx.stroke();
+    text(k.name, x + 10, ny + 22, 13, lock ? '#6a7a70' : '#f0e6c8', 'left', F_TITLE);
+    text(k.text, x + 10, ny + 41, 11, lock ? '#5a6a60' : '#c8d4de', 'left', F_TEXT);
+    for (let i = 0; i < k.max; i++) { ctx.beginPath(); ctx.arc(x + 124 - (k.max - 1 - i) * 13, ny + 52, 4.5, 0, 7); if (i < rank) { ctx.fillStyle = '#f2c14e'; ctx.fill(); } ctx.strokeStyle = lock ? '#3a4a40' : '#f2c14e'; ctx.lineWidth = 1.5; ctx.stroke(); }
+    if (lock) text('🔒', x + 116, ny + 18, 11, '#7a8a80', 'center', F_TEXT);
+  }
+  // Infotafeln rechts
+  const hk = skillHover;
+  rr(880, 96, 360, 140, 14); ctx.fillStyle = '#101a14'; ctx.fill(); ctx.strokeStyle = hk ? '#4fd08a' : '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
+  if (hk) {
+    const rk = skillRank(hk.id), lk = skillLock(hk);
+    text(hk.name, 896, 124, 18, '#4fd08a', 'left', F_TITLE);
+    text('Rang ' + rk + ' von ' + hk.max, 896, 148, 13.5, '#d4dce2', 'left', F_TEXT);
+    text(hk.text + (rk ? '  (jetzt aktiv)' : ''), 896, 168, 13.5, '#f0e6c8', 'left', F_TEXT, 'bold');
+    text(lk ? 'Gesperrt: ' + lk : rk >= hk.max ? 'Voll ausgebaut' : free > 0 ? 'Klick: 1 Punkt einsetzen' : 'Keine Punkte offen', 896, 190, 13, lk ? '#ff9a8a' : '#8a9aa0', 'left', F_TEXT, 'italic');
+    if (hk.side) text('Gabelung: nicht beide Seiten möglich', 896, 212, 12.5, '#8a9aa0', 'left', F_TEXT);
+  } else text('Fahre über einen Knoten', 896, 130, 15, '#8a9aa0', 'left', F_TEXT, 'italic');
+  rr(880, 252, 360, 150, 14); ctx.fillStyle = '#101a14'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
+  text('So stark ist ein Punkt', 896, 280, 15, '#f2c14e', 'left', F_TITLE);
+  ['Schaden +4 % · Leben +6 % · Lauftempo +2 %', 'Schussrate +3 % · Nachladen −4 % · Sicht +3 %', 'Zusammen etwa +3 % Gesamtstärke je Punkt.', 'Karten wirken zusätzlich und stärker.'].forEach((l, i) => text(l, 896, 306 + i * 22, 13, '#c8d4de', 'left', F_TEXT));
+  rr(880, 418, 360, 150, 14); ctx.fillStyle = '#101a14'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
+  text('Gabelungen', 896, 446, 15, '#f2c14e', 'left', F_TITLE);
+  ['Ab Stufe 6: links Angriff, rechts Überleben.', 'Man kann nicht beide Seiten ganz haben.', '„Zurücksetzen“ ist kostenlos und verteilt', 'alle Punkte neu, nur im Menü.'].forEach((l, i) => text(l, 896, 472 + i * 22, 13, '#c8d4de', 'left', F_TEXT));
+  text('Entwurfswerte, die sich mit dem Spiel noch ändern.', 40, 690, 12.5, '#8a9aa0', 'left', F_TEXT, 'italic');
+}
+
 // Menü
 const stars = Array.from({ length: 120 }, () => [Math.random() * FRAME_W, Math.random() * 420, Math.random() * 1.4 + 0.4, Math.random() * 0.6 + 0.3]);
 const pines = Array.from({ length: 40 }, (_, i) => [i * 34 - 10, 540 + Math.random() * 60, 70 + Math.random() * 70]);
 const menuButtons = [
-  { label: 'Neuer Durchlauf', main: true, x: 80, y: 392, w: 330, h: 56, action: () => openAreas() },
-  { label: 'Kartenbuch', x: 80, y: 458, w: 330, h: 56, action: () => { bookSpread = 0; state = 'book'; } },
-  { label: 'Deck', x: 80, y: 524, w: 330, h: 56, action: () => { deckClass = lastClass; deckHoverIdx = -1; state = 'deck'; } },
-  { label: 'Bibliothek', x: 80, y: 590, w: 330, h: 56, action: () => { state = 'shop'; } },
-  { label: 'Optionen', small: true, x: 80, y: 654, w: 104, h: 36, action: () => openOptions('menu') },
-  { label: 'Feedback', small: true, x: 193, y: 654, w: 104, h: 36, action: () => openFeedback('menu') },
-  { label: 'Spielhilfe', small: true, x: 306, y: 654, w: 104, h: 36, action: () => openIntro() }
+  { label: 'Neuer Durchlauf', main: true, x: 80, y: 386, w: 330, h: 50, action: () => openAreas() },
+  { label: 'Fähigkeiten', skills: true, x: 80, y: 440, w: 330, h: 50, action: () => openSkills('menu') },
+  { label: 'Kartenbuch', x: 80, y: 494, w: 330, h: 50, action: () => { bookSpread = 0; state = 'book'; } },
+  { label: 'Deck', x: 80, y: 548, w: 330, h: 50, action: () => { deckClass = lastClass; deckHoverIdx = -1; state = 'deck'; } },
+  { label: 'Bibliothek', x: 80, y: 602, w: 330, h: 50, action: () => { state = 'shop'; } },
+  { label: 'Optionen', small: true, x: 80, y: 664, w: 104, h: 34, action: () => openOptions('menu') },
+  { label: 'Feedback', small: true, x: 193, y: 664, w: 104, h: 34, action: () => openFeedback('menu') },
+  { label: 'Spielhilfe', small: true, x: 306, y: 664, w: 104, h: 34, action: () => openIntro() }
 ];
 function drawMenu() {
   let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
@@ -4712,11 +4839,17 @@ function drawMenu() {
     const ig = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
     if (b.main) { ig.addColorStop(0, '#f6d37a'); ig.addColorStop(1, '#d9a636'); } else { ig.addColorStop(0, '#1e2c22'); ig.addColorStop(1, '#121b15'); }
     notched(b.x + 2, b.y + 2, b.w - 4, b.h - 4, 11); ctx.fillStyle = ig; ctx.fill();
-    text(b.label, b.x + b.w / 2, b.y + 36, 19, b.main ? '#1c140c' : (b.action ? '#e8dcbc' : '#7a8a7a'), 'center', F_TITLE);
+    text(b.label, b.x + b.w / 2, b.y + b.h / 2 + 7, 19, b.main ? '#1c140c' : (b.action ? '#e8dcbc' : '#7a8a7a'), 'center', F_TITLE);
+    if (b.skills) {   // Konto-Level und offene Punkte
+      const lv = 'Stufe ' + accLevel(); ctx.font = '13px ' + F_TITLE; const tw = ctx.measureText(lv).width + 18, bx = b.x + b.w - tw - 16;
+      rr(bx, b.y + b.h / 2 - 11, tw, 22, 11); ctx.fillStyle = '#f2c14e'; ctx.fill(); text(lv, bx + tw / 2, b.y + b.h / 2 + 4, 13, '#14221a', 'center', F_TITLE);
+      if (skillPointsFree() > 0) { ctx.shadowColor = '#ff7a5a'; ctx.shadowBlur = 10; ctx.fillStyle = '#ff7a5a'; ctx.beginPath(); ctx.arc(b.x + 22, b.y + b.h / 2, 7, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
+    }
     if (b.note) text(b.note, b.x + b.w - 22, b.y + 34, 14, '#7a8a7a', 'right', F_TEXT, 'italic');
   });
   text('Prototyp ' + VERSION + ' · ' + keyLabel(bind('music')) + ' Musik · ' + keyLabel(bind('sfx')) + ' Effekte', 80, 708, 16, '#b8c4d0', 'left', F_TEXT);
-  text('Klick oder Enter zum Starten', 440, 426, 17, '#f2c14e', 'left', F_TEXT, 'italic');
+  text('Klick oder Enter zum Starten', 440, 418, 17, '#f2c14e', 'left', F_TEXT, 'italic');
+  if (skillPointsFree() > 0) text(skillPointsFree() + (skillPointsFree() === 1 ? ' Punkt' : ' Punkte') + ' zu vergeben', 440, 472, 15, '#ff9a8a', 'left', F_TEXT, 'italic');
   drawBoard();
 }
 
@@ -4729,6 +4862,7 @@ function draw() {
   if (state === 'shop') { drawShopScreen(); drawCursor(); return; }
   if (state === 'open') { drawOpenScreen(); drawCursor(); return; }
   if (state === 'recycle') { drawRecycleScreen(); drawCursor(); return; }
+  if (state === 'skills') { drawSkillScreen(); drawCursor(); return; }
   if (state === 'intro') { drawIntroScreen(); drawCursor(); return; }
   if (isPanel(state) && (panelFrom === 'menu' || !G)) { drawMenu(); overlay(0.8); drawPanelScreen(); drawToast(); if (state !== 'feedback') drawCursor(); return; }
   if (state === 'menu' || !G && state !== 'select' && state !== 'areas' && state !== 'bosscards' && state !== 'ranking') { drawMenu(); drawCursor(); return; }
@@ -4767,7 +4901,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.79';
+const VERSION = 'v0.81';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -5287,6 +5421,9 @@ function drawDeadScreen() {
   titleText(runScore() + ' Punkte', 640, 352, 40, 'center');
   if (G.won) text('Weg + Punkte der besiegten Gegner (Boss 20)', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
   else text('Weg + Punkte der Gefallenen', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
+  { const pts = skillPointsFree(), up = G.lvAfter > G.lvBefore;
+    text('+ ' + (G.xpGain || 0).toLocaleString('de-DE') + ' EP  ·  Stufe ' + G.lvAfter + (up ? '  (neu!)' : '') + (G.lvAfter >= levelCap() ? '  · Stufengrenze erreicht' : '') + (pts > 0 ? '  ·  ' + pts + (pts === 1 ? ' Punkt offen' : ' Punkte offen') : ''), 640, 414, 17, pts > 0 || up ? '#4fd08a' : '#8ee8ff', 'center', F_TEXT, 'bold');
+    if (pts > 0) uiButton(1010, 394, 220, 36, 'Zu den Fähigkeiten', () => { fbEl.name.blur(); openSkills('dead'); }, { size: 14 }); }
   if (SCORES_URL && (CHEAT || G.cheated)) text('Testmodus: kein Eintrag in die Rangliste', 640, 470, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
   if (form) {
     text('Dein Name für die Rangliste', 640, 446, 18, '#f0e6c8', 'center', F_TEXT);
@@ -5620,6 +5757,7 @@ addEventListener('keydown', e => {
   if (state === 'areas') { areaKey(e); return; }
   if (state === 'bosscards') { if (e.code === 'Escape') state = 'select'; return; }
   if (state === 'ranking') { if (e.code === 'Escape') state = rankFrom === 'dead' && G ? 'dead' : 'menu'; return; }
+  if (state === 'skills') { if (e.code === 'Escape') closeSkills(); return; }
   if (state === 'victory') { if (e.code === 'Enter' || e.code === 'Space') victoryContinue(); else if (G.victory && (e.code === 'ArrowDown' || e.code === 'ArrowUp')) G.victory.scroll += e.code === 'ArrowDown' ? 1 : -1; return; }
   if (state === 'merchant') { if (e.code === 'Escape' || e.code === bind('interact')) { state = 'play'; merchantNow = null; startCountdown(); } return; }
   if (state === 'play') {
@@ -5670,7 +5808,7 @@ canvas.addEventListener('mousedown', e => {
     if (mouse.fx >= bx - 20 && mouse.fx <= bx + PACK_W * OPEN_SC + 40 && mouse.fy >= 90 && mouse.fy <= 600) { packOpen.drag = true; packOpen.dx0 = mouse.fx - packOpen.tear * PACK_W * OPEN_SC; mouse.down = true; }
     return;
   }
-  if (state === 'intro' || state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant' || state === 'victory' || state === 'areas' || state === 'bosscards' || state === 'ranking') { if (e.button === 0) { if (state === 'areas') areaDrag = { x: mouse.fx, s: areaScroll }; uiClick(); } return; }
+  if (state === 'intro' || state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant' || state === 'victory' || state === 'areas' || state === 'bosscards' || state === 'ranking' || state === 'skills') { if (e.button === 0) { if (state === 'areas') areaDrag = { x: mouse.fx, s: areaScroll }; uiClick(); } return; }
   if (e.button !== 0) return;
   if (state === 'menu') { const bt = boardTabRects.find(r => mouse.fx >= r.x && mouse.fx <= r.x + r.w && mouse.fy >= r.y && mouse.fy <= r.y + r.h); if (bt) { sfx('ui_click'); if (bt.id === 'open') openRanking('menu'); else boardTab = bt.id; return; } const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
   if (state === 'select') {
