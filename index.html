@@ -111,7 +111,7 @@ const AREAS = [
 ];
 const AREA_BY_ID = Object.fromEntries(AREAS.map(a => [a.id, a]));
 // ---------- Konto-Level ----------
-// 1 EP je Meter und je Gefallenem, auch beim Tod. Stufe n braucht XP_K · n^1,176 EP. Die Stufengrenze steigt mit jedem besiegten Boss um 5.
+// 1 EP je Meter und die Punkte der Gegner (1 bis 20), auch beim Tod. Stufe n braucht XP_K · n^1,176 EP. Die Stufengrenze steigt mit jedem besiegten Boss um 5.
 const XP_K = 612, XP_P = 1.176;
 const xpFor = L => Math.round(XP_K * Math.pow(L, XP_P));
 function levelRaw(xp) { let L = 0; while (xpFor(L + 1) <= xp) L++; return L; }
@@ -748,10 +748,10 @@ function spawnType(type, x, y, alert) {   // fügt den Gegner und seine Begleite
 function makeEnemy(type, x, y, alert) {
   const t = ENEMY_TYPES[type], over = t.boss ? 0 : endlessLevel();
   const elite = !t.boss && (type === 'grunt' || type === 'rusher' || type === 'magier') && G.dist >= 300 && Math.random() < 0.07;
-  const st = t.boss ? 0 : enemyStage(), hpK = Math.pow(1.05, st) * (elite ? 3 : 1);   // je Stufe +5 % Leben, +2 % Schaden
+  const st = t.boss ? bossStageOf(G.area) : enemyStage(), hpK = Math.pow(1.05, st) * (elite ? 3 : 1);   // je Stufe +5 % Leben, +2 % Schaden
   return {
     el: type === 'magier' ? (G.area.id === 'wald' ? 'feuer' : G.area.id === 'moor' ? 'gift' : ['feuer', 'frost', 'gift'][Math.floor(Math.random() * 3)]) : undefined,
-    type, x, y, r: t.r * (elite ? 1.25 : 1), hp: t.hp * hpK, maxHp: t.hp * hpK, dmgMul: Math.pow(1.02, st) * (elite ? 1.3 : 1), elite,
+    type, x, y, r: t.r * (elite ? 1.25 : 1), hp: t.hp * hpK, maxHp: t.hp * hpK, dmgMul: Math.pow(1.02, st) * (elite ? 1.3 : 1), elite, bossK: t.boss ? hpK : 1,
     angle: rand(-Math.PI, Math.PI),
     state: alert ? 'alert' : 'idle',
     reaction: alert ? 0.4 : 0.7,
@@ -1283,7 +1283,7 @@ function spawnBoss() {
   const herrBoss = G.area.id === 'schloss';
   if (G.area.id === 'wald') G.camTop = G.arenaTop;   // die Arena steht schon (bogenArena beim Erzeugen der Welt)
   const b = makeEnemy(moorBoss ? 'hexe' : herrBoss ? 'herr' : 'boss', WORLD_W / 2, G.camTop + (herrBoss ? 250 : 90), true);
-  if (G.area.id === 'kerker') { b.hp = b.maxHp = 1500; }   // Platzhalter, bis der Boss entworfen ist
+  if (G.area.id === 'kerker') { b.hp = b.maxHp = 1500 * b.bossK; }   // Platzhalter, bis der Boss entworfen ist
   if (herrBoss) { b.boss = true; b.phase = 1; b.cyc = 'stoss'; b.cool = 1.2; b.act = null; b.rainT = 0; b.form = 'a'; }
   b.in = true; b.reaction = 1.2;
   if (moorBoss) { b.boss = true; b.phase = 1; b.form = 'a'; b.cast = 2.5; b.last = ''; b.strafe = 1; b.strafeT = 2; }
@@ -1929,6 +1929,7 @@ function hurtPlayer(d, srcAngle) {
     spark(p.x + Math.cos(p.angle) * 18, p.y + Math.sin(p.angle) * 18, '#fff3c8');
     if (d < 1) return;
   }
+  if (G.boss && G.boss.hp > 0 && !G.endless) d *= Math.pow(1.02, bossStageOf(G.area));   // Bosskampf: Schaden passend zur festen Bossstufe
   p.hp -= d;
   G.hurtT = 0.35; G.shakeT = 0.25;
   sfx('player_hurt');
@@ -2059,7 +2060,7 @@ function finishRun() {
   if (G.finished) return;
   G.finished = true;
   if (G.bossOnly) { G.earned = 0; return; }   // Boss-Training: kein Mondsilber, kein Rekord, keine Rangliste
-  G.lvBefore = accLevel(); G.xpGain = Math.floor(G.dist) + G.kills; SAVE.xp = (SAVE.xp || 0) + G.xpGain; G.lvAfter = accLevel();   // Erfahrung: 1 EP je Meter und Gefallenem, auch beim Tod
+  G.lvBefore = accLevel(); G.xpGain = Math.floor(G.dist) + G.points; SAVE.xp = (SAVE.xp || 0) + G.xpGain; G.lvAfter = accLevel();   // Erfahrung: 1 EP je Meter und Gefallenem, auch beim Tod
   G.earned = Math.max(0, Math.round(G.dist + G.killSilver) - G.spent);   // 1 Mondsilber pro Meter, je Gefallenem wie die Punkte, abzüglich Händler
   SAVE.silver += G.earned;
   SAVE.maxStage = Math.max(SAVE.maxStage || 1, G.stage);
@@ -3108,7 +3109,7 @@ function updateHerr(e, dt) {
       const tx = clamp(p.x, 90, WORLD_W - 90), ty = p.y;
       addAtk({ kind: 'circle', x: tx, y: ty, x0: e.x, y0: e.y, r: 52, T: 1.0, dmg: 24, shield: true, onland: a => { G.obstacles.push({ kind: 'wall', sty: 'schild', seed: Math.random(), x: a.x - 48, y: a.y - 32, w: 96, h: 64 }); for (let k = 0; k < 16; k++) G.parts.push({ x: a.x, y: a.y, vx: rand(-160, 160), vy: rand(-160, 160), life: 0.5, color: '#9aa0a8' }); sfx('block', 1); } });
     }
-    if (e.tt >= 2) { e.maxHp = HERR.hp2; e.hp = Math.max(0.001, e.maxHp * clamp((e.tt - 2) / 2, 0, 1)); }
+    if (e.tt >= 2) { e.maxHp = HERR.hp2 * e.bossK; e.hp = Math.max(0.001, e.maxHp * clamp((e.tt - 2) / 2, 0, 1)); }
     if (e.tt >= 5) { e.phase = 2; e.inv = false; e.hp = e.maxHp; e.cool = 0.8; e.form = 'b'; sfx('horde_horn'); }
     return;
   }
@@ -3231,7 +3232,7 @@ function updateHexe(e, dt) {
   if (e.phase === 1.5) {   // Verwandlung: 1 s Stillstand, ~2 s Auffüllen, 1 s Pause
     e.tt += dt; e.angle = Math.atan2(p.y - e.y, p.x - e.x); e.dive = null; e.hidden = false;
     for (const q of G.enemies) if (q.type === 'trug' || q.type === 'kessel') q.hp = 0;   // Verwandlung räumt Trugbilder und Kessel weg
-    if (e.tt >= 1 && e.form === 'a') { e.form = 'c'; e.maxHp = HEXE.hp2; sfx('stage_up'); for (let i = 0; i < 24; i++) G.parts.push({ x: e.x, y: e.y, vx: rand(-200, 200), vy: rand(-200, 200), life: 0.6, color: '#7fff9f' }); }
+    if (e.tt >= 1 && e.form === 'a') { e.form = 'c'; e.maxHp = HEXE.hp2 * e.bossK; sfx('stage_up'); for (let i = 0; i < 24; i++) G.parts.push({ x: e.x, y: e.y, vx: rand(-200, 200), vy: rand(-200, 200), life: 0.6, color: '#7fff9f' }); }
     if (e.tt >= 1) e.hp = Math.max(0.001, e.maxHp * clamp((e.tt - 1) / 2, 0, 1));
     if (e.tt >= 4) { e.phase = 2; e.inv = false; e.hp = e.maxHp; e.mode = 'fog'; e.modeT = 0; e.cast = 1.2; sfx('horde_horn'); hexeHide(e); }
     return;
@@ -4768,7 +4769,7 @@ function drawSkillScreen() {
   text('Stufengrenze', 54, 318, 14, '#f2c14e', 'left', F_TITLE);
   [['Jetzt bis Stufe ' + cap, '#f0e6c8'], ['Wald-Boss: bis 10', SAVE.bossDownBy.wald ? '#4fd08a' : '#8a9aa0'], ['Moor-Boss: bis 15', SAVE.bossDownBy.moor ? '#4fd08a' : '#8a9aa0'], ['Schloss-Boss: bis 20', SAVE.bossDownBy.schloss ? '#4fd08a' : '#8a9aa0'], ['Kerker-Boss: bis 25', SAVE.bossDownBy.kerker ? '#4fd08a' : '#8a9aa0']].forEach((l, i) => text(l[0], 54, 342 + i * 20, 13.5, l[1], 'left', F_TEXT));
   text('EP bekommen', 54, 460, 14, '#f2c14e', 'left', F_TITLE);
-  ['1 EP je Meter', '1 EP je Gefallenem', 'auch beim Tod'].forEach((l, i) => text(l, 54, 484 + i * 20, 13.5, '#c8d4de', 'left', F_TEXT));
+  ['1 EP je Meter', 'EP je Gefallenem wie die', 'Punkte (1 bis 20)', 'auch beim Tod'].forEach((l, i) => text(l, 54, 484 + i * 20, 13.5, '#c8d4de', 'left', F_TEXT));
   uiButton(54, 592, 222, 46, 'Zurücksetzen · kostenlos', skillReset, { danger: true, size: 13, disabled: skillPointsSpent() === 0 });
   // Linien
   const cx = 587, nodeBy = id => SKILL_BY_ID[id];
@@ -4949,7 +4950,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.83';
+const VERSION = 'v0.84';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
