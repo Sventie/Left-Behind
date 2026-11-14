@@ -4951,7 +4951,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.85';
+const VERSION = 'v0.86';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -5038,10 +5038,48 @@ function keycap(rx, cy, label) {
   text(label, x + w / 2, cy + 6, 16, '#1c140c', 'center', F_TEXT, 'bold');
   return x;
 }
+// Werte fürs Pausemenü: aktueller Wert und Bonus gegenüber dem Grundwert der Klasse
+function statRows() {
+  const S0 = Object.assign({}, BASE, G.cls.base), w = W(), t = w.type, rows = [];
+  const fmt = (v, d) => v.toFixed(d).replace('.', ',').replace(/,0+$/, '');
+  const row = (name, val, bonus, good) => rows.push({ name, val, bonus, good });
+  const pct = (cur, base, lowerBetter) => {
+    const b = (cur / base - 1) * 100;
+    if (Math.abs(b) < 0.5) return [null, 0];
+    return [(b > 0 ? '+' : '−') + Math.round(Math.abs(b)) + ' %', (b > 0) !== !!lowerBetter ? 1 : -1];
+  };
+  const add = (cur, base, unit) => {
+    const d = cur - base;
+    if (Math.abs(d) < 0.05) return [null, 0];
+    return [(d > 0 ? '+' : '−') + fmt(Math.abs(d), Number.isInteger(d) ? 0 : 1) + unit, d > 0 ? 1 : -1];
+  };
+  row('Leben', fmt(S.maxHp, 0), ...add(S.maxHp, S0.maxHp, ''));
+  row('Schaden', fmt(w.damage * S.dmgMul, 1), ...pct(S.dmgMul, S0.dmgMul));
+  row('Feuerrate', fmt(S.rateMul / w.interval, 1) + '/s', ...pct(S.rateMul, S0.rateMul));
+  if (t === 'ranged') {
+    row('Magazin', fmt(S.magSize, 0), ...add(S.magSize, S0.magSize, ''));
+    row('Spannzeit', fmt(w.reloadTime * S.reloadMul, 2) + ' s', ...pct(S.reloadMul, S0.reloadMul, true));
+  }
+  if (t === 'melee') {
+    row('Reichweite', fmt(w.reach * S.reachMul / PX_PER_M, 2) + ' m', ...pct(S.reachMul, S0.reachMul));
+    row('Schwungbogen', fmt(w.arc + S.arcAdd, 0) + '°', ...add(S.arcAdd, S0.arcAdd, '°'));
+  }
+  if (t === 'spell') row('Mana', fmt(S.manaMax, 0), ...add(S.manaMax, S0.manaMax, ''));
+  if (t !== 'melee') row('Streuung', fmt(w.spread * S.spreadMul, 2) + '°', ...pct(S.spreadMul, S0.spreadMul, true));
+  row('Lauftempo', fmt(S.moveSpeed / PX_PER_M, 1) + ' m/s', ...pct(S.moveSpeed, S0.moveSpeed));
+  row('Sichtweite', fmt(VISION.range * S.rangeMul / PX_PER_M, 0) + ' m', ...pct(S.rangeMul, S0.rangeMul));
+  row('Sichtkegel', fmt(S.fov, 0) + '°', ...add(S.fov, S0.fov, '°'));
+  if (S.pierce > 0) row('Durchschlag', fmt(S.pierce, 0), '+' + S.pierce, 1);
+  if (S.chain > 0) row('Kettenblitz', fmt(S.chain, 0) + ' Ziele', '+' + S.chain, 1);
+  if (S.dash) row('Windstoß-Pause', fmt(DASH.cooldown * S.dashMul, 1) + ' s', ...pct(S.dashMul, S0.dashMul, true));
+  if (S.extraChoices > 0) row('Kartenwahl', fmt(3 + S.extraChoices, 0) + ' Karten', '+' + S.extraChoices, 1);
+  if (Math.abs(S.priceMul - 1) > 0.005) row('Händlerpreise', fmt(S.priceMul * 100, 0) + ' %', ...pct(S.priceMul, 1, true));
+  return rows;
+}
 function drawPauseScreen() {
   uiBtns = []; uiSliders = [];
   overlay(0.84);
-  const X = 170, Y = 70, Wd = 940, Ht = 580;
+  const X = 90, Y = 70, Wd = 1100, Ht = 580;
   windowFrame(X, Y, Wd, Ht);
   ctx.save(); rr(X, Y, Wd, Ht, 18); ctx.clip();
   const g = ctx.createLinearGradient(0, Y, 0, Y + Ht); g.addColorStop(0, '#14201a'); g.addColorStop(1, '#0e1812');
@@ -5066,13 +5104,13 @@ function drawPauseScreen() {
   wrap('Wer aufgibt, behält das bisher verdiente Mondsilber, aber nicht den Lauf.', bw, '15px ' + F_TEXT).forEach((l, i) => text(l, bx, Y + Ht - 44 + i * 20, 15, '#8a9aa0'));
 
   // Dein Lauf
-  const cx = X + 412, cw = 492;
+  const cx = X + 412, cw = Wd - 448;
   text('Dein Lauf', cx, Y + 62, 26, '#f0e6c8', 'left', F_TITLE);
   text(G.cls.name + ' · ' + runScore().toLocaleString('de-DE') + ' Punkte', cx + cw, Y + 60, 16, '#c8d4de', 'right', F_TEXT);
   const stats = [['Weg', Math.floor(G.dist) + ' m', '#f0e6c8'], ['Gefallene', String(G.kills), '#f0e6c8'], ['Mondsilber', String(runSilver()), '#f2c14e']];
   stats.forEach((s, i) => {
-    const sx = cx + i * (156 + 12), sy = Y + 88;
-    rr(sx, sy, 156, 72, 10); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+    const bw3 = (cw - 24) / 3, sx = cx + i * (bw3 + 12), sy = Y + 88;
+    rr(sx, sy, bw3, 72, 10); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
     if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
     text(s[0].toUpperCase(), sx + 14, sy + 24, 12, '#8a9aa0', 'left', F_TEXT);
     if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
@@ -5080,21 +5118,31 @@ function drawPauseScreen() {
   });
   if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
   text('AKTIVE KARTEN UND TRÄNKE', cx, Y + 192, 13, '#8a9aa0', 'left', F_TEXT);
+  const sx0 = cx + 320;
+  text('WERTE', sx0, Y + 192, 13, '#8a9aa0', 'left', F_TEXT);
   if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   const groups = [];
   for (const id of G.cards.concat(G.buffs)) { const gr = groups.find(q => q.id === id); if (gr) gr.n++; else groups.push({ id, n: 1 }); }
-  const cwid = (cw - 8) / 2, maxChips = 10;
+  const cwid = 296, maxChips = 8;
   groups.slice(0, maxChips).forEach((gr, i) => {
-    const c = itemOf(gr.id), R = RARITY[c.rarity], sx = cx + (i % 2) * (cwid + 8), sy = Y + 204 + Math.floor(i / 2) * 54;
-    rr(sx, sy, cwid, 46, 6); ctx.fillStyle = '#16231b'; ctx.fill();
+    const c = itemOf(gr.id), R = RARITY[c.rarity], sx = cx, sy = Y + 204 + i * 38;
+    rr(sx, sy, cwid, 34, 6); ctx.fillStyle = '#16231b'; ctx.fill();
     ctx.strokeStyle = R.c; ctx.lineWidth = 2; if (c.kind === 'Trank') ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
-    rr(sx + 8, sy + 8, 30, 30, [15, 15, 4, 4]); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 1; ctx.stroke();
-    drawIcon(c.icon, sx + 23, sy + 24, 20, R.c, 1.5);
-    text(fit(c.name + (gr.n > 1 ? ' ×' + gr.n : ''), cwid - 56, '12px ' + F_TITLE), sx + 46, sy + 21, 12, '#f0e6c8', 'left', F_TITLE);
-    text(fit(c.kind === 'Trank' ? 'Trank · nur dieser Lauf' : c.stat, cwid - 56, '13px ' + F_TEXT), sx + 46, sy + 38, 13, '#f2c14e', 'left', F_TEXT);
+    rr(sx + 6, sy + 5, 24, 24, [12, 12, 4, 4]); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 1; ctx.stroke();
+    drawIcon(c.icon, sx + 18, sy + 17, 16, R.c, 1.4);
+    text(fit(c.name, cwid - 80, '14px ' + F_TITLE), sx + 40, sy + 22, 14, '#f0e6c8', 'left', F_TITLE);
+    if (gr.n > 1) text('×' + gr.n, sx + cwid - 10, sy + 22, 14, '#f2c14e', 'right', F_TITLE);
+    else if (c.kind === 'Trank') text('Trank', sx + cwid - 10, sy + 22, 12, '#8a9aa0', 'right', F_TEXT);
   });
-  if (groups.length > maxChips) text('… und ' + (groups.length - maxChips) + ' weitere', cx + cw, Y + 204 + 5 * 54 + 8, 14, '#8a9aa0', 'right', F_TEXT, 'italic');
+  if (groups.length > maxChips) text('… und ' + (groups.length - maxChips) + ' weitere', cx + cwid, Y + 204 + maxChips * 38 + 10, 14, '#8a9aa0', 'right', F_TEXT, 'italic');
   if (!groups.length) text('Noch keine Karten gewählt.', cx, Y + 232, 17, '#7a8a7a', 'left', F_TEXT, 'italic');
+  statRows().forEach((r, i) => {
+    const ry = Y + 222 + i * 25, sw = cx + cw - sx0;
+    if (i % 2 === 0) { ctx.fillStyle = 'rgba(255,255,255,0.03)'; ctx.fillRect(sx0 - 6, ry - 17, sw + 6, 24); }
+    text(r.name, sx0, ry, 15, '#c8d4de', 'left', F_TEXT);
+    text(r.val, sx0 + 150, ry, 16, '#f0e6c8', 'right', F_TITLE);
+    text(r.bonus ? '(' + r.bonus + ')' : '(±0)', sx0 + 160, ry, 14, r.good > 0 ? '#4fd08a' : r.good < 0 ? '#ff9a8a' : '#6a7a70', 'left', F_TEXT);
+  });
   ctx.fillStyle = '#2e3e32'; ctx.fillRect(cx, Y + Ht - 58, cw, 1);
   text('Im Deck: ' + G.library.length + ' Karten', cx, Y + Ht - 30, 15, '#8a9aa0', 'left', F_TEXT);
   const kn = keycap(cx + cw, Y + Ht - 36, keyLabel(bind('sfx')));
