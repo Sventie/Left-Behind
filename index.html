@@ -67,7 +67,8 @@ const BASE = {                          // Basiswerte, Klasse und Karten veränd
   dashN: 0,                             // wie viele Windstoß-Karten (die zweite verkürzt die Pause)
   lifesteal: 0,                         // Anteil des Schadens, der als Leben zurückkommt
   boltSpeed: 1,                         // Tempo der Bolzen
-  core: null, lastBolt: 0, still: null, ramp: null, noReload: false, zorn: 0, charge: null, round: null,   // Muster und Auslöser der Karten (siehe shotDmgK, chargeStep)
+  core: null, lastBolt: 0, still: null, ramp: null, noReload: false, zorn: 0, charge: null, round: null,
+  rage: null, blink: null, mirror: null, sac: null, thirst: null, bleed: null, hitHeal: 0, enemyHaste: 0, star: null, peek: 0, sr: null, crown: false,   // Muster und Auslöser der Karten (siehe shotDmgK, chargeStep)
   priceMul: 1.0,                        // Händlerpreise
   rerolls: 1                            // Neuwürfe der Kartenwahl pro Lauf
 };
@@ -215,7 +216,7 @@ const CARDS = [
   { id: 'lebensraub', name: 'Lebensraub',        kind: 'Segen', rarity: 'gewoehnlich', icon: 'wisp',    max: 3, stat: '', text: 'Ein Teil jedes Treffers fließt als Leben zu dir zurück.', flavor: '„Was du nimmst, hält dich am Leben.“', apply: S => {} },
   { id: 'falke',    name: 'Falkenauge',           kind: 'Segen', rarity: 'gewoehnlich',      icon: 'eye',     max: 2, stat: 'Sichtkegel +25°',      text: 'Du siehst weiter zur Seite, ohne den Kopf zu drehen.', flavor: '„Nichts entgeht dem Jäger.“',    apply: S => { S.fov += 25; } },
   { id: 'blitz',    name: 'Kettenblitz',          kind: 'Zauber', rarity: 'episch',      icon: 'bolt',    max: 2, stat: 'Kettenblitz-Treffer',  text: 'Jeder dritte Schuss ist ein Blitz und springt auf bis zu 3 weitere Gegner.',      flavor: '„Der Himmel schuldet dir etwas.“',     apply: S => { S.chain += 2; } },
-  { id: 'krone',    name: 'Krone der Verlorenen', kind: 'Zauber', rarity: 'legendaer',   icon: 'crown',   max: 1, stat: '4 statt 3 Karten',     text: 'Wähle nach jeder Stufe aus vier Karten.',          flavor: '„Wer sie trägt, wird nicht vergessen.“', apply: S => { S.extraChoices += 1; } },
+  { id: 'krone',    name: 'Krone der Verlorenen', kind: 'Zauber', rarity: 'selten',   icon: 'crown',   max: 1, stat: '4 statt 3 Karten',     text: 'Wähle nach jeder Stufe aus vier Karten.',          flavor: '„Wer sie trägt, wird nicht vergessen.“', apply: S => { S.extraChoices += 1; } },
   // Fernkampf
   { id: 'hand',     name: 'Ruhige Hand',          kind: 'Segen',  rarity: 'gewoehnlich', icon: 'target',  max: 3, types: ['ranged', 'spell'], stat: '−15 % Streuung', text: 'Ein tiefer Atemzug, ein sicherer Schuss.',        flavor: '„Erst atmen, dann schießen.“',         apply: S => { S.spreadMul *= 0.85; } },
   { id: 'spanner',  name: 'Meisterspanner',       kind: 'Segen',  rarity: 'selten', icon: 'quiver',  max: 2, types: ['ranged'], stat: '−25 % Spannzeit',    text: 'Die Sehne spannt sich wie von selbst.',           flavor: '„Klick, und weiter.“',                 apply: S => { S.reloadMul *= 0.75; } },
@@ -253,6 +254,25 @@ const CARDS = [
   { id: 'markier', name: 'Markierlicht', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Mehr Sichtweite. Getroffene Gegner bleiben eine Weile auch im Dunkeln sichtbar.', flavor: '„Wer getroffen ist, leuchtet.“', apply: S => {} },
   { id: 'bluttrunk', name: 'Bluttrunk', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Treffer gegen Elite und Bosse heilen dich.', flavor: '„Große Beute, großer Schluck.“', apply: S => {} },
   { id: 'aderlassh', name: 'Aderlass-Treffer', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: 'Heilt 3 Leben (fest)', text: 'Jeder zehnte Treffer heilt dich um 3 Leben.', flavor: '„Ein Schluck zwischendurch.“', apply: S => { S.hooks.hit.push(() => { G.cnt.ader = (G.cnt.ader || 0) + 1; if (G.cnt.ader % 10 === 0) G.player.hp = Math.min(S.maxHp, G.player.hp + 3); }); } },
+  { id: 'kronenwahl', name: 'Kronenwahl', kind: 'Zauber', rarity: 'episch', icon: 'crown', max: 1, limit: 1, stat: 'Jede 3. Wahl: 5 Karten (fest)', text: 'Jede dritte Wahl zeigt fünf Karten, mindestens eine davon selten oder besser.', flavor: '„Die Krone gibt, wem sie will.“', apply: S => { S.crown = true; } },
+  { id: 'opfer', name: 'Blutopfer', kind: 'Zauber', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Jeder Bolzen kostet dich Leben, ein Treffer gibt es zurück.', flavor: '„Wer trifft, gewinnt. Wer fehlt, blutet.“', apply: S => {} },
+  { id: 'durst', name: 'Blutdurst', kind: 'Zauber', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Wenig Leben macht stärker, viel Leben schwächer.', flavor: '„Nur am Rand des Todes bist du stark.“', apply: S => {} },
+  { id: 'aderlass', name: 'Aderlass', kind: 'Zauber', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Alle 10 s Leben weg, jeder Gefallene heilt und stärkt.', flavor: '„Wer nicht blutet, kämpft nicht.“', apply: S => {} },
+  { id: 'spiegel', name: 'Spiegelblut', kind: 'Zauber', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Deine Schüsse heilen nur. Gegner nehmen den Schaden, den sie dir zufügen.', flavor: '„Sie töten sich selbst.“', apply: S => {} },
+  { id: 'hast', name: 'Hast', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Mehr Schaden, aber alle Gegner laufen schneller.', flavor: '„Wer schnell ist, kämpft hart.“', apply: S => {} },
+  { id: 'zeitdruck', name: 'Zeitdruck', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Viel mehr Schaden, aber alle Gegner laufen deutlich schneller.', flavor: '„Die Zeit rennt.“', apply: S => {} },
+  { id: 'blutzoll', name: 'Blutzoll', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, stat: '', text: 'Weniger Leben, dafür heilen dich deine Treffer.', flavor: '„Der Preis ist Blut.“', apply: S => {} },
+  { id: 'tribut', name: 'Laufender Tribut', kind: 'Zauber', rarity: 'episch', icon: 'flask', max: 3, stat: '', text: 'Du verlierst beim Laufen Leben, dafür heilen dich Treffer stark.', flavor: '„Jeder Schritt kostet.“', apply: S => {} },
+  { id: 'bluttausch', name: 'Bluttausch', kind: 'Zauber', rarity: 'episch', icon: 'flask', max: 3, stat: '', text: 'Weniger Leben. Jeder Treffer heilt einen Teil deines Lebens.', flavor: '„Ein Tausch, der sich lohnt.“', apply: S => {} },
+  { id: 'raserei', name: 'Raserei', kind: 'Fähigkeit', rarity: 'episch', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: '10 s Raserei, 25 s Pause. Du erleidest +50 % Schaden.', flavor: '„Nichts hält dich auf. Nichts schützt dich.“', apply: S => {} },
+  { id: 'siegesrausch', name: 'Siegesrausch', kind: 'Zauber', rarity: 'selten', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Fünf Gefallene in 8 s machen dich 5 s lang stärker.', flavor: '„Wer siegt, will mehr.“', apply: S => {} },
+  { id: 'blitzschritt', name: 'Blitzschritt', kind: 'Fähigkeit', rarity: 'episch', icon: 'wind', max: 3, stat: '', text: 'Teleport zur Maus, Feuerspur hinter dir.', flavor: '„Er war hier. Er ist dort.“', apply: S => {} },
+  { id: 'schattenschritt', name: 'Schattenschritt', kind: 'Fähigkeit', rarity: 'episch', icon: 'wind', max: 3, stat: '', text: 'Teleport zur Maus, Gegner in der Nähe verlieren dich.', flavor: '„Wo er war, ist nur Schatten.“', apply: S => {} },
+  { id: 'gezeichnet', name: 'Gezeichnet', kind: 'Zauber', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Ein zufälliger Gegner nimmt mehr Schaden, trifft aber härter.', flavor: '„Wer markiert ist, ist doppelt gefährlich.“', apply: S => {} },
+  { id: 'jagdbeute', name: 'Jagdbeute', kind: 'Zauber', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Der stärkste Gegner ist gezeichnet. Fällt er, trifft es den nächsten.', flavor: '„Der Größte zuerst.“', apply: S => {} },
+  { id: 'todeszeichen', name: 'Todeszeichen', kind: 'Zauber', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Bis zu 3 Gegner sind 4 s gezeichnet, dann 6 s Pause.', flavor: '„Drei Namen auf der Liste.“', apply: S => {} },
+  { id: 'sternenblick', name: 'Sternenblick', kind: 'Segen', rarity: 'gewoehnlich', icon: 'eye', max: 3, stat: '', text: 'Schmalerer Blick nach vorn, dafür sieben Streifen rundum.', flavor: '„Der Himmel hat viele Augen.“', apply: S => {} },
+  { id: 'spaehblick', name: 'Spähblick', kind: 'Segen', rarity: 'selten', icon: 'eye', max: 3, stat: '', text: 'Gegner hinter dir erscheinen als roter Punkt am Rand.', flavor: '„Kein Rücken ist sicher.“', apply: S => {} },
   { id: 'schrot', name: 'Schrotflinte', kind: 'Zauber', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Drei Bolzen im Kegel, kostet zwei Bolzen.', flavor: '„Wer nah ist, spürt es.“', apply: S => {} },
   { id: 'breit', name: 'Breitseite', kind: 'Zauber', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Fünf Bolzen im weiten Fächer, kostet drei Bolzen.', flavor: '„Eine Wand aus Bolzen.“', apply: S => {} },
   { id: 'feuer1', name: 'Schnellfeuer', kind: 'Zauber', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Doppelt so schnell schießen, aber jeder Schuss trifft schwächer.', flavor: '„Wer viel trifft, braucht nicht fest zu treffen.“', apply: S => {} },
@@ -402,7 +422,25 @@ const CARD_PARAM = {
   kern: { stats: [{ k: 'a', n: 'Streuung', base: 15, pre: '−', u: ' %' }, { k: 'b', n: 'Schaden', base: 50, pre: '+', u: ' %' }], apply: (S, v) => { S.spreadMul *= 1 - v.a / 100; S.core = { dmg: v.b / 100 }; } },
   flink: { stats: [{ k: 'a', n: 'Spannzeit', base: 15, pre: '−', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.reloadMul *= 1 - v.a / 100; S.hooks.reload.push(() => { G.rateT = Math.max(G.rateT, 2); G.rateK = Math.max(G.rateK, v.b / 100); }); } },
   feder: { stats: [{ k: 'a', n: 'Spannzeit', base: 10, pre: '−', u: ' %' }], apply: (S, v) => { S.reloadMul *= 1 - v.a / 100; S.hooks.dash.push(() => { G.player.mag = Math.min(S.magSize, G.player.mag + 4); }); } },
-  doppel: { stats: [{ k: 'a', n: 'Letzter Bolzen', base: 50, pre: '+', u: ' %' }], apply: (S, v) => { S.magSize += 3; S.lastBolt = Math.max(S.lastBolt, v.a / 100); } }
+  doppel: { stats: [{ k: 'a', n: 'Letzter Bolzen', base: 50, pre: '+', u: ' %' }], apply: (S, v) => { S.magSize += 3; S.lastBolt = Math.max(S.lastBolt, v.a / 100); } },
+  opfer: { stats: [{ k: 'a', n: 'Schaden', base: 40, pre: '+', u: ' %' }, { k: 'b', n: 'Kosten je Bolzen', base: 100, pre: '', u: ' %', down: true, neg: true }], apply: (S, v) => { S.dmgMul *= 1 + v.a / 100; S.sac = { cost: v.b / 100 }; } },
+  durst: { stats: [{ k: 'a', n: 'Schaden bei wenig Leben', base: 40, pre: '+', u: ' %' }, { k: 'b', n: 'Feuerrate bei wenig Leben', base: 20, pre: '+', u: ' %' }, { k: 'c', n: 'Schaden bei viel Leben', base: 10, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.thirst = { low: 0.5, dmg: v.a / 100, rate: v.b / 100, high: -v.c / 100 }; } },
+  aderlass: { stats: [{ k: 'a', n: 'Verlust alle 10 s', base: 5, pre: '−', u: ' %', bad: true }, { k: 'b', n: 'Heilung je Gefallenem', base: 3, pre: '+', u: ' %', step: 0.5 }, { k: 'c', n: 'Schaden für 2 s', base: 25, pre: '+', u: ' %' }], apply: (S, v) => { S.bleed = { cost: v.a / 100 }; S.hooks.kill.push(() => { G.player.hp = Math.min(S.maxHp, G.player.hp + S.maxHp * v.b / 100); G.dmgT = 2; G.dmgK = v.c / 100; }); } },
+  spiegel: { stats: [{ k: 'a', n: 'Lifesteal', base: 100, pre: '+', u: ' %' }, { k: 'b', n: 'Rückschaden', base: 100, pre: '+', u: ' %' }], apply: (S, v) => { S.lifesteal += v.a / 100; S.mirror = { refl: v.b / 100 }; } },
+  hast: { stats: [{ k: 'a', n: 'Schaden', base: 15, pre: '+', u: ' %' }, { k: 'b', n: 'Gegner schneller', base: 10, pre: '+', u: ' %', bad: true }], apply: (S, v) => { S.dmgMul *= 1 + v.a / 100; S.enemyHaste += v.b / 100; } },
+  zeitdruck: { stats: [{ k: 'a', n: 'Schaden', base: 25, pre: '+', u: ' %' }, { k: 'b', n: 'Gegner schneller', base: 20, pre: '+', u: ' %', bad: true }], apply: (S, v) => { S.dmgMul *= 1 + v.a / 100; S.enemyHaste += v.b / 100; } },
+  blutzoll: { stats: [{ k: 'a', n: 'Maximalleben', base: 30, pre: '−', u: ' %', bad: true, step: 2 }, { k: 'b', n: 'Lifesteal', base: 8, pre: '+', u: ' %' }], apply: (S, v) => { S.maxHp = Math.round(S.maxHp * (1 - v.a / 100)); S.lifesteal += v.b / 100; } },
+  tribut: { stats: [{ k: 'a', n: 'Lifesteal', base: 15, pre: '+', u: ' %' }, { k: 'b', n: 'Leben-Verlust alle', base: 8, pre: '', u: ' m', neg: true }], apply: (S, v) => { S.lifesteal += v.a / 100; S.hooks.walk.push(c => { G.cnt.trib = (G.cnt.trib || 0) + c.d; if (G.cnt.trib >= v.b * PX_PER_M) { G.cnt.trib = 0; G.player.hp = Math.max(1, G.player.hp - 2); } }); } },
+  bluttausch: { stats: [{ k: 'a', n: 'Maximalleben', base: 25, pre: '−', u: ' %', bad: true }, { k: 'b', n: 'Heilung je Treffer', base: 1, pre: '+', u: ' %', step: 0.1 }], apply: (S, v) => { S.maxHp = Math.round(S.maxHp * (1 - v.a / 100)); S.hitHeal += v.b / 100; } },
+  raserei: { stats: [{ k: 'a', n: 'Schaden', base: 30, pre: '+', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 20, pre: '+', u: ' %' }, { k: 'c', n: 'Lifesteal', base: 10, pre: '+', u: ' %' }], apply: (S, v) => { S.rage = { dmg: v.a / 100, rate: v.b / 100, ls: v.c / 100, dur: 10, cd: 25 }; } },
+  siegesrausch: { stats: [{ k: 'a', n: 'Schaden', base: 20, pre: '+', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.sr = { dmg: v.a / 100, rate: v.b / 100 }; S.hooks.kill.push(() => { const t = G.time; G.cnt.srk = (G.cnt.srk || []).filter(x => t - x < 8); G.cnt.srk.push(t); if (G.cnt.srk.length >= 5) { G.cnt.srk = []; G.srT = 5; } }); } },
+  blitzschritt: { stats: [{ k: 'a', n: 'Reichweite', base: 6, pre: '', u: ' m', step: 0.5 }, { k: 'b', n: 'Pause', base: 10, pre: '', u: ' s', down: true }, { k: 'c', n: 'Feuerschaden', base: 30, pre: '+', u: ' %' }], apply: (S, v) => { S.blink = { mode: 'fire', range: v.a, cd: v.b, dmg: v.c / 100 }; } },
+  schattenschritt: { stats: [{ k: 'a', n: 'Reichweite', base: 5, pre: '', u: ' m', step: 0.5 }, { k: 'b', n: 'Pause', base: 12, pre: '', u: ' s', down: true }, { k: 'c', n: 'Benommenheit', base: 1.2, pre: '', u: ' s', step: 0.1 }], apply: (S, v) => { S.blink = { mode: 'shadow', range: v.a, cd: v.b, stun: v.c }; } },
+  gezeichnet: { stats: [{ k: 'a', n: 'Schaden an ihm', base: 50, pre: '+', u: ' %' }, { k: 'b', n: 'Schaden an dir', base: 25, pre: '+', u: ' %', down: true, neg: true }], apply: (S, v) => { S.marks.push({ mode: 'rand', take: v.a / 100, deal: v.b / 100 }); } },
+  jagdbeute: { stats: [{ k: 'a', n: 'Schaden an ihm', base: 40, pre: '+', u: ' %' }, { k: 'b', n: 'Schaden an dir', base: 25, pre: '+', u: ' %', down: true, neg: true }], apply: (S, v) => { S.marks.push({ mode: 'strong', take: v.a / 100, deal: v.b / 100 }); } },
+  todeszeichen: { stats: [{ k: 'a', n: 'Schaden an ihnen', base: 30, pre: '+', u: ' %' }, { k: 'b', n: 'Schaden an dir', base: 20, pre: '+', u: ' %', down: true, neg: true }], apply: (S, v) => { S.marks.push({ mode: 'cycle', take: v.a / 100, deal: v.b / 100, on: 4, pause: 6 }); } },
+  sternenblick: { stats: [{ k: 'a', n: 'Frontkegel', base: 30, pre: '−', u: '°', bad: true, step: 2 }, { k: 'b', n: 'Streifen', base: 20, pre: '+', u: '°' }], apply: (S, v) => { S.fov -= v.a; S.star = { w: v.b }; } },
+  spaehblick: { stats: [{ k: 'a', n: 'Reichweite', base: 5, pre: '', u: ' m', step: 0.5 }], apply: (S, v) => { S.peek = Math.max(S.peek, v.a * PX_PER_M); } }
 };
 for (const id in CARD_PARAM) setupParam(CARD_BY_ID[id], CARD_PARAM[id]);
 const ICONS = {
@@ -540,7 +578,7 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.fl
 const SFX_IDS = ['ui_click', 'card_pick', 'card_flip', 'rare_reveal', 'pack_buy', 'coin', 'buff_drink', 'merchant_open', 'stage_up',
   'shoot_crossbow', 'reload_start', 'reload_done', 'empty_click', 'shoot_spell', 'spell_explode', 'sword_swing', 'sword_hit', 'block',
   'hit_enemy', 'enemy_die', 'enemy_shoot', 'player_hurt', 'player_die', 'dash', 'pickup_heal', 'horde_horn'];
-const DEFAULT_BINDS = { up: 'KeyW', left: 'KeyA', down: 'KeyS', right: 'KeyD', dash: 'Space', reload: 'KeyR', interact: 'KeyE', music: 'KeyM', sfx: 'KeyN' };
+const DEFAULT_BINDS = { up: 'KeyW', left: 'KeyA', down: 'KeyS', right: 'KeyD', dash: 'Space', reload: 'KeyR', interact: 'KeyE', music: 'KeyM', sfx: 'KeyN', rage: 'KeyQ', blink: 'KeyF' };
 const DEFAULT_SETTINGS = { autoaim: false, master: 0.8, music: 0.5, sfx: 0.7, bgMute: true, bright: 100, hitfx: 2, hpbars: true, dmgnums: false, fps30: false, showfps: false, xhair: 0, xcol: '#fff3c8', autoPause: true, hints: true, autofire: true };
 const settings = (() => {
   let s = {}; try { s = JSON.parse(localStorage.getItem('left-behind-settings')) || {}; } catch (e) {}
@@ -866,7 +904,7 @@ function newMod() {   // Eigenschaften der Geschosse: Karten tragen hier ein, wa
 function recomputeStats() {
   S = Object.assign({}, BASE, G.cls.base);
   S.mod = newMod();   // Geschoss-Eigenschaften
-  S.fans = []; S.rear = 0;   // Schussmuster: Fächer aus mehreren Bolzen, Schuss nach hinten
+  S.fans = []; S.rear = 0; S.marks = [];   // Schussmuster: Fächer aus mehreren Bolzen, Schuss nach hinten
   S.hooks = { shot: [], hit: [], kill: [], reload: [], dash: [], walk: [], miss: [] };   // Auslöser: Karten hängen hier Funktionen an
   applySkills(S);
   for (const c of G.cards) c.apply(S);
@@ -884,7 +922,7 @@ function newGame(cls, area) {
     obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
     kills: 0, dist: 0,
     merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
-    cards: [], offers: [], library: shuffle(deckOf(cls).slice()), booms: [], pzones: [], shotN: 0, cnt: {}, rateT: 0, rateK: 0, fresh: true, ramp: 0, stillT: 0, roundT: 0, speedT: 0, speedK: 0, hurtAt: -99, barkReady: false, chargeK: 1, walked: 0, eisN: 0,
+    cards: [], offers: [], library: shuffle(deckOf(cls).slice()), booms: [], pzones: [], shotN: 0, cnt: {}, rateT: 0, rateK: 0, abil: { rage: { t: 0, cd: 0 }, blink: { cd: 0 } }, srT: 0, dmgT: 0, dmgK: 0, bleedT: 0, mk: { rand: null, strong: null, cy: [], cyT: 0, cyOn: false }, fresh: true, ramp: 0, stillT: 0, roundT: 0, speedT: 0, speedK: 0, hurtAt: -99, barkReady: false, chargeK: 1, walked: 0, eisN: 0,
     stage: 1, stageStart: 0, nextPick: area.len / (PICKS_PER_AREA + 0.5), atk: [], fires: [], fallen: [], ripples: [], curseT: 0, trails: [], hooks: [], pull: null, bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
@@ -1318,10 +1356,21 @@ function fireBolt(a, dmg, booms) {
 // Schadensfaktor des Schusses durch Karten mit Bedingung
 function shotDmgK(core, mag) {
   let k = G.chargeK;
+  if (G.abil.rage.t > 0) k *= 1 + S.rage.dmg;   // Raserei
+  if (G.srT > 0) k *= 1 + S.sr.dmg;   // Siegesrausch
+  if (G.dmgT > 0) k *= 1 + G.dmgK;   // Aderlass
+  if (S.thirst) k *= G.player.hp / S.maxHp < S.thirst.low ? 1 + S.thirst.dmg : 1 + S.thirst.high;   // Blutdurst
   if (core) k *= 1 + S.core.dmg;   // Kernschuss
   if (S.lastBolt && mag === 1) k *= 1 + S.lastBolt;   // Doppelboden: der letzte Bolzen des Magazins
   if (S.still && G.stillT >= S.still.t) { k *= 1 + S.still.dmg; G.stillT = 0; }   // Gespannte Sehne
   return k;
+}
+function extraRate() {   // zeitweise Feuerrate-Boni: Raserei, Siegesrausch, Blutdurst
+  let r = 0;
+  if (G.abil.rage.t > 0) r += S.rage.rate;
+  if (G.srT > 0) r += S.sr.rate;
+  if (S.thirst && G.player.hp / S.maxHp < S.thirst.low) r += S.thirst.rate;
+  return r;
 }
 function roundVolley() {   // Rundumschuss: ein Bolzen in jede der 8 Richtungen
   const w = W();
@@ -1353,11 +1402,15 @@ function playerAttack() {
     const a = p.aim + (core ? 0 : (Math.random() + Math.random() - 1) * currentSpread() * deg);   // Kernschuss: der erste Schuss nach dem Spannen trifft exakt
     G.shotN++;
     const booms = S.mod.booms.filter(bm => G.shotN % bm.every === 0), dk = shotDmgK(core, p.mag);
-    pat.bolts.forEach((q, i) => fireBolt(a + q.a * deg, w.damage * S.dmgMul * q.d * dk, i === 0 ? booms : null));   // der Sprengsatz sitzt nur am ersten Bolzen des Schusses
+    pat.bolts.forEach((q, i) => {
+      const bd = w.damage * S.dmgMul * q.d * dk;
+      fireBolt(a + q.a * deg, bd, i === 0 && !S.mirror ? booms : null);
+      if (S.sac) { const cost = bd * S.sac.cost, bb = G.bullets[G.bullets.length - 1]; p.hp = Math.max(1, p.hp - cost); bb.sacHeal = cost; }   // Blutopfer: jeder Bolzen kostet Leben, kann dich aber nicht töten
+    });   // der Sprengsatz sitzt nur am ersten Bolzen des Schusses
     if (!S.noReload) p.mag = Math.max(0, p.mag - pat.cost);   // Fließband: Bolzen werden nie verbraucht
     G.fresh = false;
     const ramp = S.ramp ? Math.min(S.ramp.max, G.ramp * S.ramp.per) : 0; G.ramp++;   // Dauerfeuer: schneller mit jedem Schuss
-    p.cooldown = w.interval * pat.slow / (1 + (S.rateMul - 1 + (G.rateT > 0 ? G.rateK : 0) + ramp) * pat.eff);   // Feuerrate-Boni wirken bei Mustern nur zum Teil (pat.eff)
+    p.cooldown = w.interval * pat.slow / (1 + (S.rateMul - 1 + (G.rateT > 0 ? G.rateK : 0) + ramp + extraRate()) * pat.eff);   // Feuerrate-Boni wirken bei Mustern nur zum Teil (pat.eff)
     p.bloom = Math.min(w.bloomMax, p.bloom + w.bloomPerShot);
     muzzle(a, '#ffe9a8');
     sfx('shoot_crossbow');
@@ -1410,6 +1463,22 @@ function meleeSwing() {
 }
 function alertEnemy(e) {
   e.state = 'alert'; e.reaction = 0.6; e.lastX = G.player.x; e.lastY = G.player.y; e.lostT = 0;
+}
+function tryRage() {
+  const a = G.abil.rage;
+  if (!S.rage || a.t > 0 || a.cd > 0) return;
+  a.t = S.rage.dur; sfx('stage_up');
+  for (let i = 0; i < 12; i++) G.parts.push({ x: G.player.x, y: G.player.y, vx: rand(-120, 120), vy: rand(-120, 120), life: 0.4, color: '#ff6a5a' });
+}
+function tryBlink() {   // Blitzschritt (Feuerspur) oder Schattenschritt (Gegner in der Nähe verlieren dich kurz)
+  const a = G.abil.blink, b = S.blink, p = G.player;
+  if (!b || a.cd > 0 || G.rootT > 0) return;
+  const tx = mouse.x, ty = mouse.y + G.camTop, d = Math.hypot(tx - p.x, ty - p.y) || 1, len = Math.min(b.range * PX_PER_M, d), dx = (tx - p.x) / d, dy = (ty - p.y) / d;
+  const x0 = p.x, y0 = p.y; let done = 0;
+  while (done < len) { const st = Math.min(8, len - done); if (moveCircle(p, dx * st, dy * st) < st * 0.5) break; done += st; if (b.mode === 'fire' && Math.floor(done / 24) !== Math.floor((done - st) / 24)) addZone(p.x, p.y, 26, 3, W().damage * S.dmgMul * b.dmg * 0.5, 'feuer'); }
+  a.cd = b.cd; sfx('dash');
+  for (let i = 0; i < 14; i++) G.parts.push({ x: x0 + (p.x - x0) * Math.random(), y: y0 + (p.y - y0) * Math.random(), vx: rand(-40, 40), vy: rand(-40, 40), life: 0.45, color: b.mode === 'fire' ? '#ff9a4a' : '#8a6aff' });
+  if (b.mode === 'shadow') for (const e of G.enemies) if (e.hp > 0 && Math.hypot(e.x - x0, e.y - y0) < 240) stunEnemy(e, b.stun);
 }
 const dashCooldown = () => DASH.cooldown * (S.dashN >= 2 ? 2 / 3 : 1) * S.dashMul;   // zweite Windstoß-Karte: 8 s statt 12 s
 function tryDash() {
@@ -1464,6 +1533,13 @@ function update(dt) {
   p.speed = Math.min(moved / dt, S.moveSpeed * 1.3);
   if (moved > 0) { G.walked += moved; runHooks('walk', { d: moved }); }   // Laufstrecke: Bombenleger, Wegzehrung, Eichenrinde
   G.stillT = p.speed < 5 ? G.stillT + dt : 0;
+  { const ab = G.abil;   // Fähigkeiten und zeitweise Wirkungen
+    if (!S.rage) ab.rage.t = 0; if (!S.sr) G.srT = 0;
+    if (ab.rage.t > 0) { ab.rage.t -= dt; if (ab.rage.t <= 0) ab.rage.cd = S.rage.cd; } else if (ab.rage.cd > 0) ab.rage.cd -= dt;
+    if (ab.blink.cd > 0) ab.blink.cd -= dt;
+    if (G.srT > 0) G.srT -= dt; if (G.dmgT > 0) G.dmgT -= dt;
+    if (S.bleed) { G.bleedT += dt; if (G.bleedT >= 10) { G.bleedT = 0; p.hp = Math.max(1, p.hp - S.maxHp * S.bleed.cost); } }   // Aderlass
+    if (S.marks.length) updateMarks(dt); }
   if (S.round) { G.roundT += dt; if (G.roundT >= S.round.every) { G.roundT = 0; roundVolley(); } }
   if (!S.zorn) p.dashCd = Math.max(0, p.dashCd - dt);   // Zornladung: die Pause läuft nur über Schaden ab
   p.swingT = Math.max(0, p.swingT - dt);
@@ -1641,7 +1717,8 @@ function say(t) { G.msg = t; G.msgT = 2.2; }
 // ---------- Kartenwahl ----------
 // Die Auswahl kommt aus dem Kartenbuch des Streiters: mehr Kopien = höhere Chance
 function rollOffers(exclude) {   // exclude: bisher gesehene Karten (beim Neuwurf)
-  const n = 3 + S.extraChoices, ex = (exclude || []).map(c => c.id);
+  const crown = S.crown && G.stage % 3 === 0;   // Kronenwahl: jede dritte Wahl zeigt fünf Karten
+  const n = 3 + S.extraChoices + (crown ? 2 : 0), ex = (exclude || []).map(c => c.id);
   const ids = [...new Set(G.library.map(c => c.id))].filter(id => !ex.includes(id));
   const out = [];
   while (out.length < n && ids.length) {
@@ -1652,6 +1729,10 @@ function rollOffers(exclude) {   // exclude: bisher gesehene Karten (beim Neuwur
     out.push(copies[Math.floor(Math.random() * copies.length)]);   // eine der Kopien, jede mit eigenen Werten
   }
   for (const c of (exclude || [])) if (out.length < n && !out.includes(c)) out.push(c);   // zu wenig Neues: alte Karten füllen auf
+  if (crown && out.length && !out.some(c => rarIdx(c) >= 1)) {   // mindestens eine seltene oder bessere Karte
+    const better = G.library.filter(c => rarIdx(c) >= 1 && !out.some(o => o.id === c.id));
+    if (better.length) out[out.length - 1] = better[Math.floor(Math.random() * better.length)];
+  }
   return out;
 }
 function rerollOffers() {   // Neuwurf: alle Karten ersetzen, die gerade gesehenen sind ausgeschlossen
@@ -1690,7 +1771,7 @@ function choosePick(i) {
 }
 function pickLayout() {
   const n = G.offers.length;
-  const k = n >= 4 ? 1.0 : 1.18;
+  const k = n >= 5 ? 0.88 : n >= 4 ? 1.0 : 1.18;
   const w = 220 * k, h = 320 * k, gap = n >= 4 ? 34 : 54;
   const total = n * w + (n - 1) * gap;
   const x0 = (FRAME_W - total) / 2, y = 168;
@@ -1947,8 +2028,8 @@ function updateEnemies(dt) {
         e.cooldown -= dt;
         if (e.reaction <= 0 && e.cooldown <= 0 && e.vis) {
           const a = e.angle + (Math.random() + Math.random() - 1) * 6 * deg;
-          if (T.boss) addBullet(e.x, e.y, a, 400, 16, 'enemy', 900, 0, { rad: 7, big: true });
-          else addBullet(e.x, e.y, a, 430, 8 * e.dmgMul, 'enemy', 760, 0);
+          if (T.boss) addBullet(e.x, e.y, a, 400, 16, 'enemy', 900, 0, { rad: 7, big: true, owner: e });
+          else addBullet(e.x, e.y, a, 430, 8 * e.dmgMul, 'enemy', 760, 0, { owner: e });
           sfx('enemy_shoot', clamp(1 - dist / 800, 0.15, 1));
           e.burst++;
           if (e.burst >= 3) { e.burst = 0; e.cooldown = rand(1.3, 2.2); } else e.cooldown = 0.17;
@@ -1960,7 +2041,7 @@ function updateEnemies(dt) {
       if (e.wst === 'charge') { dirx = diry = 0; }
       else if (e.wst === 'jump') {
         e.wt -= dt; dirx = e.jx; diry = e.jy; speed = 520; e.angle = Math.atan2(e.jy, e.jx);
-        if (!e.jhit && dist < e.r + p.r + 4) { e.jhit = true; hurtPlayer(9 * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x)); }
+        if (!e.jhit && dist < e.r + p.r + 4) { e.jhit = true; hurtPlayer(9 * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x), e); }
         if (e.chain && Math.hypot(e.x - e.chain.px, e.y - e.chain.py) >= e.chain.len - 1) e.wt = 0;   // die Kette ist gespannt
         if (e.wt <= 0) {
           e.wst = 'linger'; e.wt = 0.9;
@@ -2032,7 +2113,7 @@ function updateEnemies(dt) {
       if (td > 6) { dirx = tx / td; diry = ty / td; speed = T.chase; }
       e.trailT = (e.trailT || 0) - dt; if (e.trailT <= 0) { e.trailT = 0.35; G.trails.push({ x: e.x, y: e.y, t: 10 }); }
       e.melee = Math.max(0, e.melee - dt);
-      if (dist < e.r + p.r + 4 && e.melee <= 0) { hurtPlayer(T.mdmg * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x)); applyVenom(3); e.melee = 0.9; }
+      if (dist < e.r + p.r + 4 && e.melee <= 0) { hurtPlayer(T.mdmg * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x), e); applyVenom(3); e.melee = 0.9; }
     } else if (e.type === 'schwarm') {   // Mückenschwarm: Schaden und Gift, solange man im Schwarm steht
       dirx = dx / (dist || 1); diry = dy / (dist || 1); speed = T.chase;
       e.invT = Math.max(0, (e.invT || 0) - dt);
@@ -2050,7 +2131,7 @@ function updateEnemies(dt) {
           const ang = Math.atan2(dy, dx); e.aimT = 0.9; e.reloading = false;
           addAtk({ kind: 'tele', owner: e, shape: 'wedge', x: e.x, y: e.y, ang, reach: 420, arc: 0.98, T: 0.8, fire: () => {
             if (e.hp <= 0) return;
-            for (let i = 0; i < 5; i++) addBullet(e.x, e.y, ang + (i - 2) * 0.17, 400, 9 * e.dmgMul, 'enemy', 900, 0, { rad: 5 });
+            for (let i = 0; i < 5; i++) addBullet(e.x, e.y, ang + (i - 2) * 0.17, 400, 9 * e.dmgMul, 'enemy', 900, 0, { rad: 5, owner: e });
             sfx('enemy_shoot', 0.9); e.cooldown = 2.6; e.reloading = true;
           } });
           e.cooldown = 9;
@@ -2100,7 +2181,7 @@ function updateEnemies(dt) {
         dirx = dirx * c - diry * sn; diry = ox * sn + diry * c;
       }
       e.melee = Math.max(0, e.melee - dt);
-      if (dist < e.r + p.r + 4 && e.melee <= 0) { hurtPlayer(T.mdmg * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x)); e.melee = e.type === 'schild' ? 0.95 : 0.7; }
+      if (dist < e.r + p.r + 4 && e.melee <= 0) { hurtPlayer(T.mdmg * e.dmgMul, Math.atan2(e.y - p.y, e.x - p.x), e); e.melee = e.type === 'schild' ? 0.95 : 0.7; }
     }
 
     if (e.steerT > 0) {
@@ -2117,6 +2198,7 @@ function updateEnemies(dt) {
       if (e.x > WORLD_W - m && dirx > 0) dirx = 0;
     }
     if (e.slowT > 0) speed *= e.slowK;   // verlangsamt (z. B. Frostbolzen)
+    if (S.enemyHaste) speed *= 1 + S.enemyHaste;   // Hast
     e.mvd = false;
     if (dirx || diry) {
       let moved;
@@ -2207,7 +2289,33 @@ function spawnReinforcements() {
 }
 
 // srcAngle: Richtung vom Spieler zur Quelle; wird mit dem Schild abgefangen
-function hurtPlayer(d, srcAngle) {
+// Gezeichnete Gegner: nehmen mehr Schaden, machen aber auch mehr
+function isMarkedBy(m, e) {
+  const k = G.mk;
+  return m.mode === 'rand' ? k.rand === e : m.mode === 'strong' ? k.strong === e : (k.cyOn && k.cy.includes(e));
+}
+const markTake = e => { let k = 1; for (const m of S.marks) if (isMarkedBy(m, e)) k *= 1 + m.take; return k; };
+const markDeal = e => { let k = 1; for (const m of S.marks) if (isMarkedBy(m, e)) k *= 1 + m.deal; return k; };
+const markable = e => e.hp > 0 && !e.hidden && e.type !== 'irrlicht' && e.type !== 'trug' && e.type !== 'kessel';
+function updateMarks(dt) {
+  const k = G.mk;
+  for (const m of S.marks) {
+    if (m.mode === 'rand') { if (!k.rand || k.rand.hp <= 0) { const l = G.enemies.filter(markable); k.rand = l.length ? l[Math.floor(Math.random() * l.length)] : null; } }
+    else if (m.mode === 'strong') { let best = null; for (const e of G.enemies) if (markable(e) && (!best || e.maxHp > best.maxHp)) best = e; k.strong = best; }
+    else {   // Todeszeichen: bis zu 3 Gegner für kurze Zeit, dann Pause
+      k.cyT -= dt;
+      if (k.cyT <= 0) { if (k.cyOn) { k.cyOn = false; k.cy = []; k.cyT = m.pause; } else { k.cyOn = true; k.cy = shuffle(G.enemies.filter(markable)).slice(0, 3); k.cyT = m.on; } }
+      else if (k.cyOn) k.cy = k.cy.filter(e => e.hp > 0);
+    }
+  }
+}
+// Spiegelblut: der Gegner bekommt den Schaden zurück, den er dir zufügt
+function mirrorHit(d, src) {
+  let t = src && src.hp > 0 ? src : null;
+  if (!t) { let bd = 700; for (const e of G.enemies) { if (e.hp <= 0 || e.hidden) continue; const dd = Math.hypot(e.x - G.player.x, e.y - G.player.y); if (dd < bd) { bd = dd; t = e; } } }
+  if (t) damageEnemy(t, d * S.mirror.refl, 'refl');
+}
+function hurtPlayer(d, srcAngle, src) {
   const p = G.player;
   if (godMode) { G.cheated = true; return; }
   if (isBlocking() && srcAngle !== undefined && Math.abs(normAngle(srcAngle - p.angle)) < S.blockArc * deg) {
@@ -2217,7 +2325,10 @@ function hurtPlayer(d, srcAngle) {
     if (d < 1) return;
   }
   if (G.barkReady) { G.barkReady = false; G.cnt.bark = 0; sfx('block'); spark(p.x, p.y, '#8fbf6a'); return; }   // Eichenrinde fängt den Treffer ab
+  if (src && src.hp > 0 && S.marks.length) d *= markDeal(src);   // gezeichnet: härtere Treffer
+  if (G.abil.rage.t > 0) d *= 1.5;   // Raserei: mehr erlittener Schaden
   G.hurtAt = G.time;
+  if (S.mirror) mirrorHit(d, src);
   p.hp -= d;
   G.hurtT = 0.35; G.shakeT = 0.25;
   sfx('player_hurt');
@@ -2264,7 +2375,7 @@ function updateBullets(dt) {
     if (tObs === Infinity && tHit === Infinity) continue;
     if (tHit < tObs) {
       const hx = b.px + (b.x - b.px) * tHit, hy = b.py + (b.y - b.py) * tHit;
-      if (target === p) { hurtPlayer(b.dmg, Math.atan2(-b.vy, -b.vx)); spark(hx, hy, '#d33'); if (b.through) { b.ignoreP = true; continue; } }
+      if (target === p) { hurtPlayer(b.dmg, Math.atan2(-b.vy, -b.vx), b.owner); spark(hx, hy, '#d33'); if (b.through) { b.ignoreP = true; continue; } }
       else if (b.spell) {
         explode(hx, hy, b.dmg, b.splash, target);
         if (b.pierce > 0) { b.pierce--; b.ignore.push(target); continue; }
@@ -2335,16 +2446,19 @@ function bulletHitEnemy(b, e, hx, hy) {
   let dmg = b.dmg;
   if (M.grow) dmg *= clamp(M.grow.start + M.grow.perM * b.trav / PX_PER_M, M.grow.start, M.grow.max);   // Wachsende Wucht
   for (const d of M.dmgVs) if (d.test(e)) dmg *= d.k;   // Todesstoß, Eröffnungsstoß
+  if (S.marks.length) dmg *= markTake(e);   // Gezeichnet
   if (M.streak) dmg *= 1 + Math.min(M.streak.max, (G.cnt.streak || 0) * M.streak.per);   // Serienschütze
   for (const c of M.crit) if (Math.random() < c.p) dmg *= c.k;
-  damageEnemy(e, dmg);
-  if (S.lifesteal > 0) G.player.hp = Math.min(S.maxHp, G.player.hp + dmg * S.lifesteal);   // Lebensraub
+  if (!S.mirror || e.type === 'heiler') damageEnemy(e, dmg); else e.hit = 0.12;   // Spiegelblut: deine Schüsse schaden nur Heilern
+  const ls = S.lifesteal + (G.abil.rage.t > 0 ? S.rage.ls : 0);
+  if (ls > 0) G.player.hp = Math.min(S.maxHp, G.player.hp + dmg * ls);   // Lebensraub
+  if (b.sacHeal) { G.player.hp = Math.min(S.maxHp, G.player.hp + b.sacHeal); b.sacHeal = 0; }   // Blutopfer: der Treffer gibt das Leben zurück
+  if (S.hitHeal) G.player.hp = Math.min(S.maxHp, G.player.hp + S.maxHp * S.hitHeal);   // Bluttausch
   if (S.zorn) G.player.dashCd = Math.max(0, G.player.dashCd - dmg / (S.zorn * Math.pow(ENEMY_HP_STEP, enemyStage())));   // Zornladung
   if (M.lsBig > 0 && (e.elite || ENEMY_TYPES[e.type].boss)) G.player.hp = Math.min(S.maxHp, G.player.hp + dmg * M.lsBig);   // Bluttrunk
   b.hits++;
   spark(hx, hy, '#e8e8e8');
-  if (b.chain) chainLightning(e, dmg * b.chain.k, b.chain.n); else if (S.chain > 0) chainLightning(e, dmg * 0.5);
-  hitEffects(b, e, dmg, M);
+  if (!S.mirror) { if (b.chain) chainLightning(e, dmg * b.chain.k, b.chain.n); else if (S.chain > 0) chainLightning(e, dmg * 0.5); hitEffects(b, e, dmg, M); }
   runHooks('hit', { b, e, dmg });
   if (b.boom && b.boom.mode === 'stick') { boomAt(b, e.x, e.y, e); return false; }   // Zeitzünder: bleibt stecken
   // Das Schild des Schildträgers hält Pfeile auch mit Durchschuss auf (der Kettenblitz läuft trotzdem weiter)
@@ -2519,7 +2633,7 @@ function finishRun() {
 // ---------- Sicht ----------
 function visionParams() {
   const fogK = G.fogs && inFog(G.player.x, G.player.y) ? 0.5 : 1;   // wer im Nebel steht, sieht nur halb so weit
-  return { fov: S.fov * deg, range: VISION.range * S.rangeMul * fogK, near: VISION.near };
+  return { fov: S.fov * deg, range: VISION.range * S.rangeMul * fogK, near: VISION.near, stripes: S.star ? S.star.w * deg : 0 };
 }
 // Ecken für Sichtstrahlen; Bäume als 16-Eck
 function obstacleCorners(o) {
@@ -2568,7 +2682,11 @@ function visible(e) {
   const inNear = d < V.near + e.r;
   const rel = normAngle(Math.atan2(dy, dx) - p.angle);
   const inCone = Math.abs(rel) < V.fov / 2 + Math.atan2(e.r, Math.max(d, 1));
-  if (!inNear && !inCone) return false;
+  if (!inNear && !inCone) {
+    let inStripe = false;   // Sternenblick: sieben schmale Streifen rundum
+    if (V.stripes) for (let q = 1; q < 8 && !inStripe; q++) inStripe = Math.abs(normAngle(rel - q * Math.PI / 4)) < V.stripes / 2 + Math.atan2(e.r, Math.max(d, 1));
+    if (!inStripe) return false;
+  }
   return hasLOS(p.x, p.y, e.x, e.y);
 }
 function pointVisible(x, y) { return visible({ x, y, r: 0 }); }
@@ -3355,7 +3473,7 @@ function bogenArena() {   // Boss-Arena im Wald: nur 6 bis 8 Bäume, locker im K
 // Angriffe: Dreierschuss, Fächerschuss, Pfeilregen, Kreissalve, Pfeilwand, Scharfschuss, Brandpfeile (zufällig nach Gewicht, nie zweimal derselbe).
 const BOGEN_ATK = [['dreier', 20], ['faecher', 17], ['regen', 13], ['kreis', 12], ['wand', 8], ['scharf', 15], ['brand', 28]];
 const bogenStage = e => e.hp > e.maxHp * 0.66 ? 0 : e.hp > e.maxHp * 0.33 ? 1 : 2;   // Druck steigt in Stufen, keine Phase
-function bogenArrow(e, ang, sp, dmg, extra) { addBullet(e.x + Math.cos(ang) * e.r, e.y + Math.sin(ang) * e.r, ang, sp * (1 + 0.12 * bogenStage(e)), dmg * bossDmgK(), 'enemy', 4000, 0, Object.assign({ rad: 7, big: true, cull: true }, extra || {})); }   // fliegt über die ganze Karte, bis er den Rand verlässt
+function bogenArrow(e, ang, sp, dmg, extra) { addBullet(e.x + Math.cos(ang) * e.r, e.y + Math.sin(ang) * e.r, ang, sp * (1 + 0.12 * bogenStage(e)), dmg * bossDmgK(), 'enemy', 4000, 0, Object.assign({ rad: 7, big: true, cull: true, owner: e }, extra || {})); }   // fliegt über die ganze Karte, bis er den Rand verlässt
 function bogenPick(e) {
   const list = BOGEN_ATK.filter(w => w[0] !== e.last), tot = list.reduce((s, w) => s + w[1], 0);
   let r = Math.random() * tot;
@@ -4112,7 +4230,9 @@ function drawFogInto() {
   fctx.globalCompositeOperation = 'destination-out';
   fctx.setTransform(scale, 0, 0, scale, FIELD_X * scale, -G.camTop * scale);
   fctx.fillStyle = '#000';
-  for (const poly of [cone, ring]) {
+  const polys = [cone, ring];
+  if (V.stripes) for (let q = 1; q < 8; q++) polys.push(visPoly(p.x, p.y, p.angle + q * Math.PI / 4, V.stripes / 2, V.range, segs, 0.006));
+  for (const poly of polys) {
     fctx.beginPath();
     poly.forEach((pt, i) => i ? fctx.lineTo(pt[0], pt[1]) : fctx.moveTo(pt[0], pt[1]));
     fctx.closePath(); fctx.fill();
@@ -4162,7 +4282,7 @@ function drawCard(c, x, y, k, hover, at) {   // at: Bildschirmposition der Karte
       text(fit(st.n, 96, '14px ' + F_TEXT), 20, ry, 14, '#3a2a18', 'left', F_TEXT);
       if (isInst) {
         const t = c.t[st.k] || 3;
-        text(valueText(st, vals[st.k]), 152, ry, 14, st.bad ? '#8a2a30' : '#17703f', 'right', F_TITLE);
+        text(valueText(st, vals[st.k]), 152, ry, 14, (st.bad || st.neg) ? '#8a2a30' : '#17703f', 'right', F_TITLE);
         text('(T' + t + ')', 158, ry, 13, TIER_COL[t], 'left', F_TEXT, 'bold');
         if (hover && k >= 0.9 && !tipMode && lx >= 14 && lx <= 206 && ly >= ry - 14 && ly <= ry + 5) tipRow = { st, ry, t };
         if (tipMode) {
@@ -4170,7 +4290,7 @@ function drawCard(c, x, y, k, hover, at) {   // at: Bildschirmposition der Karte
           for (let tt = 1; tt <= 5; tt++) text(numText(tierValue(st, tt)), 74 + (tt - 1) * 32, ry + 14, 11, tt === t ? TIER_COL[tt] : '#6a5a40', 'center', F_TEXT, tt === t ? 'bold' : '');
         }
       } else {
-        text(valueText(st, st.base), 152, ry, 14, st.bad ? '#8a2a30' : '#17703f', 'right', F_TITLE);
+        text(valueText(st, st.base), 152, ry, 14, (st.bad || st.neg) ? '#8a2a30' : '#17703f', 'right', F_TITLE);
         text('(' + numText(tierValue(st, 1)) + '–' + numText(tierValue(st, 5)) + ')', 158, ry, 12, '#6a5a40', 'left', F_TEXT);
       }
     });
@@ -4262,14 +4382,28 @@ function drawRails() {
   // Fähigkeit
   const ax = FIELD_X + 340;
   rr(ax, 653, 240, 54, 27); ctx.fillStyle = '#0a110d'; ctx.fill();
-  ctx.strokeStyle = S.dash ? '#4fd08a' : '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
-  if (S.dash) {
+  const abs = [];
+  if (S.dash) abs.push({ n: 'Windstoß', key: bind('dash'), f: 1 - p.dashCd / dashCooldown(), on: false });
+  if (S.rage) abs.push({ n: 'Raserei', key: bind('rage'), f: G.abil.rage.t > 0 ? G.abil.rage.t / S.rage.dur : 1 - G.abil.rage.cd / S.rage.cd, on: G.abil.rage.t > 0 });
+  if (S.blink) abs.push({ n: S.blink.mode === 'fire' ? 'Blitzschritt' : 'Schattenschritt', key: bind('blink'), f: 1 - G.abil.blink.cd / S.blink.cd, on: false });
+  ctx.strokeStyle = abs.length ? '#4fd08a' : '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
+  if (abs.length === 1) {
+    const q = abs[0];
     rr(ax + 14, 669, 72, 22, 5); ctx.fillStyle = '#e8dcbc'; ctx.fill();
-    text(keyLabel(bind('dash')), ax + 50, 685, 14, '#1c140c', 'center', F_TEXT, 'bold');
-    text('Windstoß', ax + 96, 685, 14, '#f0e6c8', 'left', F_TITLE);
-    const cd = 1 - p.dashCd / dashCooldown();
+    text(keyLabel(q.key), ax + 50, 685, 14, '#1c140c', 'center', F_TEXT, 'bold');
+    text(q.n, ax + 96, 685, 14, '#f0e6c8', 'left', F_TITLE);
     rr(ax + 172, 676, 54, 8, 4); ctx.fillStyle = '#1e2c22'; ctx.fill();
-    rr(ax + 172, 676, 54 * cd, 8, 4); ctx.fillStyle = cd >= 1 ? '#4fd08a' : '#2e8a5a'; ctx.fill();
+    rr(ax + 172, 676, 54 * clamp(q.f, 0, 1), 8, 4); ctx.fillStyle = q.on ? '#ff6a5a' : q.f >= 1 ? '#4fd08a' : '#2e8a5a'; ctx.fill();
+  } else if (abs.length > 1) {   // mehrere Fähigkeiten: schmale Felder nebeneinander
+    const w = 240 / abs.length;
+    abs.forEach((q, i) => {
+      const x = ax + i * w;
+      rr(x + 8, 660, 26, 18, 4); ctx.fillStyle = '#e8dcbc'; ctx.fill();
+      text(keyLabel(q.key), x + 21, 674, 12, '#1c140c', 'center', F_TEXT, 'bold');
+      text(fit(q.n, w - 44, '12px ' + F_TITLE), x + 38, 674, 12, '#f0e6c8', 'left', F_TITLE);
+      rr(x + 10, 688, w - 22, 8, 4); ctx.fillStyle = '#1e2c22'; ctx.fill();
+      rr(x + 10, 688, (w - 22) * clamp(q.f, 0, 1), 8, 4); ctx.fillStyle = q.on ? '#ff6a5a' : q.f >= 1 ? '#4fd08a' : '#2e8a5a'; ctx.fill();
+    });
   } else {
     text('Keine Fähigkeit', ax + 120, 686, 15, '#6f8274', 'center', F_TEXT, 'italic');
   }
@@ -4366,7 +4500,30 @@ function drawStatus() {   // farbige Schrift unten links im Spielfeld, über der
     text(label, 20, y - 2, 16, c, 'left', F_TEXT, 'bold'); y -= 32;
   }
 }
+function drawMarksAndPeek() {   // Markierungen (Gezeichnet) und Spähblick-Punkte, liegen über der Dunkelheit
+  const p = G.player, k = G.mk;
+  const marked = [];
+  for (const m of S.marks) {
+    if (m.mode === 'rand' && k.rand) marked.push(k.rand);
+    if (m.mode === 'strong' && k.strong) marked.push(k.strong);
+    if (m.mode === 'cycle' && k.cyOn) marked.push(...k.cy);
+  }
+  for (const e of new Set(marked)) {
+    if (e.hp <= 0 || !visible(e)) continue;
+    const y = e.y - G.camTop;
+    ctx.strokeStyle = '#ff5a4a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(e.x, y, e.r + 7 + Math.sin(G.time * 6) * 1.5, 0, 7); ctx.stroke();
+    ctx.fillStyle = '#ff5a4a'; ctx.beginPath(); ctx.moveTo(e.x - 6, y - e.r - 22); ctx.lineTo(e.x + 6, y - e.r - 22); ctx.lineTo(e.x, y - e.r - 12); ctx.closePath(); ctx.fill();
+  }
+  if (S.peek > 0) for (const e of G.enemies) {
+    if (e.hp <= 0 || e.hidden) continue;
+    const d = Math.hypot(e.x - p.x, e.y - p.y);
+    if (d > S.peek || visible(e)) continue;
+    const a = Math.atan2(e.y - p.y, e.x - p.x), px = p.x + Math.cos(a) * (p.r + 22), py = p.y - G.camTop + Math.sin(a) * (p.r + 22);
+    ctx.fillStyle = 'rgba(255,90,74,' + (0.9 - d / S.peek * 0.5) + ')'; ctx.beginPath(); ctx.arc(px, py, 5, 0, 7); ctx.fill();
+  }
+}
 function drawFieldHUD() {
+  drawMarksAndPeek();
   drawWallWarn(); drawStatus();
   if (G.deltaT > 0) {   // Punktezuwachs neben der Punktezahl im Rahmen
     ctx.globalAlpha = Math.min(1, G.deltaT * 2.5);
@@ -5453,7 +5610,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.97';
+const VERSION = 'v0.98';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -5461,7 +5618,7 @@ const FEEDBACK_ENDPOINT = 'https://left-behind-feedback.s-tietgen1.workers.dev';
 const NAME_KEY = 'left-behind-name';
 let panelFrom = 'pause', armedAct = null, armedAt = 0, listenAct = null, controlsMsg = '', dragSlider = null, uiSliders = [];
 const isPanel = st => st === 'options' || st === 'controls' || st === 'feedback';
-const BIND_NAMES = { up: 'Nach vorn', left: 'Nach links', down: 'Zurück', right: 'Nach rechts', dash: 'Fähigkeit', reload: 'Spannen', interact: 'Handeln', music: 'Musik', sfx: 'Effekte' };
+const BIND_NAMES = { up: 'Nach vorn', left: 'Nach links', down: 'Zurück', right: 'Nach rechts', dash: 'Fähigkeit', reload: 'Spannen', interact: 'Handeln', music: 'Musik', sfx: 'Effekte', rage: 'Raserei', blink: 'Blitzschritt' };
 const KEY_NAMES = { Space: 'Leertaste', ShiftLeft: 'Shift', ShiftRight: 'Shift', ControlLeft: 'Strg', ControlRight: 'Strg', AltLeft: 'Alt', AltRight: 'Alt', Tab: 'Tab', Enter: 'Enter', Backspace: '⌫',
   ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Escape: 'Esc', CapsLock: 'Caps', Comma: ',', Period: '.', Minus: 'ß', Slash: '-', Semicolon: 'ö', Quote: 'ä', BracketLeft: 'ü' };
 function bind(a) { return settings.binds[a]; }
@@ -6006,6 +6163,8 @@ function drawControlsScreen() {
   actRow(lx, 314, w, 'Zurück', 'nur innerhalb des Bildes', 'down');
   actRow(lx, 368, w, 'Nach rechts', '', 'right');
   actRow(lx, 422, w, 'Fähigkeit', 'zum Beispiel Windstoß', 'dash');
+  actRow(lx, 476, w, 'Raserei', 'Fähigkeitskarte', 'rage');
+  actRow(lx, 530, w, 'Blitzschritt', 'Fähigkeitskarte', 'blink');
   secHead('Kampf und Welt', rx, 190, w);
   actRow(rx, 206, w, 'Angreifen', '', null, { mouse: 'l', fixed: true });
   actRow(rx, 260, w, 'Spezial', 'Schild, Fokus oder Meditieren', null, { mouse: 'r', fixed: true });
@@ -6553,6 +6712,8 @@ addEventListener('keydown', e => {
     if (e.code === bind('interact')) { const nm = nearMerchant(); if (nm) { openMerchant(nm); return; } }
     if (e.code === bind('reload')) startReload();
     if (e.code === bind('dash')) tryDash();
+    if (e.code === bind('rage')) tryRage();
+    if (e.code === bind('blink')) tryBlink();
   }
   if (state === 'pick' && /^Digit[1-4]$/.test(e.code)) choosePick(Number(e.code.slice(5)) - 1);
   if (state === 'pick' && e.code === bind('reload')) rerollOffers();
