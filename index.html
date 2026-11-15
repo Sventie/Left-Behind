@@ -3761,7 +3761,7 @@ function drawFogInto() {
 }
 
 // ---------- Zeichnen: Karten ----------
-function drawCard(c, x, y, k, hover) {
+function drawCard(c, x, y, k, hover, at) {   // at: Bildschirmposition der Karte, wenn x und y schon in einem verschobenen Bereich liegen
   const R = RARITY[c.rarity];
   let tipRow = null;   // Stat, über dem die Maus steht (zeigt die Spanne T1 bis T5)
   ctx.save(); ctx.translate(x, y); ctx.scale(k, k);
@@ -3796,7 +3796,7 @@ function drawCard(c, x, y, k, hover) {
     lines.forEach((l, i) => text(l, 110, 196 + i * 16, 15, '#2a1f14', 'center', F_TEXT, '500'));
     const ry0 = 196 + lines.length * 16 + 14, vals = isInst ? c.vals : null;
     ctx.save(); ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(18, ry0 - 15); ctx.lineTo(202, ry0 - 15); ctx.stroke(); ctx.restore();
-    const lx = (mouse.fx - x) / k, ly = (mouse.fy - y) / k;
+    const lx = (mouse.fx - (at ? at.x : x)) / k, ly = (mouse.fy - (at ? at.y : y)) / k;
     const tipMode = isInst && hover && k >= 0.95 && (lx < 0 || lx > 220 || ly < 0 || ly > 320);   // Tooltip neben der Maus: Spanne gleich unter jedem Stat
     if (c.stats) c.stats.forEach((st, i) => {
       const ry = ry0 + i * (tipMode ? 32 : 18);
@@ -4748,7 +4748,7 @@ function drawOpenScreen() {
     const cx = 640 + (x + w / 2 - 640) * eRise, cy = 330 + (y + h / 2 - 330) * eRise, sz = 0.35 + 0.65 * eRise;   // Karten steigen aus dem Pack auf
     ctx.globalAlpha = Math.min(1, rise * 2.5);
     ctx.translate(cx, cy); ctx.scale(sz * Math.abs(Math.cos(f * Math.PI)), sz); ctx.translate(-w / 2, -h / 2);
-    if (f >= 0.5) drawCard(it.c, 0, 0, k, it.c.rarity !== 'gewoehnlich'); else drawCardBack(0, 0, k);
+    if (f >= 0.5) drawCard(it.c, 0, 0, k, (f >= 1 && inside(x, y, w, h)) || it.c.rarity !== 'gewoehnlich', { x, y }); else drawCardBack(0, 0, k);
     ctx.restore();
     if (!it.t && rise >= 1) uiHit(x, y, w, h, () => { it.t = performance.now(); flipSfx(it, 0); });
     if (f >= 1) {
@@ -5093,7 +5093,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.91';
+const VERSION = 'v0.92';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
