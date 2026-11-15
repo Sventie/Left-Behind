@@ -118,7 +118,7 @@ const AREAS = [
 const AREA_BY_ID = Object.fromEntries(AREAS.map(a => [a.id, a]));
 // ---------- Konto-Level ----------
 // 1 EP je Meter und die Punkte der Gegner (1 bis 20), auch beim Tod. Stufe n braucht XP_K · n^1,176 EP. Die Stufengrenze steigt mit jedem besiegten Boss um 5.
-const XP_K = 551, XP_P = 1.176;   // 10 % niedriger als zuvor (612)
+const XP_K = 386, XP_P = 1.176;   // 30 % niedriger als zuvor (551), damit Tester schneller Stufen bekommen
 const xpFor = L => Math.round(XP_K * Math.pow(L, XP_P));
 function levelRaw(xp) { let L = 0; while (xpFor(L + 1) <= xp) L++; return L; }
 const levelCap = () => 5 + 5 * AREAS.filter(a => SAVE.bossDownBy && SAVE.bossDownBy[a.id]).length;
@@ -6221,7 +6221,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.10';
+const VERSION = 'v1.11';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
