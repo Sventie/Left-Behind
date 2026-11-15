@@ -595,6 +595,10 @@ const PACKS = [
   { id: 'drache',  name: 'Drachen-Grimoire', price: 2000, odds: [10, 30, 40, 20], min: 'legendaer', cover: ['#a8323c', '#4a0f18'], ink: '#ffe9a8', seal: '#f2c14e', unlockBoss: true, content: '5 Karten · 1 Drachengold sicher' }
 ];
 const compat = (card, cls) => !card.types || card.types.includes(WEAPONS[cls.weapon].type);
+// DEPRECATED: Vorerst ist nur der Waldläufer spielbar. Karten, die er nicht nutzen kann (types ohne 'ranged'), bleiben im Code,
+// tauchen im Spiel aber nirgends auf (Deck, Kartenbuch, Packs, Recycling) und werden nirgends erwähnt.
+const ACTIVE_CI = Math.max(0, CLASSES.findIndex(c => c.id === 'waldlaeufer'));
+const usable = card => compat(card, CLASSES[ACTIVE_CI]);
 const copyLimit = card => card.limit !== undefined ? card.limit : DECK_LIMIT[card.rarity];
 const cardOrder = id => CARDS.findIndex(c => c.id === id);
 
@@ -5075,14 +5079,15 @@ function drawSelectScreen() {
 const CATS = ['Segen', 'Zauber', 'Fähigkeit'];
 const CAT_SUB = { Segen: 'Statuswerte', Zauber: 'Wirkungen', Fähigkeit: 'Aktionen' };
 let deckClass = 0, bookSpread = 0, deckFilter = 'all', deckPage = 0, deckHoverIdx = -1, deckMsg = null;
+let deckStats = new Set(), deckRar = new Set(), deckAb = false, deckStatScroll = 0, deckOpen = null, deckPopOff = 0, deckPanel = null, deckPop = null;   // Filter (Stats, Seltenheit, Fähigkeiten), geöffneter Stapel
 const rarIdx = c => RARITY_KEYS.indexOf(c.rarity);
 const byRarity = (a, b) => CATS.indexOf(a.kind) - CATS.indexOf(b.kind) || rarIdx(a) - rarIdx(b) || cardOrder(a.id) - cardOrder(b.id);
-function cardUsers(c) { return CLASSES.filter(cl => compat(c, cl)); }
+function cardUsers(c) { return [CLASSES[ACTIVE_CI]].filter(cl => compat(c, cl)); }
 
 function bookPages() {
   const pages = [];
   for (const cat of CATS) {
-    const list = CARDS.filter(c => c.kind === cat).sort(byRarity);
+    const list = CARDS.filter(c => usable(c) && c.kind === cat).sort(byRarity);
     for (let i = 0; i < list.length; i += 6) pages.push({ cat, cards: list.slice(i, i + 6) });
     if (pages.length % 2) pages.push({ blank: true });   // jede Kategorie beginnt auf einer neuen Doppelseite
   }
@@ -5090,7 +5095,7 @@ function bookPages() {
 }
 function drawTopBar(active) {
   uiButton(40, 18, 120, 42, '‹ Menü', () => { state = 'menu'; });
-  [['forge', 'Schmiede', 624, 150, () => openForge()], ['book', 'Kartenbuch', 176, 150, () => { bookSpread = 0; state = 'book'; }], ['deck', 'Deck', 342, 100, () => { deckClass = lastClass; deckHoverIdx = -1; state = 'deck'; }], ['shop', 'Bibliothek', 458, 150, () => { state = 'shop'; }]].forEach(([id, label, x, w, go]) => {
+  [['forge', 'Schmiede', 624, 150, () => openForge()], ['book', 'Kartenbuch', 176, 150, () => { bookSpread = 0; state = 'book'; }], ['deck', 'Deck', 342, 100, () => { deckClass = ACTIVE_CI; deckHoverIdx = -1; deckOpen = null; state = 'deck'; }], ['shop', 'Bibliothek', 458, 150, () => { state = 'shop'; }]].forEach(([id, label, x, w, go]) => {
     uiButton(x, 18, w, 42, label, id === active ? null : go, { primary: id === active });
   });
 }
@@ -5130,7 +5135,7 @@ function drawBookScreen() {
   drawTopBar('book');
   const pages = bookPages(), spreads = Math.max(1, Math.ceil(pages.length / 2));
   bookSpread = clamp(bookSpread, 0, spreads - 1);
-  text('Gesammelt: ' + CARDS.filter(c => SAVE.owned[c.id] > 0).length + ' / ' + CARDS.length, 1010, 46, 17, '#c8d4de', 'right', F_TEXT);
+  text('Gesammelt: ' + CARDS.filter(c => usable(c) && SAVE.owned[c.id] > 0).length + ' / ' + CARDS.filter(usable).length, 1010, 46, 17, '#c8d4de', 'right', F_TEXT);
   uiButton(1030, 18, 210, 42, 'Recycling · ' + surplusList().reduce((a, x) => a + x.n, 0), () => { recyclePage = 0; state = 'recycle'; }, { size: 15 });
 
   // Ledereinband ganz außen
@@ -5260,114 +5265,226 @@ function drawBookScreen() {
   text('Sortierung in jeder Kategorie, häufig → selten:', lx, 674, 15, '#8a9aa0', 'left', F_TEXT);
   lx += 330;
   leg.forEach(([n, c], i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(lx + 6, 669, 6, 0, 7); ctx.fill(); text(n, lx + 18, 674, 15, c, 'left', F_TEXT); lx += 28 + n.length * 7.6; if (i < 3) { text('→', lx - 6, 674, 15, '#8a9aa0', 'left', F_TEXT); lx += 14; } });
-  text('Die Symbole links an jeder Karte zeigen, wer sie nutzen kann: Schwert = Ritter · Bogen = Waldläufer · Stern = Magier. Die Reiter springen zur Kategorie, geblättert wird frei weiter.', 640, 698, 14, '#6f8274', 'center', F_TEXT);
   if (bookHoverCard) drawCard(bookHoverCard, clamp(mouse.fx + 24, 10, 1040), clamp(mouse.fy - 150, 90, 380), 1.0, true);
 }
 
 // ---------- Deck ----------
+const DECK_STAT_GROUPS = [['ANGRIFF', ['Schaden', 'Feuerrate', 'Spannzeit', 'Bolzen', 'Streuung', 'Bolzentempo', 'Bolzenreichweite', 'Lifesteal']], ['VERTEIDIGUNG', ['Leben', 'Schadensabzug', 'Rückschaden']], ['BEWEGUNG & SICHT', ['Lauftempo', 'Sichtweite', 'Sichtkegel']]];
 function deckPool(cls) {
   const inD = new Set(SAVE.decks[cls.id]);   // jede Karte einzeln, außer denen, die schon im Deck liegen
-  let list = SAVE.cards.filter(c => compat(c, cls) && !inD.has(c.u));
-  if (deckFilter === 'mond') list = list.filter(c => rarIdx(c) >= 2);
-  else if (deckFilter !== 'all') list = list.filter(c => c.kind === deckFilter);
-  return list.sort((a, b) => byRarity(a, b) || tierSum(b) - tierSum(a) || a.u - b.u);
+  let list = SAVE.cards.filter(c => usable(c) && compat(c, cls) && !inD.has(c.u));
+  if (deckAb) list = list.filter(c => c.kind === 'Fähigkeit');
+  if (deckRar.size) list = list.filter(c => deckRar.has(c.rarity));
+  for (const n of deckStats) list = list.filter(c => (c.stats || []).some(st => st.n === n));   // alle gewählten Stats (UND)
+  return list.sort((a, b) => rarIdx(a) - rarIdx(b) || cardOrder(a.id) - cardOrder(b.id) || tierSum(b) - tierSum(a) || a.u - b.u);
+}
+function deckStatItems() {   // Stat-Liste mit Anzahl der Karten (nach Namen), in Gruppen
+  const cnt = {}, seen = new Set();
+  for (const c of SAVE.cards) { if (!usable(c) || seen.has(c.id)) continue; seen.add(c.id); for (const st of c.stats || []) cnt[st.n] = (cnt[st.n] || 0) + 1; }
+  const items = [], used = new Set();
+  for (const [g, names] of DECK_STAT_GROUPS) {
+    const l = names.filter(n => cnt[n]); if (!l.length) continue;
+    items.push({ h: g }); l.forEach(n => { items.push({ n, c: cnt[n] }); used.add(n); });
+  }
+  const rest = Object.keys(cnt).filter(n => !used.has(n)).sort((a, b) => a.localeCompare(b, 'de'));
+  if (rest.length) { items.push({ h: 'SONSTIGES' }); rest.forEach(n => items.push({ n, c: cnt[n] })); }
+  for (const n of deckStats) if (!cnt[n]) deckStats.delete(n);
+  return items;
 }
 function deckAdd(cls, c) {
   if (addToDeck(cls, c)) { sfx('card_pick'); return; }
   const d = deckOf(cls);
   deckMsg = { t: d.length >= DECK_SIZE ? 'Das Deck ist voll.' : 'Mehr Kopien lassen sich nicht ins Deck legen.', until: performance.now() + 2200 };
 }
+const deckResetFilters = () => { deckStats.clear(); deckRar.clear(); deckAb = false; deckPage = 0; deckOpen = null; deckStatScroll = 0; };
 function drawDeckScreen() {
   uiBtns = [];
   screenBackdrop();
   drawTopBar('deck');
-  text('Streiter wählen und Deck zusammenstellen', 1240, 46, 17, '#c8d4de', 'right', F_TEXT);
+  text('Deck zusammenstellen', 1240, 46, 17, '#c8d4de', 'right', F_TEXT);
   const cls = CLASSES[deckClass], d = deckOf(cls).sort((a, b) => cardOrder(a.id) - cardOrder(b.id) || a.u - b.u);
 
-  // Linke Spalte: Streiter, Kartenstapel, Regeln
-  CLASSES.forEach((c, i) => {
-    const x = 40 + i * 114, act = i === deckClass, hov = inside(x, 100, 102, 58);
-    rr(x, 100, 102, 58, 12); ctx.fillStyle = act ? '#1e2c22' : (hov ? '#16231b' : '#101a14'); ctx.fill();
-    ctx.strokeStyle = act ? '#f2c14e' : '#2e3e32'; ctx.lineWidth = act ? 2 : 1; ctx.stroke();
-    drawIcon('k_' + c.id, x + 51, 121, 24, act ? '#f2c14e' : '#c8d4de', 1.5);
-    text(c.name, x + 51, 148, 12, act ? '#f2c14e' : '#c8d4de', 'center', F_TITLE);
-    uiHit(x, 100, 102, 58, () => { deckClass = i; deckPage = 0; deckHoverIdx = -1; });
+  // Linke Spalte: Deck, Regeln, Filter
+  const scx = 93, scy = 198;
+  [[-6, 0.75, 6], [-3, 0.85, 3]].forEach(([rot, al, dy]) => {
+    ctx.save(); ctx.translate(scx + 6, scy + dy + 6); ctx.rotate(rot * deg); ctx.globalAlpha = al; drawCardBack(-66, -96, 0.6); ctx.restore();
   });
-  const scx = 205, scy = 300;
-  [[-6, 0.75, 6], [-3, 0.85, 3], [3, 0.9, 0]].forEach(([rot, al, dy]) => {
-    ctx.save(); ctx.translate(scx, scy + dy); ctx.rotate(rot * deg); ctx.globalAlpha = al; drawCardBack(-75, -108, 0.68); ctx.restore();
-  });
-  ctx.save(); ctx.translate(scx, scy - 8);
-  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 10;
-  rr(-75, -108, 150, 216, 9); g = ctx.createRadialGradient(0, -20, 10, 0, 0, 140); g.addColorStop(0, '#2f5a44'); g.addColorStop(1, '#10211a'); ctx.fillStyle = g; ctx.fill();
+  ctx.save(); ctx.translate(scx, scy);
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 8;
+  rr(-67, -100, 134, 200, 10); g = ctx.createRadialGradient(0, -30, 10, 0, 0, 140); g.addColorStop(0, '#2f5a44'); g.addColorStop(1, '#10211a'); ctx.fillStyle = g; ctx.fill();
   ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 3; ctx.stroke();
-  rr(-68, -101, 136, 202, 6); ctx.strokeStyle = '#5a4a1a'; ctx.lineWidth = 1; ctx.stroke();
-  drawIcon('k_' + cls.id, 0, -34, 64, '#f2c14e', 1.2);
-  text('DECK DES', 0, 28, 15, '#f0e6c8', 'center', F_TITLE); text((cls.name + 's').toUpperCase(), 0, 50, 15, '#f0e6c8', 'center', F_TITLE);
+  rr(-60, -93, 120, 186, 6); ctx.strokeStyle = '#5a4a1a'; ctx.lineWidth = 1; ctx.stroke();
+  drawIcon('k_' + cls.id, 0, -22, 58, '#f2c14e', 1.2);
+  text('DECK', 0, 60, 26, '#f0e6c8', 'center', F_TITLE);
   ctx.restore();
-  rr(scx - 42, 410, 84, 40, 20); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#8ee8ff'; ctx.lineWidth = 2; ctx.stroke();
-  text(d.length + ' / ' + DECK_SIZE, scx, 437, 20, '#8ee8ff', 'center', F_TITLE);
-  uiButton(40, 470, 156, 36, 'Leeren', () => { SAVE.decks[cls.id] = []; persist(); }, { size: 15 });
-  uiButton(208, 470, 162, 36, 'Startdeck', () => { SAVE.decks[cls.id] = defaultDeck(cls, SAVE.cards); persist(); }, { size: 15 });
-  rr(40, 522, 330, 140, 12); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
-  if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
-  text('WIE OFT EINE KARTE INS DECK DARF', 56, 546, 12, '#8a9aa0', 'left', F_TEXT, 'bold');
+  rr(scx - 50, 296, 100, 36, 18); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#8ee8ff'; ctx.lineWidth = 2; ctx.stroke();
+  text(d.length + ' / ' + DECK_SIZE, scx, 322, 20, '#8ee8ff', 'center', F_TITLE);
+  // Wie oft die gleiche Karte ins Deck darf
+  rr(190, 100, 188, 150, 10); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '1.5px';
+  text('WIE OFT DIE GLEICHE', 204, 124, 11.5, '#8a9aa0', 'left', F_TEXT, 'bold'); text('KARTE INS DECK DARF', 204, 141, 11.5, '#8a9aa0', 'left', F_TEXT, 'bold');
   if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   [['legendaer', 'Drachengold'], ['episch', 'Mondstein'], ['selten', 'Smaragd'], ['gewoehnlich', 'Eisen']].forEach(([k, n], i) => {
-    const y = 574 + i * 24;
-    ctx.fillStyle = RARITY[k].c; ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(64, y - 5, 6, 0, 7); ctx.fill(); ctx.stroke();
-    text(n, 80, y, 14, '#f0e6c8', 'left', F_TITLE); text('höchstens ' + DECK_LIMIT[k] + '×', 354, y, 16, '#c8d4de', 'right', F_TEXT);
+    const y = 172 + i * 25;
+    text(n, 204, y, 15, RARITY[k].c, 'left', F_TITLE); text('max. ' + DECK_LIMIT[k] + '×', 364, y, 14, '#c8d4de', 'right', F_TEXT);
   });
-  text('Auch ein leeres Deck ist erlaubt.', 40, 690, 14, '#8a9aa0', 'left', F_TEXT, 'italic');
+
+  // Stat-Filter (Seitenleiste, zwei Spalten, scrollbar)
+  const PX = 26, PY = 346, PW = 352, PH = 366;
+  rr(PX, PY, PW, PH, 12); ctx.fillStyle = '#0f1a14'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
+  text('STATS FILTERN', PX + 18, PY + 26, 12, '#8ee8ff', 'left', F_TEXT, 'bold');
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  const nAct = deckStats.size + deckRar.size + (deckAb ? 1 : 0), rh = inside(PX + PW - 130, PY + 8, 118, 26);
+  text('Zurücksetzen', PX + PW - 18, PY + 26, 13, nAct ? (rh ? '#f2c14e' : '#c8d4de') : '#5a6e60', 'right', F_TEXT);
+  if (nAct) uiHit(PX + PW - 130, PY + 8, 118, 26, deckResetFilters);
+  const items = deckStatItems(), LH = 22, HH = 28, ly0 = PY + 40, lh = PH - 50;
+  const hOf = it => it.h ? HH : LH;
+  const totalH = items.reduce((a, it) => a + hOf(it), 0);
+  let acc = 0, split = items.length;   // zwei Spalten: bei der Hälfte teilen, nie direkt nach einer Überschrift
+  for (let i = 0; i < items.length; i++) { acc += hOf(items[i]); if (acc >= totalH / 2) { split = items[i].h ? i : i + 1; if (items[i + 1] && items[i + 1].h === undefined && false) split = i + 1; break; } }
+  if (items[split] && items[split].h === undefined && items[split - 1] && items[split - 1].h) split--;
+  const cols = [items.slice(0, split), items.slice(split)], colH = Math.max(...cols.map(c => c.reduce((a, it) => a + hOf(it), 0)));
+  const maxSc = Math.max(0, colH - lh + 8);
+  deckStatScroll = clamp(deckStatScroll, 0, maxSc);
+  deckPanel = { x: PX, y: PY, w: PW, h: PH };
+  ctx.save(); ctx.beginPath(); ctx.rect(PX + 6, ly0, PW - 12, lh); ctx.clip();
+  cols.forEach((col, ci) => {
+    const cx = PX + 18 + ci * 170; let y = ly0 - deckStatScroll;
+    for (const it of col) {
+      if (it.h) { if ('letterSpacing' in ctx) ctx.letterSpacing = '1.5px'; text(it.h, cx, y + 19, 11.5, '#8a9aa0', 'left', F_TEXT, 'bold'); if ('letterSpacing' in ctx) ctx.letterSpacing = '0px'; y += HH; continue; }
+      const on = deckStats.has(it.n), vis = y + LH > ly0 && y < ly0 + lh;
+      if (vis) {
+        const hov = inside(cx - 4, y, 156, LH) && inside(PX, ly0, PW, lh);
+        rr(cx, y + 4, 14, 14, 3); ctx.fillStyle = on ? '#f2c14e' : (hov ? '#16231b' : 'transparent'); ctx.fill(); ctx.strokeStyle = on ? '#f2c14e' : '#5a6e60'; ctx.lineWidth = 1.5; ctx.stroke();
+        if (on) { ctx.strokeStyle = '#1c140c'; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(cx + 3, y + 11); ctx.lineTo(cx + 6.5, y + 14.5); ctx.lineTo(cx + 11, y + 7.5); ctx.stroke(); }
+        text(fit(it.n, 98, '14.5px ' + F_TEXT), cx + 22, y + 16, 14.5, on ? '#f2c14e' : (hov ? '#f0e6c8' : '#c8d4de'), 'left', F_TEXT);
+        text(String(it.c), cx + 148, y + 16, 12, '#8a9aa0', 'right', F_TEXT);
+        if (inside(PX, ly0, PW, lh)) uiHit(cx - 4, y, 156, LH, () => { if (on) deckStats.delete(it.n); else deckStats.add(it.n); deckPage = 0; deckOpen = null; });
+      }
+      y += LH;
+    }
+  });
+  ctx.restore();
+  if (maxSc > 0) { const th = Math.max(30, lh * lh / (colH + 8)); rr(PX + PW - 9, ly0 + (lh - th) * deckStatScroll / maxSc, 4, th, 2); ctx.fillStyle = '#3e5246'; ctx.fill(); }
 
   // Das Deck als Fächer
-  titleText('Dein Deck', 400, 130, 30, 'left');
-  text('Karten überlappen wie auf der Hand. Klick auf eine Karte nimmt sie heraus.', 1240, 126, 15, '#c8d4de', 'right', F_TEXT);
-  const fanTop = 142, H0 = deckHoverIdx;
-  const fanLeft = (i, h) => h < 0 ? i * 66 : (i < h ? i * 61 : i === h ? h * 61 : h * 61 + 108 + (i - h - 1) * 61);
+  titleText('Dein Deck', 400, 114, 28, 'left');
+  text('Karten überlappen wie auf der Hand. Klick auf eine Karte nimmt sie heraus.', 1240, 110, 14, '#c8d4de', 'right', F_TEXT);
+  const FW = 103, FH = 150, FK = FW / 220, fanTop = 124, H0 = deckHoverIdx;
+  const fanLeft = (i, h) => h < 0 ? i * 63 : (i < h ? i * 58 : i === h ? h * 58 : h * 58 + 94 + (i - h - 1) * 58);
   let h = -1;
-  if (H0 >= 0 && H0 < d.length && inside(400 + fanLeft(H0, H0), fanTop - 14, 118, 214)) h = H0;
-  if (h < 0 && inside(400, fanTop, 844, 200)) {
-    for (let i = DECK_SIZE - 1; i >= 0; i--) { if (i < d.length && inside(400 + i * 66, fanTop, i === DECK_SIZE - 1 ? 118 : 66, 200)) { h = i; break; } }
+  if (H0 >= 0 && H0 < d.length && inside(400 + fanLeft(H0, H0), fanTop - 14, FW, FH + 40)) h = H0;
+  if (h < 0 && inside(400, fanTop, 844, FH + 30)) {
+    for (let i = DECK_SIZE - 1; i >= 0; i--) { if (i < d.length && inside(400 + i * 63, fanTop, i === DECK_SIZE - 1 ? FW : 63, FH + 30)) { h = i; break; } }
   }
   deckHoverIdx = h;
   for (let i = 0; i < DECK_SIZE; i++) {
-    const hv = i === h, dd = i - 5.5, left = 400 + fanLeft(i, h), top = fanTop + (hv ? 0 : 14 + Math.round(dd * dd * 0.5));
-    ctx.save(); ctx.translate(left + 59, top + 86); ctx.rotate(dd * 1.6 * deg);
+    const hv = i === h, dd = i - 5.5, left = 400 + fanLeft(i, h), top = fanTop + (hv ? 0 : 10 + Math.round(dd * dd * 0.3));
+    ctx.save(); ctx.translate(left + FW / 2, top + FH / 2); ctx.rotate(dd * 1.2 * deg);
     if (i < d.length) {
-      const c = d[i];
-      drawCard(c, -59, -86, 0.5375, hv);
-      if (hv) { rr(-62, -89, 124, 178, 12); ctx.strokeStyle = '#8ee8ff'; ctx.lineWidth = 3; ctx.stroke(); ctx.beginPath(); ctx.arc(53, -80, 13, 0, 7); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#ff7a8a'; ctx.lineWidth = 1.5; ctx.stroke(); text('×', 53, -73, 20, '#e8dcbc', 'center', F_TEXT); }
+      drawCard(d[i], -FW / 2, -FH / 2, FK, hv);
+      if (hv) { rr(-FW / 2 - 3, -FH / 2 - 3, FW + 6, FH + 6, 11); ctx.strokeStyle = '#8ee8ff'; ctx.lineWidth = 3; ctx.stroke(); ctx.beginPath(); ctx.arc(FW / 2 - 6, -FH / 2 + 8, 12, 0, 7); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#ff7a8a'; ctx.lineWidth = 1.5; ctx.stroke(); text('×', FW / 2 - 6, -FH / 2 + 15, 19, '#e8dcbc', 'center', F_TEXT); }
     } else {
-      rr(-59, -86, 118, 172, 9); ctx.fillStyle = 'rgba(10,17,13,.6)'; ctx.fill(); ctx.setLineDash([6, 5]); ctx.strokeStyle = '#3e5246'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
-      text('+', 0, 10, 30, '#5a6e60', 'center', F_TEXT);
+      rr(-FW / 2, -FH / 2, FW, FH, 9); ctx.fillStyle = 'rgba(10,17,13,.6)'; ctx.fill(); ctx.setLineDash([6, 5]); ctx.strokeStyle = '#3e5246'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+      text('+', 0, 10, 28, '#5a6e60', 'center', F_TEXT);
     }
     ctx.restore();
-    if (i < d.length) uiHit(left, top, (i < DECK_SIZE - 1 ? fanLeft(i + 1, h) - fanLeft(i, h) : 118), 172, () => { removeFromDeck(cls, d[i]); deckHoverIdx = -1; });
+    if (i < d.length) uiHit(left, top, (i < DECK_SIZE - 1 ? fanLeft(i + 1, h) - fanLeft(i, h) : FW), FH, () => { removeFromDeck(cls, d[i]); deckHoverIdx = -1; });
   }
 
-  // Auswahl aus dem Kartenbuch
-  text('Aus deiner Sammlung', 400, 374, 20, '#f0e6c8', 'left', F_TITLE);
-  const pool = deckPool(cls), per = 18, pages = Math.max(1, Math.ceil(pool.length / per));
+  // Karten aus dem Kartenbuch: gleiche Karten als Stapel, zwei Zeilen
+  text('Aus deinem Kartenbuch', 400, 324, 20, '#f0e6c8', 'left', F_TITLE);
+  const pool = deckPool(cls), groups = [], gm = new Map();
+  for (const c of pool) { let gr = gm.get(c.id); if (!gr) { gr = []; gm.set(c.id, gr); groups.push(gr); } gr.push(c); }
+  groups.forEach(gr => gr.sort((a, b) => tierSum(b) - tierSum(a) || a.u - b.u));
+  const per = 18, pages = Math.max(1, Math.ceil(groups.length / per));
   deckPage = clamp(deckPage, 0, pages - 1);
-  text('nur Karten, die der ' + cls.name + ' nutzen kann', pages > 1 ? 1130 : 1240, 374, 14, '#8a9aa0', 'right', F_TEXT);
-  if (pages > 1) { uiButton(1146, 354, 40, 30, '‹', deckPage > 0 ? () => { deckPage--; } : null, { size: 18, disabled: deckPage <= 0 }); uiButton(1196, 354, 40, 30, '›', deckPage < pages - 1 ? () => { deckPage++; } : null, { size: 18, disabled: deckPage >= pages - 1 }); }
-  [['Alle', 'all', 66], ['Segen', 'Segen', 78], ['Zauber', 'Zauber', 84], ['Fähigkeiten', 'Fähigkeit', 118]].reduce((x, [l, id, w]) => { chip(x, 386, w, l, deckFilter === id, () => { deckFilter = id; deckPage = 0; }); return x + w + 8; }, 400);
-  chip(1114, 386, 126, 'Mondstein+', deckFilter === 'mond', () => { deckFilter = 'mond'; deckPage = 0; }, '#bfe3ff');
-  let hovCard = null;
-  pool.slice(deckPage * per, deckPage * per + per).forEach((c, i) => {
-    const x = 400 + (i % 9) * 94.5, y = 436 + Math.floor(i / 9) * 146, k = inDeck(cls, c.id), lim = copyLimit(c), full = k >= lim;
-    const hov = inside(x, y, 84, 122);
-    if (hov) hovCard = c;
-    ctx.globalAlpha = full ? 0.5 : 1; drawCard(c, x, y, 0.382, hov && !full); ctx.globalAlpha = 1;
-    const lab = full ? 'voll ' + k + '/' + lim : 'im Deck ' + k + '/' + lim, col = full ? '#6f8274' : '#8ee8ff';
-    ctx.font = 'bold 12px ' + F_TEXT; const lw = ctx.measureText(lab).width + 18;
-    rr(x + 42 - lw / 2, y + 113, lw, 18, 9); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.stroke();
-    text(lab, x + 42, y + 126, 12, col, 'center', F_TEXT, 'bold');
-    uiHit(x, y, 84, 122, () => deckAdd(cls, c));
+  if (deckOpen && !gm.has(deckOpen)) deckOpen = null;
+  const noF = !deckStats.size && !deckRar.size && !deckAb;
+  let cx0 = 400;
+  [['Alle', 'all', 66, null], ['Fähigkeiten', 'ab', 118, null]].forEach(([l, id, w]) => {
+    chip(cx0, 334, w, l, id === 'all' ? noF : deckAb, () => { if (id === 'all') deckResetFilters(); else { deckAb = !deckAb; deckPage = 0; deckOpen = null; } }); cx0 += w + 8;
   });
-  if (!pool.length) text(deckFilter === 'all' ? 'Du besitzt noch keine Karten für diesen Streiter.' : 'Keine Karten in dieser Auswahl.', 820, 500, 18, '#7a8a7a', 'center', F_TEXT, 'italic');
-  if (deckMsg && performance.now() < deckMsg.until) text(deckMsg.t, 820, 358, 17, '#ff7a8a', 'center', F_TEXT, 'italic');
+  ctx.fillStyle = '#2e3e32'; ctx.fillRect(cx0 + 2, 340, 1, 22); cx0 += 14;
+  [['Eisen', 'gewoehnlich', 70], ['Smaragd', 'selten', 94], ['Mondstein', 'episch', 106], ['Drachengold', 'legendaer', 128]].forEach(([l, k, w]) => {
+    const on = deckRar.has(k);
+    chip(cx0, 334, w, l, on, () => { if (on) deckRar.delete(k); else deckRar.add(k); deckPage = 0; deckOpen = null; }, RARITY[k].c); cx0 += w + 8;
+  });
+  uiButton(1070, 334, 40, 34, '‹', deckPage > 0 ? () => { deckPage--; deckOpen = null; } : null, { size: 20, disabled: deckPage <= 0 });
+  text('Seite ' + (deckPage + 1) + ' / ' + pages, 1156, 357, 16, '#c8d4de', 'center', F_TEXT);
+  uiButton(1202, 334, 38, 34, '›', deckPage < pages - 1 ? () => { deckPage++; deckOpen = null; } : null, { size: 20, disabled: deckPage >= pages - 1 });
+  if (deckMsg && performance.now() < deckMsg.until) text(deckMsg.t, 820, 324, 16, '#ff7a8a', 'center', F_TEXT, 'italic');
+
+  const SK = 0.39, SW = 86, SH = 125, rowY = [396, 556], colX = i => 406 + i * 93;
+  let hovCard = null, openIdx = -1;
+  groups.slice(deckPage * per, deckPage * per + per).forEach((gr, i) => {
+    const x = colX(i % 9), y = rowY[Math.floor(i / 9)], top = gr[0], n = gr.length, lay = Math.min(2, n - 1), sel = deckOpen === top.id;
+    if (sel) openIdx = i;
+    const lim = copyLimit(top), full = inDeck(cls, top.id) >= lim, hov = inside(x, y, SW, SH);
+    if (hov) hovCard = top;
+    ctx.globalAlpha = full ? 0.5 : 1;
+    for (let l = lay; l >= 1; l--) { rr(x + l * 5, y - l * 5, SW, SH, 7); ctx.fillStyle = '#232b27'; ctx.fill(); ctx.strokeStyle = '#4a5a4e'; ctx.lineWidth = 2; ctx.stroke(); }
+    drawCard(top, x, y, SK, hov && !full);
+    ctx.globalAlpha = 1;
+    if (sel) { rr(x - 3, y - 3, SW + 6, SH + 6, 9); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 3; ctx.stroke(); }
+    if (n > 1) {
+      const bx = x + SW - 14 + lay * 5, by = y - 11 - lay * 5;
+      rr(bx - 4, by, 30, 21, 10.5); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#8ee8ff'; ctx.lineWidth = 2; ctx.stroke();
+      text('×' + n, bx + 11, by + 16, 13, '#8ee8ff', 'center', F_TITLE);
+    }
+    const lab = full ? 'voll' : (inDeck(cls, top.id) ? 'im Deck ' + inDeck(cls, top.id) + '/' + lim : '');
+    if (lab) { text(lab, x + SW / 2, y + SH + 15, 12, full ? '#6f8274' : '#8ee8ff', 'center', F_TEXT, 'bold'); }
+    uiHit(x, y - 4, SW + 10, SH + 4, () => { if (n === 1) { deckAdd(cls, top); } else { deckOpen = deckOpen === top.id ? null : top.id; deckPopOff = 0; } });
+  });
+  if (!groups.length) text(noF ? 'Du besitzt noch keine Karten.' : 'Keine Karten mit diesen Filtern.', 820, 520, 18, '#7a8a7a', 'center', F_TEXT, 'italic');
+
+  // Popup mit den gleichen Karten (liegt über der anderen Zeile)
+  deckPop = null;
+  if (deckOpen && openIdx >= 0) {
+    const gr = gm.get(deckOpen), row = Math.floor(openIdx / 9), py = row === 0 ? 538 : 366, PXx = 402, PWw = 836, PHh = 176;
+    const many = gr.length > 3, vis = 3, IW = 232, off = clamp(deckPopOff, 0, Math.max(0, gr.length - vis));
+    deckPopOff = off;
+    deckPop = { x: PXx, y: py, w: PWw, h: PHh, max: Math.max(0, gr.length - vis) };
+    const ax = colX(openIdx % 9) + SW / 2;
+    ctx.save(); ctx.fillStyle = '#f2c14e'; ctx.beginPath();
+    if (row === 0) { ctx.moveTo(ax - 11, py); ctx.lineTo(ax + 11, py); ctx.lineTo(ax, py - 14); } else { ctx.moveTo(ax - 11, py + PHh); ctx.lineTo(ax + 11, py + PHh); ctx.lineTo(ax, py + PHh + 14); }
+    ctx.fill(); ctx.restore();
+    ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.7)'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 8;
+    rr(PXx, py, PWw, PHh, 12); ctx.fillStyle = '#0f1a14'; ctx.fill(); ctx.restore();
+    rr(PXx, py, PWw, PHh, 12); ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 2; ctx.stroke();
+    uiHit(PXx, py, PWw, PHh, null);
+    const top0 = gr[0];
+    text(top0.name + ' ×' + gr.length, PXx + 16, py + 28, 17, '#f2c14e', 'left', F_TITLE);
+    text(many ? 'wähle eine Karte · mit ‹ › oder Mausrad blättern' : 'wähle eine Karte', PXx + 24 + ctx.measureText(top0.name + ' ×' + gr.length).width * 1.15 + 20, py + 28, 14, '#8a9aa0', 'left', F_TEXT);
+    const close = inside(PXx + PWw - 40, py + 8, 30, 28);
+    text('✕', PXx + PWw - 24, py + 28, 18, close ? '#f2c14e' : '#8a9aa0', 'center', F_TEXT);
+    uiHit(PXx + PWw - 40, py + 8, 30, 28, () => { deckOpen = null; });
+    const lx0 = PXx + (many ? 52 : 16), ly = py + 44;
+    if (many) {
+      uiButton(PXx + 12, ly + 28, 32, 56, '‹', off > 0 ? () => { deckPopOff--; } : null, { size: 20, disabled: off <= 0 });
+      uiButton(PXx + PWw - 44, ly + 28, 32, 56, '›', off < gr.length - vis ? () => { deckPopOff++; } : null, { size: 20, disabled: off >= gr.length - vis });
+      const tw = PWw - 120; rr(PXx + 60, py + PHh - 14, tw, 6, 3); ctx.fillStyle = '#1a2a20'; ctx.fill();
+      const bw = tw * vis / gr.length; rr(PXx + 60 + (tw - bw) * off / Math.max(1, gr.length - vis), py + PHh - 14, bw, 6, 3); ctx.fillStyle = '#9a7a3a'; ctx.fill();
+    }
+    gr.slice(off, off + vis).forEach((c, j) => {
+      const ix = lx0 + j * (IW + 10), iy = ly, hov = inside(ix, iy, IW, 118);
+      rr(ix, iy, IW, 118, 10); ctx.fillStyle = hov ? '#1e2c22' : 'transparent'; ctx.fill(); ctx.strokeStyle = hov ? '#f2c14e' : '#2e3e32'; ctx.lineWidth = hov ? 2 : 1; ctx.stroke();
+      const ck = inDeck(cls, c.id) >= copyLimit(c);
+      ctx.globalAlpha = ck ? 0.5 : 1; drawCard(c, ix + 8, iy + 6, 0.33, false); ctx.globalAlpha = 1;
+      if (hov) hovCard = c;
+      let ty = iy + 26;
+      (c.stats || []).forEach(st => {
+        const t = c.t[st.k], v = c.vals[st.k];
+        text(fit(statLabel(st, v), IW - 106, '13.5px ' + F_TEXT), ix + 90, ty, 13.5, st.bad || st.neg ? '#ff9a8a' : '#c8d4de', 'left', F_TEXT);
+        const col = t >= 5 ? '#f2c14e' : t >= 4 ? '#8ee8ff' : t >= 3 ? '#7fe0a8' : '#8a9aa0';
+        rr(ix + 90, ty + 4, 38, 18, 9); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke(); text('T' + t, ix + 109, ty + 18, 12.5, '#e8dcbc', 'center', F_TEXT, 'bold');
+        ty += 34;
+      });
+      if (ck) text('Limit erreicht', ix + 90, iy + 108, 12, '#8a9aa0', 'left', F_TEXT, 'italic');
+      uiHit(ix, iy, IW, 118, () => { deckAdd(cls, c); });
+    });
+  }
   if (hovCard && h < 0) drawCard(hovCard, clamp(mouse.fx + 22, 10, 1040), clamp(mouse.fy - 330, 90, 370), 1.0, true);
 }
 
@@ -5534,7 +5651,7 @@ function buyPack(p) {
   idxs.sort((a, b) => a - b);
   const seen = {};
   const cards = idxs.map(i => {
-    const pool = CARDS.filter(c => c.rarity === RARITY_KEYS[i]);
+    const pool = CARDS.filter(c => usable(c) && c.rarity === RARITY_KEYS[i]);
     const def = pool[Math.floor(Math.random() * pool.length)];
     const isNew = (SAVE.owned[def.id] || 0) === 0 && !seen[def.id];
     seen[def.id] = true;
@@ -5786,7 +5903,7 @@ function drawForgeScreen() {
   }
 }
 function surplusList() {
-  return CARDS.filter(c => (SAVE.owned[c.id] || 0) > copyLimit(c)).map(c => ({ c, n: SAVE.owned[c.id] - copyLimit(c) }));
+  return CARDS.filter(c => usable(c) && (SAVE.owned[c.id] || 0) > copyLimit(c)).map(c => ({ c, n: SAVE.owned[c.id] - copyLimit(c) }));
 }
 function recycleCard(c, n) {
   const mine = SAVE.cards.filter(o => o.id === c.id);
@@ -5980,7 +6097,7 @@ const menuButtons = [
   { label: 'Neuer Durchlauf', main: true, x: 80, y: 386, w: 330, h: 50, action: () => openAreas() },
   { label: 'Fähigkeiten', skills: true, x: 80, y: 440, w: 330, h: 50, action: () => openSkills('menu') },
   { label: 'Kartenbuch', x: 80, y: 494, w: 330, h: 50, action: () => { bookSpread = 0; state = 'book'; } },
-  { label: 'Deck', x: 80, y: 548, w: 330, h: 50, action: () => { deckClass = lastClass; deckHoverIdx = -1; state = 'deck'; } },
+  { label: 'Deck', x: 80, y: 548, w: 330, h: 50, action: () => { deckClass = ACTIVE_CI; deckHoverIdx = -1; deckOpen = null; state = 'deck'; } },
   { label: 'Bibliothek', x: 80, y: 602, w: 330, h: 50, action: () => { state = 'shop'; } },
   { label: 'Optionen', small: true, x: 80, y: 664, w: 104, h: 34, action: () => openOptions('menu') },
   { label: 'Feedback', small: true, x: 193, y: 664, w: 104, h: 34, action: () => openFeedback('menu') },
@@ -6105,7 +6222,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.03';
+const VERSION = 'v1.04';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -7185,8 +7302,7 @@ addEventListener('keydown', e => {
     return;
   }
   if (state === 'deck') {
-    if (e.code === 'Escape') state = 'menu';
-    if (/^Digit[1-3]$/.test(e.code)) { deckClass = Number(e.code.slice(5)) - 1; deckPage = 0; deckHoverIdx = -1; }
+    if (e.code === 'Escape') { if (deckOpen) deckOpen = null; else state = 'menu'; }
     if (e.code === 'ArrowRight') deckPage++;
     if (e.code === 'ArrowLeft') deckPage--;
     return;
@@ -7277,7 +7393,13 @@ canvas.addEventListener('wheel', e => {
   if (state === 'book') { bookSpread += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'areas') { areaScroll = clamp(areaScroll + e.deltaY * 0.8, 0, areaMaxScroll()); e.preventDefault(); }
   if (state === 'victory' && G.victory) { G.victory.scroll += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
-  if (state === 'deck') { deckPage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
+  if (state === 'deck') {
+    const dir = e.deltaY > 0 ? 1 : -1;
+    if (deckPanel && inside(deckPanel.x, deckPanel.y, deckPanel.w, deckPanel.h)) deckStatScroll += e.deltaY * 0.6;
+    else if (deckPop && inside(deckPop.x, deckPop.y, deckPop.w, deckPop.h)) deckPopOff = clamp(deckPopOff + dir, 0, deckPop.max);
+    else { deckPage += dir; deckOpen = null; }
+    e.preventDefault();
+  }
   if (state === 'recycle') { recyclePage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'forge') { forgePage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'test' && testAreas) { for (const k of ['l', 'm']) { const a = testAreas[k]; if (inside(a.x, a.y, a.w + 8, a.h)) { testScroll[k] += e.deltaY * 0.6; e.preventDefault(); } } }
