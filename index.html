@@ -4951,7 +4951,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.86';
+const VERSION = 'v0.87';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -5076,6 +5076,7 @@ function statRows() {
   if (Math.abs(S.priceMul - 1) > 0.005) row('Händlerpreise', fmt(S.priceMul * 100, 0) + ' %', ...pct(S.priceMul, 1, true));
   return rows;
 }
+let pauseScroll = { c: 0, s: 0 }, pauseAreas = null;
 function drawPauseScreen() {
   uiBtns = []; uiSliders = [];
   overlay(0.84);
@@ -5123,9 +5124,21 @@ function drawPauseScreen() {
   if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   const groups = [];
   for (const id of G.cards.concat(G.buffs)) { const gr = groups.find(q => q.id === id); if (gr) gr.n++; else groups.push({ id, n: 1 }); }
-  const cwid = 296, maxChips = 8;
-  groups.slice(0, maxChips).forEach((gr, i) => {
-    const c = itemOf(gr.id), R = RARITY[c.rarity], sx = cx, sy = Y + 204 + i * 38;
+  const cwid = 296, areaTop = Y + 204, areaH = Y + Ht - 66 - areaTop;
+  const rowsS = statRows(), sw = cx + cw - sx0;
+  pauseAreas = { c: { x: cx, y: areaTop, w: cwid, h: areaH, total: groups.length * 38 - 4 }, s: { x: sx0 - 6, y: areaTop, w: sw + 6, h: areaH, total: rowsS.length * 25 } };
+  for (const k of ['c', 's']) pauseScroll[k] = clamp(pauseScroll[k], 0, Math.max(0, pauseAreas[k].total - pauseAreas[k].h));
+  const scrollbar = k => {   // dünner Balken am rechten Rand, nur wenn es etwas zu scrollen gibt
+    const a = pauseAreas[k], over = a.total - a.h;
+    if (over <= 0) return;
+    const th = Math.max(30, a.h * a.h / a.total), ty = a.y + (a.h - th) * (pauseScroll[k] / over);
+    rr(a.x + a.w + 2, a.y, 4, a.h, 2); ctx.fillStyle = '#0a110d'; ctx.fill();
+    rr(a.x + a.w + 2, ty, 4, th, 2); ctx.fillStyle = '#9a7a3a'; ctx.fill();
+  };
+  ctx.save(); ctx.beginPath(); ctx.rect(cx - 4, areaTop - 2, cwid + 8, areaH + 4); ctx.clip();
+  groups.forEach((gr, i) => {
+    const c = itemOf(gr.id), R = RARITY[c.rarity], sx = cx, sy = areaTop + i * 38 - pauseScroll.c;
+    if (sy < areaTop - 38 || sy > areaTop + areaH) return;
     rr(sx, sy, cwid, 34, 6); ctx.fillStyle = '#16231b'; ctx.fill();
     ctx.strokeStyle = R.c; ctx.lineWidth = 2; if (c.kind === 'Trank') ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
     rr(sx + 6, sy + 5, 24, 24, [12, 12, 4, 4]); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 1; ctx.stroke();
@@ -5134,15 +5147,18 @@ function drawPauseScreen() {
     if (gr.n > 1) text('×' + gr.n, sx + cwid - 10, sy + 22, 14, '#f2c14e', 'right', F_TITLE);
     else if (c.kind === 'Trank') text('Trank', sx + cwid - 10, sy + 22, 12, '#8a9aa0', 'right', F_TEXT);
   });
-  if (groups.length > maxChips) text('… und ' + (groups.length - maxChips) + ' weitere', cx + cwid, Y + 204 + maxChips * 38 + 10, 14, '#8a9aa0', 'right', F_TEXT, 'italic');
+  ctx.restore(); scrollbar('c');
   if (!groups.length) text('Noch keine Karten gewählt.', cx, Y + 232, 17, '#7a8a7a', 'left', F_TEXT, 'italic');
-  statRows().forEach((r, i) => {
-    const ry = Y + 222 + i * 25, sw = cx + cw - sx0;
+  ctx.save(); ctx.beginPath(); ctx.rect(sx0 - 6, areaTop - 2, sw + 6, areaH + 4); ctx.clip();
+  rowsS.forEach((r, i) => {
+    const ry = areaTop + 17 + i * 25 - pauseScroll.s;
+    if (ry < areaTop - 10 || ry > areaTop + areaH + 10) return;
     if (i % 2 === 0) { ctx.fillStyle = 'rgba(255,255,255,0.03)'; ctx.fillRect(sx0 - 6, ry - 17, sw + 6, 24); }
     text(r.name, sx0, ry, 15, '#c8d4de', 'left', F_TEXT);
-    text(r.val, sx0 + 150, ry, 16, '#f0e6c8', 'right', F_TITLE);
-    text(r.bonus ? '(' + r.bonus + ')' : '(±0)', sx0 + 160, ry, 14, r.good > 0 ? '#4fd08a' : r.good < 0 ? '#ff9a8a' : '#6a7a70', 'left', F_TEXT);
+    text(r.val, sx0 + 182, ry, 16, '#f0e6c8', 'right', F_TITLE);
+    text(r.bonus ? '(' + r.bonus + ')' : '(±0)', sx0 + 192, ry, 14, r.good > 0 ? '#4fd08a' : r.good < 0 ? '#ff9a8a' : '#6a7a70', 'left', F_TEXT);
   });
+  ctx.restore(); scrollbar('s');
   ctx.fillStyle = '#2e3e32'; ctx.fillRect(cx, Y + Ht - 58, cw, 1);
   text('Im Deck: ' + G.library.length + ' Karten', cx, Y + Ht - 30, 15, '#8a9aa0', 'left', F_TEXT);
   const kn = keycap(cx + cw, Y + Ht - 36, keyLabel(bind('sfx')));
@@ -5928,6 +5944,7 @@ canvas.addEventListener('wheel', e => {
   if (state === 'victory' && G.victory) { G.victory.scroll += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'deck') { deckPage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'recycle') { recyclePage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
+  if (state === 'pause' && pauseAreas) { for (const k of ['c', 's']) { const a = pauseAreas[k]; if (inside(a.x, a.y, a.w + 8, a.h)) { pauseScroll[k] += e.deltaY * 0.6; e.preventDefault(); } } }
 }, { passive: false });
 
 // ---------- Hauptschleife ----------
