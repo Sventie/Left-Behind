@@ -129,6 +129,7 @@ const bossStageOf = a => (AREA_STAGE[a.id] || 0) + PICKS_PER_AREA;
 function enemyStage() {
   if (!G) return 0;
   const s0 = AREA_STAGE[G.area.id] || 0;
+  if (G.test) return G.testStage;
   if (G.bossOnly) return bossStageOf(G.area);
   if (!G.bossSpawned) return s0 + Math.min(PICKS_PER_AREA, G.stage - 1);
   return bossStageOf(G.area) + (G.endless ? 2 * Math.floor(Math.max(0, G.dist - G.bossDist) / G.pickStep) : 0);
@@ -2144,6 +2145,7 @@ function spark(x, y, color) {
 }
 
 function die() {
+  if (G.test) { G.player.hp = S.maxHp; G.hurtT = 0; say('Wiederbelebt'); return; }   // im Testlevel stirbt man nicht
   state = 'dead';
   sfx('player_die');
   finishRun();
@@ -3857,6 +3859,10 @@ function drawRails() {
     rr(14, 180, Math.max(6, 92 * clamp(f, 0, 1)), 6, 3); ctx.fillStyle = G.limitLock ? '#d8584f' : '#f2c14e'; ctx.fill();
   }
   ctx.fillStyle = '#2e3e32'; ctx.fillRect(14, 192, 92, 1);
+  if (G.test) {   // Testlevel: kein Weg zum Boss, nur ein Hinweis
+    text('TESTLEVEL', 60, 240, 14, '#8ee8ff', 'center', F_TITLE);
+    wrap(keyLabel('KeyT') + ' öffnet das Testmenü', 100, '14px ' + F_TEXT).forEach((l, i) => text(l, 60, 268 + i * 18, 14, '#b8c4d0', 'center', F_TEXT));
+  } else {
   // Entfernungsmesser bis zum Boss. Danach bleibt der Balken voll, die Marken (immer fünf, oben die letzte volle 100) rücken zur 0 hin.
   const GY = 208, GH = 366, D = G.dist, maxPos = Math.max(G.bossDist, D), top = Math.max(G.bossDist, 100 * Math.floor(D / 100)), prog = clamp(D / G.bossDist, 0, 1);
   rr(49, GY, 22, GH, 11); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
@@ -3875,6 +3881,7 @@ function drawRails() {
   text(G.bossSpawned && !G.endless ? 'ENDKAMPF' : G.stage <= PICKS_PER_AREA ? 'KARTE ' + G.stage + ' VON ' + PICKS_PER_AREA : 'NÄCHSTE KARTE', 60, 606, 10, '#b8c4d0', 'center', F_TITLE);
   text(G.bossSpawned && !G.endless ? 'Boss' : 'bei ' + Math.ceil(G.nextPick) + ' m', 60, 630, 17, '#8ee8ff', 'center', F_TITLE);
   text('Rekord ' + Math.floor(best) + ' m', 60, 664, 15, '#b8c4d0', 'center', F_TEXT);
+  }
 
   // Untere Leiste
   g = ctx.createLinearGradient(0, 640, 0, 720); g.addColorStop(0, '#14201a'); g.addColorStop(1, '#0a110d');
@@ -4026,6 +4033,7 @@ function drawFieldHUD() {
     ctx.restore();
   }
   if (godMode) text('UNVERWUNDBAR', VIEW_W - 16, 24, 14, '#f2c14e', 'right', F_TITLE);
+  if (G.test) text('TESTLEVEL · ' + keyLabel('KeyT') + ' öffnet das Testmenü', 16, 24, 14, '#8ee8ff', 'left', F_TITLE);
   if (G.banner) {
     ctx.globalAlpha = Math.min(1, G.banner.t * 2);
     ctx.fillStyle = 'rgba(2,5,4,.6)'; ctx.fillRect(0, 210, VIEW_W, 110);
@@ -4958,7 +4966,8 @@ const menuButtons = [
   { label: 'Bibliothek', x: 80, y: 602, w: 330, h: 50, action: () => { state = 'shop'; } },
   { label: 'Optionen', small: true, x: 80, y: 664, w: 104, h: 34, action: () => openOptions('menu') },
   { label: 'Feedback', small: true, x: 193, y: 664, w: 104, h: 34, action: () => openFeedback('menu') },
-  { label: 'Spielhilfe', small: true, x: 306, y: 664, w: 104, h: 34, action: () => openIntro() }
+  { label: 'Spielhilfe', small: true, x: 306, y: 664, w: 104, h: 34, action: () => openIntro() },
+  { label: 'Testlevel', small: true, x: 428, y: 664, w: 112, h: 34, action: () => startTest() }
 ];
 function drawMenu() {
   let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
@@ -5054,8 +5063,7 @@ function draw() {
   drawWorld();
   drawEntities();
   ctx.restore();
-  drawFogInto();
-  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(fog, 0, 0); ctx.restore();
+  if (!(G.test && G.testNoFog)) { drawFogInto(); ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(fog, 0, 0); ctx.restore(); }
   ctx.save(); ctx.translate(FIELD_X, 0);
   ctx.beginPath(); ctx.rect(0, 0, VIEW_W, VIEW_H); ctx.clip();
   drawFieldHUD();
@@ -5064,6 +5072,7 @@ function draw() {
 
   if (state === 'play') drawCrosshair();
   if (state === 'pause') { drawPauseScreen(); drawCursor(); }
+  if (state === 'test') { drawTestPanel(); drawCursor(); }
   if (isPanel(state)) { overlay(0.86); drawPanelScreen(); if (state !== 'feedback') drawCursor(); }
   if (state === 'pick') { drawPickScreen(); drawCursor(); }
   if (state === 'merchant') { drawMerchantScreen(); drawCursor(); }
@@ -5077,7 +5086,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.88';
+const VERSION = 'v0.89';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -5203,6 +5212,150 @@ function statRows() {
   return rows;
 }
 let pauseScroll = { c: 0, s: 0 }, pauseAreas = null;
+
+// ---------- Testlevel: freies Feld ohne Gegner, Karten und Gegner per Knopf ----------
+let testTab = 'card', testTier = 0, testCount = 1, testShowAll = false, testScroll = { l: 0, m: 0 }, testAreas = null;
+const TEST_ENEMIES = [
+  ['Bogenschütze', 'grunt'], ['Ghul', 'rusher'], ['Wolf', 'wolf'], ['Kettenhund', 'wolf', { kh: true }],
+  ['Schildträger', 'schild'], ['Rüstungswächter', 'waechter'], ['Heiler', 'heiler'], ['Armbrustschütze', 'armbrust'],
+  ['Zauberer · Feuer', 'magier', { el: 'feuer' }], ['Zauberer · Frost', 'magier', { el: 'frost' }], ['Zauberer · Gift', 'magier', { el: 'gift' }],
+  ['Sumpfkriecher', 'kriecher'], ['Mückenschwarm', 'schwarm'], ['Folterknecht', 'folter']
+];
+function startTest() {
+  const ci = classLocked(lastClass) ? CLASSES.findIndex(c => c.id === 'waldlaeufer') : lastClass;
+  lastClass = ci;
+  newGame(CLASSES[ci], AREAS[0]);
+  G.test = true; G.testStage = 0; G.testNoFog = false;
+  G.bossOnly = true; G.merchantDone = true; G.bossDist = 1e9; G.arenaBuilt = true; G.arenaTop = -1e12;
+  G.nextPick = 1e9; G.nextWave = 1e9; G.nextSingle = 1e9; G.cards = []; G.buffs = []; G.library = [];
+  G.obstacles = []; G.enemies = []; G.pickups = []; G.merchants = []; G.patches = []; G.wisps = []; G.fogs = [];
+  G.genTop = -1e9;   // keine weitere Welt erzeugen
+  recomputeStats();
+  const p = G.player; p.hp = S.maxHp; p.mag = S.magSize; p.mana = S.manaMax;
+  G.banner = { t: 6, head: 'TESTLEVEL', sub: keyLabel('KeyT') + ' öffnet das Testmenü: Karten und Gegner per Knopf' };
+  testScroll = { l: 0, m: 0 };
+  mouse.down = false; mouse.rdown = false; state = 'play';
+}
+function testAdd(def) {
+  const inst = testTier ? mkInst(def, Object.fromEntries((def.stats || []).map(st => [st.k, testTier]))) : rollInst(def);
+  const p = G.player, oldMag = S.magSize, oldHp = S.maxHp;
+  (def.kind === 'Trank' ? G.buffs : G.cards).push(inst); recomputeStats();
+  if (S.magSize > oldMag) p.mag += S.magSize - oldMag;
+  if (S.maxHp > oldHp) p.hp += S.maxHp - oldHp;
+  if (def.kind === 'Trank' && inst.instant) inst.instant(p);
+  sfx('card_pick');
+}
+function testRemove(inst) {
+  const arr = inst.kind === 'Trank' ? G.buffs : G.cards, i = arr.indexOf(inst);
+  if (i < 0) return;
+  arr.splice(i, 1); recomputeStats();
+  const p = G.player; p.hp = Math.min(p.hp, S.maxHp); p.mag = Math.min(p.mag, S.magSize);
+  sfx('empty_click');
+}
+function testSpawn(type, opts) {
+  const p = G.player;
+  for (let i = 0; i < testCount; i++) {
+    const a = -Math.PI / 2 + rand(-0.8, 0.8), d = rand(230, 330);
+    const x = clamp(p.x + Math.cos(a) * d, 70, WORLD_W - 70), y = p.y + Math.sin(a) * d;
+    for (const e of spawnType(type, x, y, true)) {
+      if (opts && opts.el) e.el = opts.el;
+      if (opts && opts.kh) { e.chain = { px: e.x, py: e.y, len: 220, n: 3 }; e.kh = true; }
+    }
+  }
+  sfx('ui_click');
+}
+function drawTestPanel() {
+  uiBtns = [];
+  overlay(0.9);
+  const X = 30, Y = 24, Wd = 1220, Ht = 672;
+  windowFrame(X, Y, Wd, Ht);
+  titleText('Testlevel', X + 28, Y + 54, 34, 'left');
+  text('Nur zum Ausprobieren: nichts davon zählt für Rang, Mondsilber oder Erfahrung.', X + 250, Y + 48, 15, '#8a9aa0', 'left', F_TEXT, 'italic');
+  uiButton(X + Wd - 178, Y + 18, 150, 40, 'Zurück · ' + keyLabel('KeyT'), () => { state = 'play'; mouse.down = false; }, { primary: true, size: 15 });
+  const hd = (t, x, y) => { if ('letterSpacing' in ctx) ctx.letterSpacing = '2px'; text(t, x, y, 13, '#8a9aa0', 'left', F_TEXT, 'bold'); if ('letterSpacing' in ctx) ctx.letterSpacing = '0px'; };
+  const top = Y + 92, bot = Y + Ht - 18;
+
+  // Spalte 1: Karten und Tränke zum Hinzufügen
+  const c1 = X + 28, w1 = 430;
+  hd('HINZUFÜGEN', c1, top);
+  chip(c1, top + 14, 90, 'Karten', testTab === 'card', () => { testTab = 'card'; testScroll.l = 0; });
+  chip(c1 + 98, top + 14, 90, 'Tränke', testTab === 'buff', () => { testTab = 'buff'; testScroll.l = 0; });
+  chip(c1 + 196, top + 14, 234, testShowAll ? 'Alle Streiter' : 'Nur für den Streiter', testShowAll, () => { testShowAll = !testShowAll; testScroll.l = 0; });
+  text('Tier der Stats:', c1, top + 72, 14, '#c8d4de', 'left', F_TEXT);
+  [['Zufall', 0, 76], ['T1', 1, 44], ['T2', 2, 44], ['T3', 3, 44], ['T4', 4, 44], ['T5', 5, 44]].reduce((x, [l, v, w]) => { chip(x, top + 54, w, l, testTier === v, () => { testTier = v; }, v ? TIER_COL[v] : undefined); return x + w + 6; }, c1 + 110);
+  const cls = G.cls, wt = WEAPONS[cls.weapon].type;
+  let list = (testTab === 'card' ? CARDS : BUFFS).filter(c => testShowAll || !c.types || c.types.includes(wt));
+  list = list.slice().sort((a, b) => (CATS.indexOf(a.kind) - CATS.indexOf(b.kind)) || rarIdx(a) - rarIdx(b) || (testTab === 'card' ? cardOrder(a.id) - cardOrder(b.id) : 0));
+  const lt = top + 96, lh = bot - lt, rowH = 40;
+  testAreas = { l: { x: c1, y: lt, w: w1, h: lh, total: list.length * rowH }, m: null };
+  const mx = X + 490, mw = 300;
+  hd('IM TESTLEVEL AKTIV', mx, top);
+  const act = G.cards.concat(G.buffs);
+  testAreas.m = { x: mx, y: top + 14, w: mw, h: bot - top - 14, total: act.length * rowH };
+  for (const k of ['l', 'm']) testScroll[k] = clamp(testScroll[k], 0, Math.max(0, testAreas[k].total - testAreas[k].h));
+  const scrollbar = k => {
+    const a = testAreas[k], over = a.total - a.h;
+    if (over <= 0) return;
+    const th = Math.max(30, a.h * a.h / a.total), ty = a.y + (a.h - th) * (testScroll[k] / over);
+    rr(a.x + a.w + 2, a.y, 4, a.h, 2); ctx.fillStyle = '#0a110d'; ctx.fill();
+    rr(a.x + a.w + 2, ty, 4, th, 2); ctx.fillStyle = '#9a7a3a'; ctx.fill();
+  };
+  const row = (c, x, y, w, onClick, badge, line2, hovTip) => {
+    const R = RARITY[c.rarity], hov = inside(x, y, w, rowH - 4) && mouse.fy >= testAreas.l.y - 2 && mouse.fy <= bot + 2;
+    rr(x, y, w, rowH - 4, 6); ctx.fillStyle = hov ? '#1e2c22' : '#16231b'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 2; if (c.kind === 'Trank') ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
+    rr(x + 6, y + 5, 26, 26, [13, 13, 4, 4]); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 1; ctx.stroke();
+    drawIcon(c.icon, x + 19, y + 18, 18, R.c, 1.4);
+    text(fit(c.name, w - 160, '14px ' + F_TITLE), x + 40, y + 16, 14, '#f0e6c8', 'left', F_TITLE);
+    text(fit(line2, w - 100, '12px ' + F_TEXT), x + 40, y + 30, 12, '#f2c14e', 'left', F_TEXT);
+    if (badge) text(badge, x + w - 12, y + 22, 14, '#8ee8ff', 'right', F_TITLE);
+    uiHit(x, Math.max(y, testAreas.l.y), w, rowH - 4, onClick);
+  };
+  ctx.save(); ctx.beginPath(); ctx.rect(c1 - 4, lt - 2, w1 + 8, lh + 4); ctx.clip();
+  list.forEach((c, i) => {
+    const y = lt + i * rowH - testScroll.l;
+    if (y < lt - rowH || y > bot) return;
+    const n = (c.kind === 'Trank' ? G.buffs : G.cards).filter(x => x.id === c.id).length;
+    row(c, c1, y, w1, () => testAdd(c), n ? '×' + n : '', c.stat + '  ·  ' + c.kind);
+  });
+  ctx.restore(); scrollbar('l');
+  ctx.save(); ctx.beginPath(); ctx.rect(mx - 4, top + 12, mw + 8, bot - top - 10); ctx.clip();
+  act.forEach((c, i) => {
+    const y = top + 18 + i * rowH - testScroll.m;
+    if (y < top - rowH || y > bot) return;
+    const R = RARITY[c.rarity], hov = inside(mx, y, mw, rowH - 4);
+    rr(mx, y, mw, rowH - 4, 6); ctx.fillStyle = hov ? '#2a1a1c' : '#16231b'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 2; if (c.kind === 'Trank') ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
+    rr(mx + 6, y + 5, 26, 26, [13, 13, 4, 4]); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 1; ctx.stroke();
+    drawIcon(c.icon, mx + 19, y + 18, 18, R.c, 1.4);
+    text(fit(c.name, mw - 90, '14px ' + F_TITLE), mx + 40, y + 16, 14, '#f0e6c8', 'left', F_TITLE);
+    text(fit(c.stat, mw - 90, '12px ' + F_TEXT), mx + 40, y + 30, 12, '#f2c14e', 'left', F_TEXT);
+    text('entfernen', mx + mw - 10, y + 22, 12, hov ? '#ff9a8a' : '#6a7a70', 'right', F_TEXT, 'italic');
+    uiHit(mx, Math.max(y, top + 14), mw, rowH - 4, () => testRemove(c));
+  });
+  ctx.restore(); scrollbar('m');
+  if (!act.length) text('Noch nichts. Links eine Karte anklicken.', mx, top + 46, 15, '#7a8a7a', 'left', F_TEXT, 'italic');
+
+  // Spalte 3: Gegner und Werkzeuge
+  const c3 = X + 830, w3 = Wd - 830 - 28;
+  hd('GEGNER ERSCHAFFEN', c3, top);
+  text('Anzahl:', c3, top + 42, 14, '#c8d4de', 'left', F_TEXT);
+  [1, 5, 10].reduce((x, n) => { chip(x, top + 22, 56, '×' + n, testCount === n, () => { testCount = n; }); return x + 64; }, c3 + 64);
+  text('Gegnerstufe:', c3, top + 80, 14, '#c8d4de', 'left', F_TEXT);
+  uiButton(c3 + 100, top + 58, 34, 30, '−', () => { G.testStage = Math.max(0, G.testStage - 1); }, { size: 18 });
+  text(String(G.testStage), c3 + 160, top + 80, 18, '#f0e6c8', 'center', F_TITLE);
+  uiButton(c3 + 186, top + 58, 34, 30, '+', () => { G.testStage = Math.min(40, G.testStage + 1); }, { size: 18 });
+  const bw = (w3 - 8) / 2;
+  TEST_ENEMIES.forEach(([lab, type, o], i) => {
+    uiButton(c3 + (i % 2) * (bw + 8), top + 102 + Math.floor(i / 2) * 40, bw, 34, lab, () => testSpawn(type, o), { size: 14 });
+  });
+  const wy = top + 102 + Math.ceil(TEST_ENEMIES.length / 2) * 40 + 14;
+  hd('WERKZEUGE', c3, wy);
+  uiButton(c3, wy + 12, bw, 34, 'Gegner entfernen', () => { G.enemies = []; G.atk = []; G.fires = []; sfx('empty_click'); }, { size: 14 });
+  uiButton(c3 + bw + 8, wy + 12, bw, 34, 'Leben auffüllen', () => { G.player.hp = S.maxHp; G.player.mag = S.magSize; G.player.mana = S.manaMax; sfx('coin'); }, { size: 14 });
+  uiButton(c3, wy + 54, bw, 34, godMode ? 'Unverwundbar: an' : 'Unverwundbar: aus', () => { godMode = !godMode; }, { size: 14 });
+  uiButton(c3 + bw + 8, wy + 54, bw, 34, G.testNoFog ? 'Dunkelheit: aus' : 'Dunkelheit: an', () => { G.testNoFog = !G.testNoFog; }, { size: 14 });
+  uiButton(c3, wy + 96, bw, 34, 'Karten leeren', () => { G.cards = []; G.buffs = []; recomputeStats(); G.player.hp = Math.min(G.player.hp, S.maxHp); sfx('empty_click'); }, { size: 14 });
+  uiButton(c3 + bw + 8, wy + 96, bw, 34, 'Zum Hauptmenü', () => { state = 'menu'; }, { size: 14 });
+}
 function drawPauseScreen() {
   uiBtns = []; uiSliders = [];
   overlay(0.84);
@@ -5227,7 +5380,7 @@ function drawPauseScreen() {
   uiButton(bx, step(), bw, 56, 'Optionen', () => openOptions('pause'), { size: 19 });
   uiButton(bx, step(), bw, 56, 'Feedback', () => openFeedback('pause'), { size: 19 });
   uiButton(bx, step(), bw, 56, armed('menu') ? 'Sicher? Nochmal klicken' : 'Zum Hauptmenü', () => confirmed('menu', () => { finishRun(); state = 'menu'; }), { size: armed('menu') ? 16 : 19 });
-  uiButton(bx, step(), bw, 56, armed('quit') ? 'Sicher? Nochmal klicken' : 'Lauf aufgeben', () => confirmed('quit', () => { G.gaveUp = true; finishRun(); state = 'dead'; }), { size: armed('quit') ? 16 : 19, danger: true });
+  uiButton(bx, step(), bw, 56, armed('quit') ? 'Sicher? Nochmal klicken' : 'Lauf aufgeben', () => confirmed('quit', () => { if (G.test) { state = 'menu'; return; } G.gaveUp = true; finishRun(); state = 'dead'; }), { size: armed('quit') ? 16 : 19, danger: true });
   wrap('Wer aufgibt, behält das bisher verdiente Mondsilber, aber nicht den Lauf.', bw, '15px ' + F_TEXT).forEach((l, i) => text(l, bx, Y + Ht - 44 + i * 20, 15, '#8a9aa0'));
 
   // Dein Lauf
@@ -6007,6 +6160,9 @@ addEventListener('keydown', e => {
   }
   if (state === 'pick' && /^Digit[1-4]$/.test(e.code)) choosePick(Number(e.code.slice(5)) - 1);
   if (state === 'pick' && e.code === bind('reload')) rerollOffers();
+  if (G && G.test && (state === 'play' || state === 'test') && (e.code === 'KeyT' || (state === 'test' && e.code === 'Escape'))) {
+    state = state === 'play' ? 'test' : 'play'; mouse.down = false; mouse.rdown = false; mouse.pressed = false; sfx('ui_click'); return;
+  }
   if ((e.code === 'Escape' || e.code === 'KeyP') && (state === 'play' || state === 'pause')) { if (state === 'play') state = 'pause'; else resumeRun(); }
 });
 addEventListener('keyup', e => keys[e.code] = false);
@@ -6033,7 +6189,7 @@ canvas.addEventListener('mousemove', setMouse);
 canvas.addEventListener('mousedown', e => {
   audioInit();
   setMouse(e);
-  if (state === 'pause' || isPanel(state)) {
+  if (state === 'pause' || state === 'test' || isPanel(state)) {
     if (e.button !== 0) return;
     if (state === 'pause' && inside(206, 104, 240, 28)) { eggClick(); return; }
     eggClicks = 0;
@@ -6070,6 +6226,7 @@ canvas.addEventListener('wheel', e => {
   if (state === 'victory' && G.victory) { G.victory.scroll += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'deck') { deckPage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'recycle') { recyclePage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
+  if (state === 'test' && testAreas) { for (const k of ['l', 'm']) { const a = testAreas[k]; if (inside(a.x, a.y, a.w + 8, a.h)) { testScroll[k] += e.deltaY * 0.6; e.preventDefault(); } } }
   if (state === 'pause' && pauseAreas) { for (const k of ['c', 's']) { const a = pauseAreas[k]; if (inside(a.x, a.y, a.w + 8, a.h)) { pauseScroll[k] += e.deltaY * 0.6; e.preventDefault(); } } }
 }, { passive: false });
 
