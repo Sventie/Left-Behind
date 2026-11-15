@@ -3790,29 +3790,32 @@ function drawCard(c, x, y, k, hover) {
   });
   rr(40, 156, 140, 20, 3); ctx.fillStyle = R.c; ctx.fill(); ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 1; ctx.stroke();
   text(c.kind.toUpperCase(), 110, 171, 12, '#1c140c', 'center', F_TEXT, 'bold');
-  if (c.u !== undefined && c.stats) {   // eine einzelne Karte mit gewürfelten Werten: Text, darunter die Stats mit Tier
+  {   // Aufbau für alle Karten: Fähigkeitstext, darunter die Stats. Einzelne Karte: gewürfelter Wert mit Tier. Vorlage (Kartenbuch): Basiswert mit Spanne. Feste Karten: ein fester Wert.
+    const isInst = c.u !== undefined && c.stats;
     const lines = wrap(c.text, 186, '500 15px ' + F_TEXT).slice(0, 3);
     lines.forEach((l, i) => text(l, 110, 196 + i * 16, 15, '#2a1f14', 'center', F_TEXT, '500'));
-    const ry0 = 196 + lines.length * 16 + 14, vals = c.vals;
+    const ry0 = 196 + lines.length * 16 + 14, vals = isInst ? c.vals : null;
     ctx.save(); ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(18, ry0 - 15); ctx.lineTo(202, ry0 - 15); ctx.stroke(); ctx.restore();
     const lx = (mouse.fx - x) / k, ly = (mouse.fy - y) / k;
-    c.stats.forEach((st, i) => {
-      const ry = ry0 + i * 18, t = c.t[st.k] || 3;
-      text(st.n, 20, ry, 14, '#3a2a18', 'left', F_TEXT);
-      text(valueText(st, vals[st.k]), 152, ry, 14, st.bad ? '#8a2a30' : '#17703f', 'right', F_TITLE);
-      text('(T' + t + ')', 158, ry, 13, TIER_COL[t], 'left', F_TEXT, 'bold');
-      if (hover && k >= 0.9 && lx >= 14 && lx <= 206 && ly >= ry - 14 && ly <= ry + 5) tipRow = { st, ry, t };
+    if (c.stats) c.stats.forEach((st, i) => {
+      const ry = ry0 + i * 18;
+      text(fit(st.n, 104, '14px ' + F_TEXT), 20, ry, 14, '#3a2a18', 'left', F_TEXT);
+      if (isInst) {
+        const t = c.t[st.k] || 3;
+        text(valueText(st, vals[st.k]), 152, ry, 14, st.bad ? '#8a2a30' : '#17703f', 'right', F_TITLE);
+        text('(T' + t + ')', 158, ry, 13, TIER_COL[t], 'left', F_TEXT, 'bold');
+        if (hover && k >= 0.9 && lx >= 14 && lx <= 206 && ly >= ry - 14 && ly <= ry + 5) tipRow = { st, ry, t };
+      } else {
+        text(valueText(st, st.base), 152, ry, 14, st.bad ? '#8a2a30' : '#17703f', 'right', F_TITLE);
+        text('(' + numText(tierValue(st, 1)) + '–' + numText(tierValue(st, 5)) + ')', 158, ry, 12, '#6a5a40', 'left', F_TEXT);
+      }
     });
+    else {
+      text(fit(c.stat, 128, '14px ' + F_TEXT), 20, ry0, 14, '#3a2a18', 'left', F_TEXT);
+      text('(fest)', 158, ry0, 13, '#6a5a40', 'left', F_TEXT, 'italic');
+    }
     const fl = fit(c.flavor, 186, 'italic 13px ' + F_TEXT);
     text(fl, 110, 284, 13, '#5a4630', 'center', F_TEXT, 'italic');
-  } else {
-    const sl = wrap(c.stat, 190, '14px ' + F_TITLE);
-    sl.slice(0, 2).forEach((l, i) => text(l, 110, 198 + i * 15, 14, R.ink, 'center', F_TITLE));
-    const off = sl.length > 1 ? 15 : 0;
-    const lines = wrap(c.text, 186, '500 15px ' + F_TEXT);
-    lines.slice(0, 4).forEach((l, i) => text(l, 110, 220 + off + i * 16, 15, '#2a1f14', 'center', F_TEXT, '500'));
-    const fl = wrap(c.flavor, 186, 'italic 13px ' + F_TEXT);
-    fl.slice(0, 2).forEach((l, i) => text(l, 110, 282 - (Math.min(fl.length, 2) - 1) * 14 + i * 14, 13, '#5a4630', 'center', F_TEXT, 'italic'));
   }
   ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.beginPath(); ctx.moveTo(18, 292); ctx.lineTo(202, 292); ctx.stroke();
   ctx.fillStyle = R.c; ctx.beginPath(); ctx.arc(24, 304, 6, 0, 7); ctx.fill(); ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 2; ctx.stroke();
@@ -5086,7 +5089,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.89';
+const VERSION = 'v0.90';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
