@@ -68,7 +68,8 @@ const BASE = {                          // Basiswerte, Klasse und Karten veränd
   lifesteal: 0,                         // Anteil des Schadens, der als Leben zurückkommt
   boltSpeed: 1,                         // Tempo der Bolzen
   core: null, lastBolt: 0, still: null, ramp: null, noReload: false, zorn: 0, charge: null, round: null,
-  orb: null, rage: null, blink: null, mirror: null, sac: null, thirst: null, bleed: null, hitHeal: 0, enemyHaste: 0, star: null, peek: 0, sr: null, crown: false,   // Muster und Auslöser der Karten (siehe shotDmgK, chargeStep)
+  orb: null, rage: null, blink: null, mirror: null, sac: null, thirst: null, bleed: null, hitHeal: 0, enemyHaste: 0, star: null, peek: 0, sr: null, crown: false,
+  armor: 0, boltRange: 1, silverK: 0, merchX: 0, thorns: 0, thornWave: null, ghost: 0, pack: 0, packFx: 0, trap: null, falke: null, cloud: null, volley: null, net: null, rain: null, field: null, shield: null, heal: null,   // Rüstung, Reichweite, Händler, Dornen, Begleiter, neue Fähigkeiten   // Muster und Auslöser der Karten (siehe shotDmgK, chargeStep)
   priceMul: 1.0,                        // Händlerpreise
   rerolls: 1                            // Neuwürfe der Kartenwahl pro Lauf
 };
@@ -311,7 +312,53 @@ const CARDS = [
   { id: 'quell',    name: 'Manaquell',            kind: 'Segen',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+25 % Manaregeneration', text: 'Eine verborgene Quelle füllt dich schneller auf.', flavor: '„Das Wasser ist kalt und klar.“',    apply: S => { S.manaRegenMul *= 1.25; } },
   { id: 'brunnen',  name: 'Tiefer Brunnen',       kind: 'Segen',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+25 Mana',            text: 'Mehr Reserve für den nächsten Zauber.',          flavor: '„Man schöpft, bis der Eimer reißt.“',  apply: S => { S.manaMax += 25; } },
   { id: 'funke',    name: 'Zauberfunke',          kind: 'Zauber', rarity: 'selten',      icon: 'blast',   max: 2, types: ['spell'], stat: '+30 % Flächenradius', text: 'Die Explosion reißt einen größeren Kreis auf.',  flavor: '„Nichts bleibt heil.“',                apply: S => { S.splashMul *= 1.3; } },
-  { id: 'durch',    name: 'Durchdringender Funke', kind: 'Zauber', rarity: 'selten',     icon: 'blast',   max: 2, types: ['spell'], stat: 'Durchschlag +1',      text: 'Der Zauber explodiert und fliegt weiter.',       flavor: '„Er hört nicht auf.“',                 apply: S => { S.pierce += 1; } }
+  { id: 'durch',    name: 'Durchdringender Funke', kind: 'Zauber', rarity: 'selten',     icon: 'blast',   max: 2, types: ['spell'], stat: 'Durchschlag +1',      text: 'Der Zauber explodiert und fliegt weiter.',       flavor: '„Er hört nicht auf.“',                 apply: S => { S.pierce += 1; } },
+  { id: 'flinkefinger', name: 'Flinke Finger', kind: 'Segen', rarity: 'gewoehnlich', icon: 'bolt', max: 4, types: ['ranged'], stat: '', text: 'Die Finger sitzen lockerer am Abzug.', flavor: '„Schneller, als der Wind weht.“', apply: S => {} },
+  { id: 'heissfinger', name: 'Heißer Finger', kind: 'Segen', rarity: 'gewoehnlich', icon: 'bolt', max: 4, types: ['ranged'], stat: '', text: 'Schneller schießen, aber ungenauer.', flavor: '„Wer zittert, trifft nicht.“', apply: S => {} },
+  { id: 'lederwams', name: 'Lederwams', kind: 'Segen', rarity: 'gewoehnlich', icon: 'shield', max: 4, stat: '', text: 'Zäh gegerbtes Leder fängt einen Teil jedes Treffers ab.', flavor: '„Alt, aber dicht.“', apply: S => {} },
+  { id: 'lederharnisch', name: 'Lederharnisch', kind: 'Segen', rarity: 'gewoehnlich', icon: 'shield', max: 4, stat: '', text: 'Mehr Schutz, dafür etwas schwerfälliger.', flavor: '„Er knarzt bei jedem Schritt.“', apply: S => {} },
+  { id: 'weitschuss', name: 'Weitschuss', kind: 'Segen', rarity: 'gewoehnlich', icon: 'arc', max: 4, types: ['ranged'], stat: '', text: 'Deine Bolzen fliegen weiter.', flavor: '„Auch das Ferne ist nah.“', apply: S => {} },
+  { id: 'weitsicht', name: 'Weitsicht', kind: 'Segen', rarity: 'gewoehnlich', icon: 'eye', max: 4, types: ['ranged'], stat: '', text: 'Bolzen fliegen weiter, du siehst weiter.', flavor: '„Wer weit sieht, schießt weit.“', apply: S => {} },
+  { id: 'schnellbolzen', name: 'Schneller Bolzen', kind: 'Segen', rarity: 'gewoehnlich', icon: 'quiver', max: 4, types: ['ranged'], stat: '', text: 'Schnellere Bolzen, die auch etwas weiter fliegen.', flavor: '„Kaum zu sehen, schon da.“', apply: S => {} },
+  { id: 'zaehesleder', name: 'Zähes Leder', kind: 'Segen', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Fängt Treffer ab und gibt dir mehr Leben.', flavor: '„Gegerbt in drei Wintern.“', apply: S => {} },
+  { id: 'fernbolzen', name: 'Fernbolzen', kind: 'Segen', rarity: 'selten', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Bolzen fliegen deutlich weiter und etwas schneller.', flavor: '„Er hört erst im nächsten Tal auf.“', apply: S => {} },
+  { id: 'pfeilfeder', name: 'Pfeilfeder', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Schnellere Bolzen, die etwas härter treffen.', flavor: '„Federleicht und scharf.“', apply: S => {} },
+  { id: 'hartnaeckig', name: 'Hartnäckig', kind: 'Segen', rarity: 'selten', icon: 'crown', max: 3, stat: '', text: 'Händlerpreise sinken, dazu ein Neuwurf mehr je Lauf.', flavor: '„Nicht mit mir.“', apply: S => {} },
+  { id: 'sammler', name: 'Sammler', kind: 'Segen', rarity: 'selten', icon: 'crown', max: 3, stat: '', text: 'Preise sinken, der Händler zeigt eine Karte mehr.', flavor: '„Wer sucht, der findet.“', apply: S => {} },
+  { id: 'eisenhaut', name: 'Eisenhaut', kind: 'Segen', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Viel Schutz, du bewegst dich langsamer.', flavor: '„Schwer wie eine Burg.“', apply: S => {} },
+  { id: 'panzerhemd', name: 'Panzerhemd', kind: 'Segen', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Sehr viel Schutz, aber langsam und umständlich.', flavor: '„Es klirrt. Es hält.“', apply: S => {} },
+  { id: 'dornenhecke', name: 'Dornenhecke', kind: 'Segen', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Wer dich trifft, bekommt einen Teil des Schadens zurück.', flavor: '„Wer sie anfasst, blutet.“', apply: S => {} },
+  { id: 'salve', name: 'Salve', kind: 'Fähigkeit', rarity: 'selten', icon: 'quiver', max: 2, limit: 2, ability: 'volley', types: ['ranged'], stat: '', text: 'Ein Fächer aus 12 Bolzen (±25°) nach vorn.', flavor: '„Alle auf einmal.“', apply: S => {} },
+  { id: 'dornennetz', name: 'Dornennetz', kind: 'Fähigkeit', rarity: 'selten', icon: 'lock', max: 2, limit: 2, ability: 'net', stat: '', text: 'Netz bremst Gegner, Gefangene nehmen +20 % Schaden.', flavor: '„Wer sich darin regt, verliert.“', apply: S => {} },
+  { id: 'pfeilregen', name: 'Pfeilregen', kind: 'Fähigkeit', rarity: 'selten', icon: 'quiver', max: 2, limit: 2, ability: 'rain', stat: '', text: 'Pfeilhagel an der Maus, 3 m Radius.', flavor: '„Der Himmel schießt zurück.“', apply: S => {} },
+  { id: 'feuerregen', name: 'Feuerregen', kind: 'Fähigkeit', rarity: 'selten', icon: 'blast', max: 2, limit: 2, ability: 'rain', stat: '', text: 'Feuerhagel an der Maus, 3 m Radius.', flavor: '„Wo er fällt, brennt der Boden.“', apply: S => {} },
+  { id: 'hitzigefinger', name: 'Hitzige Finger', kind: 'Segen', rarity: 'selten', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Deutlich schneller schießen, dafür streut es.', flavor: '„Der Puls fliegt.“', apply: S => {} },
+  { id: 'fieberhaende', name: 'Fieberhände', kind: 'Segen', rarity: 'selten', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Schneller schießen, aber langsamer spannen.', flavor: '„Die Hände zittern vor Eifer.“', apply: S => {} },
+  { id: 'nervositaet', name: 'Nervosität', kind: 'Segen', rarity: 'selten', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Schneller schießen, dafür weniger Leben.', flavor: '„Immer in Bewegung.“', apply: S => {} },
+  { id: 'scharfschuetze', name: 'Scharfschütze', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Viel treffsicherer, aber etwas langsamer.', flavor: '„Ein Schuss. Ein Ziel.“', apply: S => {} },
+  { id: 'praezision', name: 'Präzisionsschuss', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Treffsicher und härter, aber langsamer.', flavor: '„Atmen. Zielen. Treffen.“', apply: S => {} },
+  { id: 'ruhigerzug', name: 'Ruhiger Zug', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Viel treffsicherer, dafür dauert das Spannen länger.', flavor: '„Ruhe ist die halbe Miete.“', apply: S => {} },
+  { id: 'zielfernrohr', name: 'Zielfernrohr', kind: 'Segen', rarity: 'selten', icon: 'eye', max: 3, types: ['ranged'], stat: '', text: 'Weitere Sicht und mehr Schaden, aber enger Blick.', flavor: '„Die Welt wird ein Punkt.“', apply: S => {} },
+  { id: 'fernglas', name: 'Fernglas', kind: 'Segen', rarity: 'selten', icon: 'eye', max: 3, types: ['ranged'], stat: '', text: 'Weit sehen, Ferne treffen härter, enger Blick.', flavor: '„Dort hinten bewegt sich was.“', apply: S => {} },
+  { id: 'langbogen', name: 'Langbogen', kind: 'Segen', rarity: 'selten', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Schnelle, weit fliegende Bolzen, etwas schwächer.', flavor: '„Aus alter Zeit.“', apply: S => {} },
+  { id: 'weitschuetze', name: 'Weitschütze', kind: 'Segen', rarity: 'selten', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Sehr weite Reichweite, dafür streut es mehr.', flavor: '„Weit ist gut, nah ist besser.“', apply: S => {} },
+  { id: 'fernschuss', name: 'Fernschuss', kind: 'Segen', rarity: 'selten', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Je weiter ein Bolzen fliegt, desto härter trifft er.', flavor: '„Er wird nur besser.“', apply: S => {} },
+  { id: 'beutezug', name: 'Beutezug', kind: 'Segen', rarity: 'selten', icon: 'crown', max: 3, stat: '', text: 'Preise sinken, Gefallene lassen mehr Mondsilber da.', flavor: '„Wer jagt, der sammelt.“', apply: S => {} },
+  { id: 'dornenmantel', name: 'Dornenmantel', kind: 'Segen', rarity: 'episch', icon: 'shield', max: 2, stat: '', text: 'Ein großer Teil jedes erlittenen Treffers trifft den Angreifer.', flavor: '„Er schmerzt beim Anfassen.“', apply: S => {} },
+  { id: 'stachelwelle', name: 'Stachelwelle', kind: 'Zauber', rarity: 'episch', icon: 'blast', max: 2, stat: '', text: 'Jeder erlittene Treffer löst eine Dornenwelle aus.', flavor: '„Wer mich trifft, stolpert.“', apply: S => {} },
+  { id: 'wolkenbruch', name: 'Wolkenbruch', kind: 'Zauber', rarity: 'episch', icon: 'bolt', max: 2, stat: '', text: 'Alle paar Sekunden schlagen Blitze in drei Gegner.', flavor: '„Der Himmel hat genug.“', apply: S => {} },
+  { id: 'todesexplosion', name: 'Todesexplosion', kind: 'Zauber', rarity: 'episch', icon: 'blast', max: 2, stat: '', text: 'Fällt ein Gegner, explodiert er und verletzt Umstehende.', flavor: '„Selbst im Tod noch laut.“', apply: S => {} },
+  { id: 'kopfgeld', name: 'Kopfgeld', kind: 'Segen', rarity: 'episch', icon: 'crown', max: 2, stat: '', text: 'Elite und Bosse lassen mehr Mondsilber fallen.', flavor: '„Tot oder lebendig. Meist tot.“', apply: S => {} },
+  { id: 'heilquelle', name: 'Heilquelle', kind: 'Zauber', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Alle paar Meter entsteht eine Quelle, die dich heilt.', flavor: '„Wo du gehst, quillt Wasser.“', apply: S => {} },
+  { id: 'sturzfalke', name: 'Sturzfalke', kind: 'Zauber', rarity: 'episch', icon: 'wind', max: 2, stat: '', text: 'Ein Falke begleitet dich und stürzt auf Gegner.', flavor: '„Er sieht, was du nicht siehst.“', apply: S => {} },
+  { id: 'schutzfeld', name: 'Schutzfeld', kind: 'Fähigkeit', rarity: 'episch', icon: 'shield', max: 2, limit: 2, ability: 'field', stat: '', text: 'Ein Kreis um dich, in dem du viel weniger Schaden nimmst.', flavor: '„Hier bist du sicher.“', apply: S => {} },
+  { id: 'schildwall', name: 'Schildwall', kind: 'Fähigkeit', rarity: 'episch', icon: 'shield', max: 2, limit: 2, ability: 'shield', stat: '', text: 'Kurz halbierter Schaden, wohin du auch gehst.', flavor: '„Ein Schritt zurück gilt nicht.“', apply: S => {} },
+  { id: 'heilruf', name: 'Heilruf', kind: 'Fähigkeit', rarity: 'episch', icon: 'wisp', max: 2, limit: 2, ability: 'heal', stat: '', text: 'Heilt dich über einige Sekunden. Pause über Meter.', flavor: '„Der Wald antwortet.“', apply: S => {} },
+  { id: 'heilsalbe', name: 'Heilsalbe', kind: 'Fähigkeit', rarity: 'episch', icon: 'flask', max: 2, limit: 2, ability: 'heal', stat: '', text: 'Heilt viel, dafür langsam. Pause über Meter.', flavor: '„Bitter, aber gut.“', apply: S => {} },
+  { id: 'geisterbolzen', name: 'Geisterbolzen', kind: 'Zauber', rarity: 'legendaer', icon: 'wisp', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Bolzen fliegen durch alle Gegner und Wände.', flavor: '„Nichts hält ihn auf.“', apply: S => {} },
+  { id: 'rudelherr', name: 'Rudelherr', kind: 'Zauber', rarity: 'legendaer', icon: 'wisp', max: 3, limit: 1, stat: '', text: 'Begleiter doppelt so stark, mehr Ghule und Wölfe.', flavor: '„Das Rudel gehorcht.“', apply: S => {} },
+  { id: 'rudelfuehrer', name: 'Rudelführer', kind: 'Zauber', rarity: 'legendaer', icon: 'wisp', max: 3, limit: 1, stat: '', text: 'Begleiter erben Lifesteal und Treffer-Effekte.', flavor: '„Dein Biss ist ihr Biss.“', apply: S => {} },
+  { id: 'zeitfalle', name: 'Zeitfalle', kind: 'Zauber', rarity: 'legendaer', icon: 'moon', max: 3, limit: 1, stat: '', text: 'Gegner in deiner Nähe sind deutlich langsamer.', flavor: '„Hier läuft die Zeit anders.“', apply: S => {} },
 ];
 const CARD_BY_ID = Object.fromEntries(CARDS.map(c => [c.id, c]));
 
@@ -446,11 +493,57 @@ const CARD_PARAM = {
   todeszeichen: { stats: [{ k: 'a', n: 'Schaden an ihnen', base: 30, pre: '+', u: ' %' }, { k: 'b', n: 'Schaden an dir', base: 20, pre: '+', u: ' %', down: true, neg: true }], apply: (S, v) => { S.marks.push({ mode: 'cycle', take: v.a / 100, deal: v.b / 100, on: 4, pause: 6 }); } },
   sternenblick: { stats: [{ k: 'a', n: 'Frontkegel', base: 30, pre: '−', u: '°', bad: true, step: 2 }, { k: 'b', n: 'Streifen', base: 20, pre: '+', u: '°' }], apply: (S, v) => { S.fov -= v.a; S.star = { w: v.b }; } },
   spaehblick: { stats: [{ k: 'a', n: 'Reichweite', base: 5, pre: '', u: ' m', step: 0.5 }], apply: (S, v) => { S.peek = Math.max(S.peek, v.a * PX_PER_M); } },
-  knochenpakt: { stats: [{ k: 'a', n: 'Abstand', base: 10, pre: '', u: ' m', down: true }], apply: (S, v) => { S.hooks.walk.push(c => { G.cnt.ghul = (G.cnt.ghul || 0) + c.d; if (G.cnt.ghul >= v.a * PX_PER_M) { G.cnt.ghul = 0; if (G.allies.filter(a => a.kind === 'ghul').length < 3) spawnAlly('ghul'); } }); } },
-  wolfsbund: { stats: [{ k: 'a', n: 'Rückkehr nach', base: 10, pre: '', u: ' m', down: true }], apply: (S, v) => { S.hooks.walk.push(c => { if (G.allies.some(a => a.kind === 'wolf')) return; G.cnt.wolf = (G.cnt.wolf || 0) + c.d; if (G.cnt.wolf >= v.a * PX_PER_M || !G.cnt.wolfInit) { G.cnt.wolf = 0; G.cnt.wolfInit = true; spawnAlly('wolf'); } }); } },
+  knochenpakt: { stats: [{ k: 'a', n: 'Abstand', base: 10, pre: '', u: ' m', down: true }], apply: (S, v) => { S.hooks.walk.push(c => { G.cnt.ghul = (G.cnt.ghul || 0) + c.d; if (G.cnt.ghul >= v.a * PX_PER_M) { G.cnt.ghul = 0; if (G.allies.filter(a => a.kind === 'ghul').length < (S.pack > 0 ? 5 : 3)) spawnAlly('ghul'); } }); } },
+  wolfsbund: { stats: [{ k: 'a', n: 'Rückkehr nach', base: 10, pre: '', u: ' m', down: true }], apply: (S, v) => { S.hooks.walk.push(c => { if (G.allies.filter(a => a.kind === 'wolf').length >= (S.pack > 0 ? 2 : 1)) return; G.cnt.wolf = (G.cnt.wolf || 0) + c.d; if (G.cnt.wolf >= v.a * PX_PER_M || !G.cnt.wolfInit) { G.cnt.wolf = 0; G.cnt.wolfInit = true; spawnAlly('wolf'); } }); } },
   ueberlaeufer: { stats: [{ k: 'a', n: 'Chance', base: 20, pre: '+', u: ' %' }, { k: 'b', n: 'Dauer', base: 10, pre: '', u: ' s', step: 0.5 }], apply: (S, v) => { S.hooks.kill.push(c => { if (!NO_CONV.includes(c.e.type) && Math.random() < v.a / 100) spawnAlly('conv', c.e, v.b); }); } },
   seelenfaenger: { stats: [{ k: 'a', n: 'Gefallene', base: 15, pre: '', u: '', down: true }], apply: (S, v) => { S.hooks.kill.push(c => { G.cnt.seele = (G.cnt.seele || 0) + 1; if (G.cnt.seele >= v.a && !NO_CONV.includes(c.e.type) && G.allies.filter(a => a.kind === 'conv' && !a.life).length < 2) { G.cnt.seele = 0; spawnAlly('conv', c.e, 0); } }); } },
-  irrlichtb: { stats: [{ k: 'a', n: 'Lichtkreis', base: 3, pre: '', u: ' m', step: 0.2 }], apply: (S, v) => { S.orb = { r: Math.max(S.orb ? S.orb.r : 0, v.a * PX_PER_M) }; } }
+  irrlichtb: { stats: [{ k: 'a', n: 'Lichtkreis', base: 3, pre: '', u: ' m', step: 0.2 }], apply: (S, v) => { S.orb = { r: Math.max(S.orb ? S.orb.r : 0, v.a * PX_PER_M) }; } },
+  flinkefinger: { stats: [{ k: 'a', n: 'Feuerrate', base: 6, pre: '+', u: ' %' }], apply: (S, v) => { S.rateMul *= 1 + v.a / 100; } },
+  heissfinger: { stats: [{ k: 'a', n: 'Feuerrate', base: 10, pre: '+', u: ' %' }, { k: 'b', n: 'Streuung', base: 15, pre: '+', u: ' %', bad: true }], apply: (S, v) => { S.rateMul *= 1 + v.a / 100; S.spreadMul *= 1 + v.b / 100; } },
+  lederwams: { stats: [{ k: 'a', n: 'Schadensabzug', base: 6, pre: '', u: ' %' }], apply: (S, v) => { S.armor += v.a / 100; } },
+  lederharnisch: { stats: [{ k: 'a', n: 'Schadensabzug', base: 8, pre: '', u: ' %' }, { k: 'b', n: 'Lauftempo', base: 3, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.armor += v.a / 100; S.moveSpeed *= 1 - v.b / 100; } },
+  weitschuss: { stats: [{ k: 'a', n: 'Bolzenreichweite', base: 20, pre: '+', u: ' %' }], apply: (S, v) => { S.boltRange *= 1 + v.a / 100; } },
+  weitsicht: { stats: [{ k: 'a', n: 'Bolzenreichweite', base: 20, pre: '+', u: ' %' }, { k: 'b', n: 'Sichtweite', base: 10, pre: '+', u: ' %' }], apply: (S, v) => { S.boltRange *= 1 + v.a / 100; S.rangeMul *= 1 + v.b / 100; } },
+  schnellbolzen: { stats: [{ k: 'a', n: 'Bolzentempo', base: 20, pre: '+', u: ' %' }, { k: 'b', n: 'Bolzenreichweite', base: 10, pre: '+', u: ' %' }], apply: (S, v) => { S.boltSpeed *= 1 + v.a / 100; S.boltRange *= 1 + v.b / 100; } },
+  zaehesleder: { stats: [{ k: 'a', n: 'Schadensabzug', base: 5, pre: '', u: ' %' }, { k: 'b', n: 'Leben', base: 10, pre: '+', u: '' }], apply: (S, v) => { S.armor += v.a / 100; S.maxHp += v.b; } },
+  fernbolzen: { stats: [{ k: 'a', n: 'Bolzenreichweite', base: 30, pre: '+', u: ' %' }, { k: 'b', n: 'Bolzentempo', base: 10, pre: '+', u: ' %' }], apply: (S, v) => { S.boltRange *= 1 + v.a / 100; S.boltSpeed *= 1 + v.b / 100; } },
+  pfeilfeder: { stats: [{ k: 'a', n: 'Bolzentempo', base: 15, pre: '+', u: ' %' }, { k: 'b', n: 'Schaden', base: 4, pre: '+', u: ' %' }], apply: (S, v) => { S.boltSpeed *= 1 + v.a / 100; S.dmgMul *= 1 + v.b / 100; } },
+  hartnaeckig: { stats: [{ k: 'a', n: 'Händlerpreise', base: 8, pre: '−', u: ' %' }], apply: (S, v) => { S.priceMul *= 1 - v.a / 100; S.rerolls += 1; } },
+  sammler: { stats: [{ k: 'a', n: 'Händlerpreise', base: 8, pre: '−', u: ' %' }], apply: (S, v) => { S.priceMul *= 1 - v.a / 100; S.merchX += 1; } },
+  eisenhaut: { stats: [{ k: 'a', n: 'Schadensabzug', base: 15, pre: '', u: ' %' }, { k: 'b', n: 'Lauftempo', base: 8, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.armor += v.a / 100; S.moveSpeed *= 1 - v.b / 100; } },
+  panzerhemd: { stats: [{ k: 'a', n: 'Schadensabzug', base: 20, pre: '', u: ' %' }, { k: 'b', n: 'Lauftempo', base: 12, pre: '−', u: ' %', bad: true }, { k: 'c', n: 'Spannzeit', base: 10, pre: '+', u: ' %', bad: true }], apply: (S, v) => { S.armor += v.a / 100; S.moveSpeed *= 1 - v.b / 100; S.reloadMul *= 1 + v.c / 100; } },
+  dornenhecke: { stats: [{ k: 'a', n: 'Rückschaden', base: 25, pre: '', u: ' %' }], apply: (S, v) => { S.thorns += v.a / 100; } },
+  salve: { stats: [{ k: 'a', n: 'Je Bolzen', base: 70, pre: '', u: ' %' }, { k: 'b', n: 'Pause', base: 14, pre: '', u: ' s', down: true }], apply: (S, v) => { S.volley = { n: 12, arc: 25, k: v.a / 100, cd: v.b }; } },
+  dornennetz: { stats: [{ k: 'a', n: 'Dauer', base: 4, pre: '', u: ' s', step: 0.5 }, { k: 'b', n: 'Verlangsamung', base: 60, pre: '', u: ' %' }, { k: 'c', n: 'Pause', base: 18, pre: '', u: ' s', down: true }], apply: (S, v) => { S.net = { dur: v.a, slow: v.b / 100, cd: v.c, vuln: 0.2 }; } },
+  pfeilregen: { stats: [{ k: 'a', n: 'Schaden pro s', base: 40, pre: '', u: ' %' }, { k: 'b', n: 'Dauer', base: 3, pre: '', u: ' s', step: 0.5 }, { k: 'c', n: 'Pause', base: 18, pre: '', u: ' s', down: true }], apply: (S, v) => { S.rain = { rate: v.a / 100, dur: v.b, cd: v.c, mode: 'arrow' }; } },
+  feuerregen: { stats: [{ k: 'a', n: 'Schaden pro s', base: 30, pre: '', u: ' %' }, { k: 'b', n: 'Dauer', base: 3, pre: '', u: ' s', step: 0.5 }, { k: 'c', n: 'Pause', base: 20, pre: '', u: ' s', down: true }], apply: (S, v) => { S.rain = { rate: v.a / 100, dur: v.b, cd: v.c, mode: 'fire' }; } },
+  hitzigefinger: { stats: [{ k: 'a', n: 'Feuerrate', base: 15, pre: '+', u: ' %' }, { k: 'b', n: 'Streuung', base: 20, pre: '+', u: ' %', bad: true }], apply: (S, v) => { S.rateMul *= 1 + v.a / 100; S.spreadMul *= 1 + v.b / 100; } },
+  fieberhaende: { stats: [{ k: 'a', n: 'Feuerrate', base: 20, pre: '+', u: ' %' }, { k: 'b', n: 'Spannzeit', base: 25, pre: '+', u: ' %', bad: true }], apply: (S, v) => { S.rateMul *= 1 + v.a / 100; S.reloadMul *= 1 + v.b / 100; } },
+  nervositaet: { stats: [{ k: 'a', n: 'Feuerrate', base: 12, pre: '+', u: ' %' }, { k: 'b', n: 'Leben', base: 10, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.rateMul *= 1 + v.a / 100; S.maxHp = Math.round(S.maxHp * (1 - v.b / 100)); } },
+  scharfschuetze: { stats: [{ k: 'a', n: 'Streuung', base: 50, pre: '−', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 8, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.spreadMul *= 1 - v.a / 100; S.rateMul *= 1 - v.b / 100; } },
+  praezision: { stats: [{ k: 'a', n: 'Streuung', base: 35, pre: '−', u: ' %' }, { k: 'b', n: 'Schaden', base: 8, pre: '+', u: ' %' }, { k: 'c', n: 'Feuerrate', base: 12, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.spreadMul *= 1 - v.a / 100; S.dmgMul *= 1 + v.b / 100; S.rateMul *= 1 - v.c / 100; } },
+  ruhigerzug: { stats: [{ k: 'a', n: 'Streuung', base: 40, pre: '−', u: ' %' }, { k: 'b', n: 'Spannzeit', base: 15, pre: '+', u: ' %', bad: true }], apply: (S, v) => { S.spreadMul *= 1 - v.a / 100; S.reloadMul *= 1 + v.b / 100; } },
+  zielfernrohr: { stats: [{ k: 'a', n: 'Sichtweite', base: 50, pre: '+', u: ' %' }, { k: 'b', n: 'Sichtkegel', base: 15, pre: '−', u: '°', bad: true }, { k: 'c', n: 'Schaden', base: 5, pre: '+', u: ' %' }], apply: (S, v) => { S.rangeMul *= 1 + v.a / 100; S.fov -= v.b; S.dmgMul *= 1 + v.c / 100; } },
+  fernglas: { stats: [{ k: 'a', n: 'Sichtweite', base: 40, pre: '+', u: ' %' }, { k: 'b', n: 'Sichtkegel', base: 20, pre: '−', u: '°', bad: true }, { k: 'c', n: 'Schaden ab 10 m', base: 6, pre: '+', u: ' %' }], apply: (S, v) => { S.rangeMul *= 1 + v.a / 100; S.fov -= v.b; S.mod.dmgVs.push({ test: e => Math.hypot(e.x - G.player.x, e.y - G.player.y) >= 10 * PX_PER_M, k: 1 + v.c / 100 }); } },
+  langbogen: { stats: [{ k: 'a', n: 'Bolzentempo', base: 25, pre: '+', u: ' %' }, { k: 'b', n: 'Bolzenreichweite', base: 40, pre: '+', u: ' %' }, { k: 'c', n: 'Schaden', base: 3, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.boltSpeed *= 1 + v.a / 100; S.boltRange *= 1 + v.b / 100; S.dmgMul *= 1 - v.c / 100; } },
+  weitschuetze: { stats: [{ k: 'a', n: 'Bolzenreichweite', base: 60, pre: '+', u: ' %' }, { k: 'b', n: 'Streuung', base: 15, pre: '+', u: ' %', bad: true }], apply: (S, v) => { S.boltRange *= 1 + v.a / 100; S.spreadMul *= 1 + v.b / 100; } },
+  fernschuss: { stats: [{ k: 'a', n: 'Je Meter', base: 1, pre: '+', u: ' %', step: 0.1 }, { k: 'b', n: 'Höchstwert', base: 15, pre: '+', u: ' %' }, { k: 'c', n: 'Bolzentempo', base: 10, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.mod.far = { per: v.a / 100, max: v.b / 100 }; S.boltSpeed *= 1 - v.c / 100; } },
+  beutezug: { stats: [{ k: 'a', n: 'Händlerpreise', base: 20, pre: '−', u: ' %' }, { k: 'b', n: 'Mondsilber', base: 10, pre: '+', u: ' %' }], apply: (S, v) => { S.priceMul *= 1 - v.a / 100; S.silverK += v.b / 100; } },
+  dornenmantel: { stats: [{ k: 'a', n: 'Rückschaden', base: 40, pre: '', u: ' %' }], apply: (S, v) => { S.thorns += v.a / 100; } },
+  stachelwelle: { stats: [{ k: 'a', n: 'Schaden', base: 200, pre: '', u: ' %' }, { k: 'b', n: 'Radius', base: 2, pre: '', u: ' m', step: 0.1 }, { k: 'c', n: 'Mindestabstand', base: 3, pre: '', u: ' s', step: 0.5, down: true }], apply: (S, v) => { S.thornWave = { k: v.a / 100, r: v.b, cd: v.c }; } },
+  wolkenbruch: { stats: [{ k: 'a', n: 'Schaden', base: 150, pre: '', u: ' %' }, { k: 'b', n: 'Abstand', base: 8, pre: '', u: ' s', step: 0.5, down: true }], apply: (S, v) => { S.cloud = { k: v.a / 100, every: v.b, n: 3 }; } },
+  todesexplosion: { stats: [{ k: 'a', n: 'Schaden', base: 30, pre: '', u: ' %' }, { k: 'b', n: 'Radius', base: 2, pre: '', u: ' m', step: 0.1 }], apply: (S, v) => { S.hooks.kill.push(c => { if (G.inBoom) return; G.inBoom = true; const e = c.e, R = v.b * PX_PER_M; G.rings.push({ x: e.x, y: e.y, r: R, life: 0.3, max: 0.3 }); sfx('spell_explode', 0.5); for (const o of G.enemies) if (o !== e && o.hp > 0 && !o.hidden && Math.hypot(o.x - e.x, o.y - e.y) <= R + o.r) damageEnemy(o, e.maxHp * v.a / 100, 'feuer'); G.inBoom = false; }); } },
+  kopfgeld: { stats: [{ k: 'a', n: 'Mondsilber', base: 20, pre: '+', u: '' }], apply: (S, v) => { S.hooks.kill.push(c => { if (c.e.elite || (ENEMY_TYPES[c.e.type] && ENEMY_TYPES[c.e.type].boss)) G.killSilver += v.a; }); } },
+  heilquelle: { stats: [{ k: 'a', n: 'Abstand', base: 100, pre: '', u: ' m', step: 5, down: true }, { k: 'b', n: 'Heilung pro s', base: 8, pre: '', u: ' %' }], apply: (S, v) => { S.hooks.walk.push(c => { G.cnt.quell = (G.cnt.quell || 0) + c.d; if (G.cnt.quell >= v.a * PX_PER_M) { G.cnt.quell = 0; G.springs.push({ x: G.player.x, y: G.player.y, r: 3 * PX_PER_M, life: 6, k: v.b / 100 }); } }); } },
+  sturzfalke: { stats: [{ k: 'a', n: 'Schaden', base: 100, pre: '', u: ' %' }, { k: 'b', n: 'Abstand', base: 4, pre: '', u: ' s', step: 0.25, down: true }], apply: (S, v) => { S.falke = { k: v.a / 100, every: v.b }; } },
+  schutzfeld: { stats: [{ k: 'a', n: 'Schadensabzug', base: 70, pre: '', u: ' %' }, { k: 'b', n: 'Dauer', base: 5, pre: '', u: ' s', step: 0.5 }, { k: 'c', n: 'Pause', base: 22, pre: '', u: ' s', down: true }], apply: (S, v) => { S.field = { red: v.a / 100, dur: v.b, cd: v.c }; } },
+  schildwall: { stats: [{ k: 'a', n: 'Schadensabzug', base: 50, pre: '', u: ' %' }, { k: 'b', n: 'Dauer', base: 4, pre: '', u: ' s', step: 0.5 }, { k: 'c', n: 'Pause', base: 20, pre: '', u: ' s', down: true }], apply: (S, v) => { S.shield = { red: v.a / 100, dur: v.b, cd: v.c }; } },
+  heilruf: { stats: [{ k: 'a', n: 'Heilung', base: 25, pre: '', u: ' %' }, { k: 'b', n: 'Dauer', base: 3, pre: '', u: ' s', step: 0.5 }, { k: 'c', n: 'Pause', base: 150, pre: '', u: ' m', step: 5, down: true }], apply: (S, v) => { S.heal = { frac: v.a / 100, dur: v.b, cdm: v.c, name: 'Heilruf' }; } },
+  heilsalbe: { stats: [{ k: 'a', n: 'Heilung', base: 40, pre: '', u: ' %' }, { k: 'b', n: 'Dauer', base: 5, pre: '', u: ' s', step: 0.5 }, { k: 'c', n: 'Pause', base: 250, pre: '', u: ' m', step: 5, down: true }], apply: (S, v) => { S.heal = { frac: v.a / 100, dur: v.b, cdm: v.c, name: 'Heilsalbe' }; } },
+  geisterbolzen: { stats: [{ k: 'a', n: 'Verlust je Treffer', base: 35, pre: '', u: ' %', bad: true }], apply: (S, v) => { S.ghost = Math.max(S.ghost, v.a / 100); } },
+  rudelherr: { stats: [{ k: 'a', n: 'Begleiter-Stärke', base: 100, pre: '+', u: ' %' }], apply: (S, v) => { S.pack = Math.max(S.pack, v.a / 100); } },
+  rudelfuehrer: { stats: [{ k: 'a', n: 'Weitergabe', base: 100, pre: '', u: ' %' }], apply: (S, v) => { S.packFx = Math.max(S.packFx, v.a / 100); } },
+  zeitfalle: { stats: [{ k: 'a', n: 'Radius', base: 4, pre: '', u: ' m', step: 0.2 }, { k: 'b', n: 'Verlangsamung', base: 40, pre: '', u: ' %' }], apply: (S, v) => { S.trap = { r: v.a, slow: v.b / 100 }; } }
 };
 for (const id in CARD_PARAM) setupParam(CARD_BY_ID[id], CARD_PARAM[id]);
 const ICONS = {
@@ -913,7 +1006,7 @@ const isFocusing = () => state === 'play' && wtype() === 'ranged' && mouse.rdown
 const isMeditating = () => state === 'play' && wtype() === 'spell' && mouse.rdown;
 
 function newMod() {   // Eigenschaften der Geschosse: Karten tragen hier ein, was jedes Geschoss können soll
-  return { pierceK: 1, bounce: 0, bounceK: 1, bounceHome: 0, homeMouse: 0, homeAuto: 0, curve: 0, grow: null, lightning: null, mark: 0, dmgVs: [], lsBig: 0, streak: null, booms: [], dots: [], knock: null, slow: null, split: null, ret: null, crit: [] };
+  return { pierceK: 1, bounce: 0, bounceK: 1, bounceHome: 0, homeMouse: 0, homeAuto: 0, curve: 0, grow: null, lightning: null, mark: 0, dmgVs: [], lsBig: 0, streak: null, booms: [], dots: [], knock: null, slow: null, split: null, ret: null, crit: [], far: null };
 }
 function recomputeStats() {
   S = Object.assign({}, BASE, G.cls.base);
@@ -924,6 +1017,7 @@ function recomputeStats() {
   for (const c of G.cards) c.apply(S);
   for (const b of G.buffs || []) b.apply(S);
   if (G.test && G.testMods) for (const m of TEST_MODS) if (G.testMods[m.id]) m.apply(S);   // Testlevel: Eigenschaften zum Ausprobieren
+  if (G.rerollS !== undefined) { G.rerolls += S.rerolls - G.rerollS; G.rerollS = S.rerolls; }   // Neuwürfe, die Karten mitten im Lauf geben
 }
 function runHooks(ev, ctx) { const l = S.hooks && S.hooks[ev]; if (l) for (const f of l) f(ctx); }
 function stageLength(stage) { return 30 + Math.floor((stage - 1) / 3) * STAGE_STEP; }
@@ -936,7 +1030,7 @@ function newGame(cls, area) {
     obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
     kills: 0, dist: 0,
     merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
-    cards: [], offers: [], library: shuffle(deckOf(cls).slice()), booms: [], pzones: [], allies: [], orb: null, shotN: 0, cnt: {}, rateT: 0, rateK: 0, abil: { rage: { t: 0, cd: 0 }, blink: { cd: 0 } }, srT: 0, dmgT: 0, dmgK: 0, bleedT: 0, mk: { rand: null, strong: null, cy: [], cyT: 0, cyOn: false }, fresh: true, ramp: 0, stillT: 0, roundT: 0, speedT: 0, speedK: 0, hurtAt: -99, barkReady: false, chargeK: 1, walked: 0, eisN: 0,
+    cards: [], offers: [], library: shuffle(deckOf(cls).slice()), booms: [], pzones: [], allies: [], orb: null, shotN: 0, cnt: {}, rateT: 0, rateK: 0, abil: { rage: { t: 0, cd: 0 }, blink: { cd: 0 }, volley: { cd: 0 }, net: { cd: 0 }, rain: { cd: 0 }, field: { cd: 0 }, shield: { t: 0, cd: 0 }, heal: { t: 0, cdm: 0 } }, nets: [], fields: [], springs: [], strikes: [], fk: null, waveAt: -99, cloudT: 0, inBoom: false, srT: 0, dmgT: 0, dmgK: 0, bleedT: 0, mk: { rand: null, strong: null, cy: [], cyT: 0, cyOn: false }, fresh: true, ramp: 0, stillT: 0, roundT: 0, speedT: 0, speedK: 0, hurtAt: -99, barkReady: false, chargeK: 1, walked: 0, eisN: 0,
     stage: 1, stageStart: 0, nextPick: area.len / (PICKS_PER_AREA + 0.5), atk: [], fires: [], fallen: [], ripples: [], curseT: 0, trails: [], hooks: [], pull: null, bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
@@ -945,7 +1039,7 @@ function newGame(cls, area) {
       dashT: 0, dashCd: 0, dashX: 0, dashY: -1, swingT: 0
     }
   };
-  recomputeStats(); G.rerolls = S.rerolls;
+  recomputeStats(); G.rerolls = S.rerolls; G.rerollS = S.rerolls;
   const p = G.player;
   p.hp = S.maxHp; p.mag = S.magSize; p.mana = S.manaMax;
   G.camTop = p.y - VIEW_H * 0.78;
@@ -1242,9 +1336,9 @@ function makeMerchantOffers() {
   const t = wtype(), odds = merchantOdds();
   const have = abilitySlots(), cardPool = CARDS.filter(c => (!c.types || c.types.includes(t)) && !(have.length >= 2 && c.ability && !have.includes(c.ability)));
   const buffPool = BUFFS.filter(b => !b.types || b.types.includes(t));
-  const mk = (pool, kind) => {
+  const mk = (pool, kind, n) => {
     const used = [], out = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < n; i++) {
       const it = pickByRarity(pool, rollRarityKey(odds), used);
       if (!it) break;
       used.push(it);
@@ -1253,7 +1347,7 @@ function makeMerchantOffers() {
     if (out.length) { const d = out[Math.floor(Math.random() * out.length)]; d.old = d.price; d.price = Math.round(d.price * MERCHANT_DISCOUNT); }
     return out;
   };
-  return mk(cardPool, 'card').concat(mk(buffPool, 'buff'));
+  return mk(cardPool, 'card', 3 + S.merchX).concat(mk(buffPool, 'buff', 3));
 }
 // Bezahlt wird mit dem gesamten Mondsilber: erst der Verdienst dieses Laufs, dann der Vorrat
 function totalSilver() { return SAVE.silver + runSilver(); }
@@ -1360,8 +1454,8 @@ function shotPattern() {
 // Ein Bolzen des Spielers: trägt die Geschoss-Eigenschaften (M) mit sich, sie gelten für jeden Bolzen eines Musters
 function fireBolt(a, dmg, booms) {
   const p = G.player, w = W(), M = S.mod, bm = booms && booms.length ? booms[0] : null;
-  addBullet(p.x, p.y, a, w.speed * S.boltSpeed, dmg, 'player', w.range * (M.ret ? M.ret.range : 1), S.pierce, {
-    M, gen: 0, hits: 0, bounces: 0, dmg0: dmg, boom: bm, sx: p.x, sy: p.y, pierce0: S.pierce, trav: 0,
+  addBullet(p.x, p.y, a, w.speed * S.boltSpeed, dmg, 'player', w.range * S.boltRange * (M.ret ? M.ret.range : 1), S.ghost ? 999 : S.pierce, {
+    M: S.ghost ? Object.assign({}, M, { pierceK: M.pierceK * (1 - S.ghost) }) : M, ghost: S.ghost > 0, gen: 0, hits: 0, bounces: 0, dmg0: dmg, boom: bm, sx: p.x, sy: p.y, pierce0: S.pierce, trav: 0,
     chain: M.lightning && G.shotN % M.lightning.every === 0 ? M.lightning : null,   // Kettenblitz: jeder n-te Schuss
     cv: M.curve ? (G.shotN % 2 ? 1 : -1) * M.curve : 0,   // Kurvenbolzen: abwechselnd links und rechts
     aimStop: bm && bm.mode === 'aim' ? Math.hypot(mouse.x - p.x, mouse.y + G.camTop - p.y) : 0
@@ -1488,6 +1582,98 @@ const slotted = id => abilitySlots().includes(id);
 function useAbility(i) {
   const id = abilitySlots()[i];
   if (id === 'dash') tryDash(); else if (id === 'rage') tryRage(); else if (id === 'blink') tryBlink();
+  else if (id === 'volley') tryVolley(); else if (id === 'net') tryNet(); else if (id === 'rain') tryRain();
+  else if (id === 'field') tryField(); else if (id === 'shield') tryShield(); else if (id === 'heal') tryHeal();
+}
+function aimPoint(maxM) {   // Punkt an der Maus, höchstens maxM Meter von dir entfernt
+  const p = G.player, tx = mouse.x, ty = mouse.y + G.camTop, d = Math.hypot(tx - p.x, ty - p.y) || 1, k = Math.min(1, maxM * PX_PER_M / d);
+  return { x: p.x + (tx - p.x) * k, y: p.y + (ty - p.y) * k };
+}
+function tryVolley() {   // Salve: Fächer aus Bolzen
+  const a = G.abil.volley, v = S.volley, p = G.player;
+  if (!v || !slotted('volley') || a.cd > 0) return;
+  a.cd = v.cd; const base = Math.atan2(mouse.y + G.camTop - p.y, mouse.x - p.x);
+  for (let i = 0; i < v.n; i++) fireBolt(base + (-v.arc + 2 * v.arc * i / (v.n - 1)) * deg, W().damage * S.dmgMul * v.k, null);
+  sfx('shoot_crossbow');
+}
+function tryNet() {   // Dornennetz an der Maus
+  const a = G.abil.net, v = S.net;
+  if (!v || !slotted('net') || a.cd > 0) return;
+  a.cd = v.cd; const q = aimPoint(12);
+  G.nets.push({ x: q.x, y: q.y, r: 3 * PX_PER_M, life: v.dur, slow: v.slow }); sfx('dash');
+}
+function tryRain() {   // Pfeilregen oder Feuerregen an der Maus
+  const a = G.abil.rain, v = S.rain;
+  if (!v || !slotted('rain') || a.cd > 0) return;
+  a.cd = v.cd; const q = aimPoint(12);
+  addZone(q.x, q.y, 3 * PX_PER_M, v.dur, W().damage * S.dmgMul * v.rate * 0.5, v.mode === 'fire' ? 'feuer' : 'pfeil'); sfx('shoot_crossbow');
+}
+function tryField() {   // Schutzfeld: Kreis, in dem du weniger Schaden nimmst
+  const a = G.abil.field, v = S.field, p = G.player;
+  if (!v || !slotted('field') || a.cd > 0) return;
+  a.cd = v.cd; G.fields.push({ x: p.x, y: p.y, r: 3 * PX_PER_M, life: v.dur }); sfx('stage_up');
+}
+function tryShield() {   // Schildwall
+  const a = G.abil.shield, v = S.shield;
+  if (!v || !slotted('shield') || a.t > 0 || a.cd > 0) return;
+  a.t = v.dur; sfx('block');
+}
+function tryHeal() {   // Heilruf / Heilsalbe: heilt über Zeit, die Pause läuft über zurückgelegte Meter
+  const a = G.abil.heal, v = S.heal;
+  if (!v || !slotted('heal') || a.t > 0 || a.cdm > 0) return;
+  a.t = v.dur; a.cdm = v.cdm; sfx('card_pick');
+  for (let i = 0; i < 10; i++) G.parts.push({ x: G.player.x, y: G.player.y, vx: rand(-60, 60), vy: rand(-110, -30), life: 0.5, color: '#8fe0a0' });
+}
+function slowEnemy(e, k, t) { e.slowK = e.slowT > 0 ? Math.min(e.slowK, k) : k; e.slowT = Math.max(e.slowT || 0, t); }
+function updateExtras(dt, moved) {   // Fähigkeiten-Pausen, Netze, Felder, Quellen, Falke, Wolkenbruch, Zeitfalle
+  const p = G.player, ab = G.abil;
+  for (const k of ['volley', 'net', 'rain', 'field']) if (ab[k].cd > 0) ab[k].cd -= dt;
+  if (ab.shield.t > 0) { ab.shield.t -= dt; if (ab.shield.t <= 0) ab.shield.cd = S.shield ? S.shield.cd : 0; } else if (ab.shield.cd > 0) ab.shield.cd -= dt;
+  if (ab.heal.t > 0) { ab.heal.t -= dt; if (S.heal) p.hp = Math.min(S.maxHp, p.hp + S.maxHp * S.heal.frac / S.heal.dur * dt); }
+  if (ab.heal.cdm > 0) ab.heal.cdm = Math.max(0, ab.heal.cdm - moved / PX_PER_M);
+  for (const e of G.enemies) if (e.netT > 0) e.netT -= dt;
+  for (const n of G.nets) { n.life -= dt; for (const e of G.enemies) if (e.hp > 0 && !e.hidden && Math.hypot(e.x - n.x, e.y - n.y) <= n.r + e.r) { e.netT = 0.3; slowEnemy(e, 1 - n.slow, 0.3); } }
+  G.nets = G.nets.filter(n => n.life > 0);
+  for (const f of G.fields) f.life -= dt;
+  G.fields = G.fields.filter(f => f.life > 0);
+  for (const q of G.springs) { q.life -= dt; if (Math.hypot(q.x - p.x, q.y - p.y) < q.r) p.hp = Math.min(S.maxHp, p.hp + S.maxHp * q.k * dt); }
+  G.springs = G.springs.filter(q => q.life > 0);
+  for (const q of G.strikes) q.t -= dt;
+  G.strikes = G.strikes.filter(q => q.t > 0);
+  if (S.cloud) { G.cloudT += dt; if (G.cloudT >= S.cloud.every) { G.cloudT = 0; cloudStrike(); } }
+  if (S.trap) { const R = S.trap.r * PX_PER_M; for (const e of G.enemies) if (e.hp > 0 && !e.hidden && Math.hypot(e.x - p.x, e.y - p.y) <= R + e.r) slowEnemy(e, 1 - S.trap.slow, 0.25); }
+  if (S.falke) updateFalke(dt); else G.fk = null;
+}
+function cloudStrike() {   // Wolkenbruch: Blitze auf zufällige Gegner im Bild
+  const p = G.player, C = S.cloud, c = G.enemies.filter(e => e.hp > 0 && !e.hidden && e.y > G.camTop && e.y < G.camTop + VIEW_H && Math.hypot(e.x - p.x, e.y - p.y) < 700);
+  shuffle(c); sfx('spell_explode', 0.5);
+  for (const e of c.slice(0, C.n)) { G.strikes.push({ x: e.x, y: e.y, t: 0.35 }); damageEnemy(e, W().damage * S.dmgMul * C.k, 'blitz'); }
+}
+function updateFalke(dt) {   // Sturzfalke: kreist über dir und stürzt alle paar Sekunden auf einen Gegner
+  const p = G.player, K = S.falke, f = G.fk || (G.fk = { x: p.x, y: p.y - 60, ph: 'idle', cd: 1.5, a: 0, tgt: null });
+  f.a += dt * 2;
+  const hx = p.x + Math.cos(f.a) * 70, hy = p.y - 50 + Math.sin(f.a) * 26;
+  if (f.ph === 'idle') {
+    f.x += (hx - f.x) * Math.min(1, dt * 5); f.y += (hy - f.y) * Math.min(1, dt * 5);
+    f.cd -= dt;
+    if (f.cd <= 0) {
+      let bd = 460, t = null;
+      for (const e of G.enemies) { if (e.hp <= 0 || e.hidden) continue; const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; t = e; } }
+      if (t) { f.tgt = t; f.ph = 'dive'; } else f.cd = 0.3;
+    }
+  } else if (f.ph === 'dive') {
+    const t = f.tgt;
+    if (!t || t.hp <= 0) f.ph = 'back';
+    else {
+      const dx = t.x - f.x, dy = t.y - f.y, d = Math.hypot(dx, dy) || 1, st = Math.min(d, 560 * dt);
+      f.x += dx / d * st; f.y += dy / d * st;
+      if (d < t.r + 10) { damageEnemy(t, W().damage * S.dmgMul * K.k, 'falke'); spark(t.x, t.y, '#f2c14e'); sfx('hit_enemy', 0.5); f.ph = 'back'; f.cd = K.every; }
+    }
+  } else {
+    const dx = hx - f.x, dy = hy - f.y, d = Math.hypot(dx, dy) || 1, st = Math.min(d, 420 * dt);
+    f.x += dx / d * st; f.y += dy / d * st;
+    if (d < 12) f.ph = 'idle';
+  }
 }
 function tryRage() {
   const a = G.abil.rage;
@@ -1565,6 +1751,7 @@ function update(dt) {
     if (G.srT > 0) G.srT -= dt; if (G.dmgT > 0) G.dmgT -= dt;
     if (S.bleed) { G.bleedT += dt; if (G.bleedT >= 10) { G.bleedT = 0; p.hp = Math.max(1, p.hp - S.maxHp * S.bleed.cost); } }   // Aderlass
     if (S.marks.length) updateMarks(dt); }
+  updateExtras(dt, moved);
   if (S.round) { G.roundT += dt; if (G.roundT >= S.round.every) { G.roundT = 0; roundVolley(); } }
   if (!S.zorn) p.dashCd = Math.max(0, p.dashCd - dt);   // Zornladung: die Pause läuft nur über Schaden ab
   p.swingT = Math.max(0, p.swingT - dt);
@@ -2018,9 +2205,15 @@ function spawnAlly(kind, from, life) {
     const E = ENEMY_TYPES[from.type];
     Object.assign(a, { type: from.type, r: from.r, hp: from.maxHp * 0.5, maxHp: from.maxHp * 0.5, dmg: (E.mdmg || (from.type === 'wolf' ? 9 : 10)) * from.dmgMul, chase: E.chase, angle: from.angle, el: from.el, kh: from.kh });
   }
+  if (S.pack > 0) { a.hp *= 1 + S.pack; a.maxHp *= 1 + S.pack; a.dmg *= 1 + S.pack; }   // Rudelherr
   G.allies.push(a); sfx('card_pick', 0.5);
   for (let i = 0; i < 10; i++) G.parts.push({ x: a.x, y: a.y, vx: rand(-90, 90), vy: rand(-90, 90), life: 0.4, color: '#6ad6c8' });
   return a;
+}
+function allyFx(tgt, dmg) {   // Rudelführer: Begleiter geben Lifesteal und Treffer-Effekte weiter
+  if (!(S.packFx > 0)) return;
+  G.player.hp = Math.min(S.maxHp, G.player.hp + dmg * S.lifesteal * S.packFx);
+  if (tgt.hp > 0) for (const d of S.mod.dots) addDot(tgt, d, dmg * S.packFx);
 }
 function updateAllies(dt) {
   const p = G.player;
@@ -2038,7 +2231,7 @@ function updateAllies(dt) {
     else { mx = p.x - a.x; my = p.y - a.y; if (Math.hypot(mx, my) < 90) sp = 0; }
     const d = Math.hypot(mx, my) || 1;
     if (a.dashT > 0) { a.dashT -= dt; moveCircle(a, a.dx * 560 * dt, a.dy * 560 * dt); }
-    else if (tgt && d < a.r + tgt.r + 6) { if (a.cd <= 0) { damageEnemy(tgt, a.dmg); a.cd = a.kind === 'wolf' ? 0.6 : 0.9; spark(tgt.x, tgt.y, '#6ad6c8'); } }
+    else if (tgt && d < a.r + tgt.r + 6) { if (a.cd <= 0) { damageEnemy(tgt, a.dmg); allyFx(tgt, a.dmg); a.cd = a.kind === 'wolf' ? 0.6 : 0.9; spark(tgt.x, tgt.y, '#6ad6c8'); } }
     else if (sp > 0) {
       if (a.kind === 'wolf' && tgt && d < 230 && d > 80 && a.dashCd <= 0) { a.dashT = 0.25; a.dashCd = 1.6; a.dx = mx / d; a.dy = my / d; }   // Sprung wie beim Gegner-Wolf
       else moveCircle(a, mx / d * sp * dt, my / d * sp * dt);
@@ -2427,12 +2620,24 @@ function hurtPlayer(d, srcAngle, src) {
   }
   if (G.barkReady) { G.barkReady = false; G.cnt.bark = 0; sfx('block'); spark(p.x, p.y, '#8fbf6a'); return; }   // Eichenrinde fängt den Treffer ab
   if (src && src.hp > 0 && S.marks.length) d *= markDeal(src);   // gezeichnet: härtere Treffer
+  if (S.armor > 0) d *= 1 - Math.min(0.6, S.armor);   // Schadensabzug (Deckel 60 %)
+  if (S.shield && G.abil.shield.t > 0) d *= 1 - S.shield.red;   // Schildwall
+  if (S.field && G.fields.some(f => Math.hypot(f.x - p.x, f.y - p.y) < f.r)) d *= 1 - S.field.red;   // Schutzfeld
   if (G.abil.rage.t > 0) d *= 1.5;   // Raserei: mehr erlittener Schaden
   G.hurtAt = G.time;
   if (S.mirror) mirrorHit(d, src);
   p.hp -= d;
   G.hurtT = 0.35; G.shakeT = 0.25;
   sfx('player_hurt');
+  if (S.thorns > 0 && src && src.hp > 0 && !src.ally) damageEnemy(src, d * S.thorns, 'dorn');   // Dornen: Rückschaden
+  if (S.thornWave && G.time - G.waveAt >= S.thornWave.cd) thornBurst();
+}
+function thornBurst() {   // Stachelwelle: jeder erlittene Treffer löst eine Welle aus
+  const p = G.player, T = S.thornWave, R = T.r * PX_PER_M;
+  G.waveAt = G.time; sfx('spell_explode', 0.5);
+  G.rings.push({ x: p.x, y: p.y, r: R, life: 0.3, max: 0.3 });
+  for (let i = 0; i < 14; i++) G.parts.push({ x: p.x, y: p.y, vx: rand(-200, 200), vy: rand(-200, 200), life: 0.3, color: '#d89a4a' });
+  for (const e of G.enemies) if (e.hp > 0 && !e.hidden && Math.hypot(e.x - p.x, e.y - p.y) <= R + e.r) damageEnemy(e, W().damage * S.dmgMul * T.k, 'dorn');
 }
 
 function updateBullets(dt) {
@@ -2456,7 +2661,7 @@ function updateBullets(dt) {
     if (b.life <= 0 && M && M.ret && !b.back && b.from === 'player') { b.back = true; b.life = 3; b.dmg *= M.ret.k; b.ignore = []; continue; }   // Ende der Reichweite: der Bolzen kehrt um
     if (b.cull && (b.x < -60 || b.x > WORLD_W + 60 || b.y < G.camTop - 120 || b.y > G.camTop + VIEW_H + 120)) { b.life = 0; continue; }
     let tObs = Infinity, oHit = null;
-    for (const o of G.obstacles) {
+    for (const o of b.ghost ? [] : G.obstacles) {
       if (Math.min(b.py, b.y) > o.y + o.h || Math.max(b.py, b.y) < o.y) continue;
       const t = hitObstacle(o, b.px, b.py, b.x, b.y);
       if (t < tObs) { tObs = t; oHit = o; }
@@ -2507,7 +2712,7 @@ function updateBullets(dt) {
   G.pzones = G.pzones.filter(z => z.life > 0);
 }
 const KB_WEIGHT = { boss: 0, hexe: 0, herr: 0, schwarm: 0, schild: 0.5, waechter: 0.5, kriecher: 0.7, folter: 0.7 };   // wie weit Gegner zurückgestoßen werden
-const DOT_COL = { gift: '#8fe05a', feuer: '#ff9a4a', blut: '#e05a6a' };
+const DOT_COL = { gift: '#8fe05a', feuer: '#ff9a4a', blut: '#e05a6a', dorn: '#d89a4a', blitz: '#cfe8ff', pfeil: '#c8d4de', falke: '#f2c14e' };
 // Lenkung: Maus (Lenkgeschoss) oder nächster Gegner vor dem Bolzen (zielsuchend)
 function steerBullet(b, M, extra, dt) {
   let tx = null, ty = null;
@@ -2547,6 +2752,8 @@ function bulletHitEnemy(b, e, hx, hy) {
   let dmg = b.dmg;
   if (M.grow) dmg *= clamp(M.grow.start + M.grow.perM * b.trav / PX_PER_M, M.grow.start, M.grow.max);   // Wachsende Wucht
   for (const d of M.dmgVs) if (d.test(e)) dmg *= d.k;   // Todesstoß, Eröffnungsstoß
+  if (M.far) dmg *= 1 + Math.min(M.far.max, M.far.per * b.trav / PX_PER_M);   // Fernschuss
+  if (e.netT > 0 && S.net) dmg *= 1 + S.net.vuln;   // Gefangene im Dornennetz
   if (S.marks.length) dmg *= markTake(e);   // Gezeichnet
   if (M.streak) dmg *= 1 + Math.min(M.streak.max, (G.cnt.streak || 0) * M.streak.per);   // Serienschütze
   for (const c of M.crit) if (Math.random() < c.p) dmg *= c.k;
@@ -2563,7 +2770,7 @@ function bulletHitEnemy(b, e, hx, hy) {
   runHooks('hit', { b, e, dmg });
   if (b.boom && b.boom.mode === 'stick') { boomAt(b, e.x, e.y, e); return false; }   // Zeitzünder: bleibt stecken
   // Das Schild des Schildträgers hält Pfeile auch mit Durchschuss auf (der Kettenblitz läuft trotzdem weiter)
-  const shieldStop = e.type === 'schild' && Math.abs(normAngle(Math.atan2(-b.vy, -b.vx) - e.angle)) < 62 * deg;
+  const shieldStop = !b.ghost && e.type === 'schild' && Math.abs(normAngle(Math.atan2(-b.vy, -b.vx) - e.angle)) < 62 * deg;
   if (b.pierce > 0 && !shieldStop) { b.pierce--; b.ignore.push(e); b.dmg *= M.pierceK; return true; }
   return false;
 }
@@ -2685,7 +2892,7 @@ function damageEnemy(e, dmg, dot) {   // dot: Art des Schadens über Zeit (kein 
       if (G.limitLock) { pts = 0; G.floats.push({ x: e.x - 14, y: e.y - e.r, vx: 0, t: 0.8, v: 'Limit', c: '#8a9aa0' }); }
       else if (++G.limitCount >= ENDLESS_KILL_LIMIT) { G.limitLock = G.dist + ENDLESS_UNLOCK_M; say('Punkte-Limit erreicht: lauf ' + ENDLESS_UNLOCK_M + ' m weiter!'); }
     }
-    G.killSilver += pts;
+    G.killSilver += pts * (1 + S.silverK);
     G.points += pts;
     G.delta = (G.deltaT > 0 ? G.delta : 0) + pts; G.deltaT = 1.2;
     if (pts > 0) G.pops.push({ x: e.x - e.r - 4, y: e.y - e.r * 0.4, vx: -34, t: 1.1, v: pts });
@@ -3311,9 +3518,32 @@ function drawEntities() {
     ctx.beginPath(); ctx.moveTo(b.x - b.vx * (b.big ? 0.05 : 0.016), b.y - b.vy * (b.big ? 0.05 : 0.016)); ctx.lineTo(b.x, b.y); ctx.stroke();
   }
   for (const z of G.pzones) {   // Flächen des Spielers
-    ctx.fillStyle = 'rgba(255,120,40,' + (0.12 + 0.06 * Math.sin(G.time * 8)) + ')'; ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, 7); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,160,70,.5)'; ctx.lineWidth = 2; ctx.stroke();
+    const arrow = z.kind === 'pfeil';
+    ctx.fillStyle = (arrow ? 'rgba(190,210,230,' : 'rgba(255,120,40,') + (0.12 + 0.06 * Math.sin(G.time * 8)) + ')'; ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, 7); ctx.fill();
+    ctx.strokeStyle = arrow ? 'rgba(210,225,240,.6)' : 'rgba(255,160,70,.5)'; ctx.lineWidth = 2; ctx.stroke();
+    if (arrow) { ctx.strokeStyle = '#dfe8f0'; ctx.lineWidth = 2; for (let i = 0; i < 7; i++) { const ph = (G.time * 2.2 + i * 0.37) % 1, ax = z.x + Math.cos(i * 2.4) * z.r * 0.7 * ((i % 3) / 2.5 + 0.2), ay = z.y - z.r * 0.8 + ph * z.r * 1.6; ctx.globalAlpha = Math.sin(ph * Math.PI); ctx.beginPath(); ctx.moveTo(ax, ay - 10); ctx.lineTo(ax, ay + 4); ctx.stroke(); } ctx.globalAlpha = 1; }
   }
+  for (const n of G.nets) {   // Dornennetz
+    ctx.fillStyle = 'rgba(150,110,60,.18)'; ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(200,160,90,.7)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); for (let i = -2; i <= 2; i++) { ctx.moveTo(n.x - n.r * 0.8, n.y + i * n.r * 0.32); ctx.lineTo(n.x + n.r * 0.8, n.y + i * n.r * 0.32); ctx.moveTo(n.x + i * n.r * 0.32, n.y - n.r * 0.8); ctx.lineTo(n.x + i * n.r * 0.32, n.y + n.r * 0.8); } ctx.save(); ctx.clip(new Path2D((() => { const pp = new Path2D(); pp.arc(n.x, n.y, n.r, 0, 7); return pp; })())); ctx.stroke(); ctx.restore();
+  }
+  for (const f of G.fields) {   // Schutzfeld
+    ctx.fillStyle = 'rgba(110,180,255,' + (0.12 + 0.05 * Math.sin(G.time * 5)) + ')'; ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(150,210,255,.8)'; ctx.lineWidth = 3; ctx.stroke();
+  }
+  for (const q of G.springs) {   // Heilquelle
+    ctx.fillStyle = 'rgba(110,230,150,' + (0.14 + 0.06 * Math.sin(G.time * 6)) + ')'; ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(140,240,170,.7)'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = 'rgba(200,255,215,.9)'; ctx.fillRect(q.x - 3, q.y - 10, 6, 20); ctx.fillRect(q.x - 10, q.y - 3, 20, 6);
+  }
+  for (const q of G.strikes) {   // Wolkenbruch-Blitze
+    ctx.strokeStyle = 'rgba(225,240,255,' + Math.min(1, q.t * 4) + ')'; ctx.lineWidth = 4; ctx.beginPath(); let bx = q.x + 18, by = q.y - 360; ctx.moveTo(bx, by); for (let i = 1; i <= 6; i++) { bx = q.x + (i < 6 ? rand(-14, 14) : 0); by = q.y - 360 + i * 60; ctx.lineTo(bx, by); } ctx.stroke();
+    ctx.fillStyle = 'rgba(200,225,255,' + q.t + ')'; ctx.beginPath(); ctx.arc(q.x, q.y, 18, 0, 7); ctx.fill();
+  }
+  if (S.trap) { ctx.strokeStyle = 'rgba(190,150,255,.35)'; ctx.lineWidth = 2; ctx.setLineDash([3, 6]); ctx.beginPath(); ctx.arc(G.player.x, G.player.y, S.trap.r * PX_PER_M, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+  if (G.fk) { const f = G.fk, ang = f.ph === 'idle' ? f.a + Math.PI / 2 : Math.atan2((f.tgt ? f.tgt.y : G.player.y) - f.y, (f.tgt ? f.tgt.x : G.player.x) - f.x), fl = Math.sin(G.time * 18) * 5;
+    ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(ang); ctx.fillStyle = '#c8924a'; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-6, -8 - fl); ctx.lineTo(-3, 0); ctx.lineTo(-6, 8 + fl); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#f2e0b0'; ctx.beginPath(); ctx.arc(6, 0, 3, 0, 7); ctx.fill(); ctx.restore(); }
   for (const bo of G.booms) {   // Sprengsätze mit Zünder
     const f = 1 - bo.t / bo.T;
     ctx.strokeStyle = 'rgba(255,170,80,.7)'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.arc(bo.x, bo.y, bo.r * (0.3 + 0.7 * f), 0, 7); ctx.stroke(); ctx.setLineDash([]);
@@ -3340,6 +3570,7 @@ function drawEntities() {
   if (G.area.id === 'moor') { drawWisps(); drawFogBanks(); drawHexeHazards(); }   // Angriffe der Hexe über dem Nebel, aber nur im Sichtkegel sichtbar
   if (G.autoT && G.autoT.hp > 0) { const t = G.autoT; ctx.strokeStyle = 'rgba(255,243,200,.75)'; ctx.lineWidth = 2; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.arc(t.x, t.y, t.r + 8, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
   if (G.curseT > 0) { const t = performance.now() / 600; ctx.strokeStyle = 'rgba(176,112,255,' + (0.5 + 0.3 * Math.sin(t * 4)) + ')'; ctx.lineWidth = 2.5; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.arc(p.x, p.y, 24, t, t + 6.28); ctx.stroke(); ctx.setLineDash([]); ctx.beginPath(); for (let i = 0; i < 3; i++) { const a = t + i * 2.094; ctx.moveTo(p.x + Math.cos(a) * 24, p.y + Math.sin(a) * 24); ctx.lineTo(p.x + Math.cos(a) * 32, p.y + Math.sin(a) * 32); } ctx.stroke(); }
+  if (S.shield && G.abil.shield.t > 0) { ctx.strokeStyle = 'rgba(242,193,78,.85)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 10, 0, 7); ctx.stroke(); }   // Schildwall
   if (G.barkReady) { ctx.strokeStyle = 'rgba(143,191,106,.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 8, 0, 7); ctx.stroke(); }   // Eichenrinde bereit
   if (p.charge > 0.05) { ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 12, -Math.PI / 2, -Math.PI / 2 + p.charge * Math.PI * 2); ctx.stroke(); }   // Ladeschuss lädt auf
   drawFigure(G.cls.id, p.x, p.y, isBlocking() ? p.angle : (p.aim === undefined ? p.angle : p.aim), 1, {
@@ -4492,6 +4723,12 @@ function drawRails() {
     if (id === 'dash') abs.push({ n: 'Windstoß', key, f: 1 - p.dashCd / dashCooldown(), on: false });
     else if (id === 'rage') abs.push({ n: 'Raserei', key, f: G.abil.rage.t > 0 ? G.abil.rage.t / S.rage.dur : 1 - G.abil.rage.cd / S.rage.cd, on: G.abil.rage.t > 0 });
     else if (id === 'blink') abs.push({ n: S.blink.mode === 'fire' ? 'Blitzschritt' : 'Schattenschritt', key, f: 1 - G.abil.blink.cd / S.blink.cd, on: false });
+    else if (id === 'volley') abs.push({ n: 'Salve', key, f: 1 - G.abil.volley.cd / S.volley.cd, on: false });
+    else if (id === 'net') abs.push({ n: 'Dornennetz', key, f: 1 - G.abil.net.cd / S.net.cd, on: false });
+    else if (id === 'rain') abs.push({ n: S.rain.mode === 'fire' ? 'Feuerregen' : 'Pfeilregen', key, f: 1 - G.abil.rain.cd / S.rain.cd, on: false });
+    else if (id === 'field') abs.push({ n: 'Schutzfeld', key, f: 1 - G.abil.field.cd / S.field.cd, on: G.fields.length > 0 });
+    else if (id === 'shield') abs.push({ n: 'Schildwall', key, f: G.abil.shield.t > 0 ? G.abil.shield.t / S.shield.dur : 1 - G.abil.shield.cd / S.shield.cd, on: G.abil.shield.t > 0 });
+    else if (id === 'heal') abs.push({ n: S.heal.name, key, f: G.abil.heal.t > 0 ? G.abil.heal.t / S.heal.dur : 1 - G.abil.heal.cdm / S.heal.cdm, on: G.abil.heal.t > 0 });
   });
   ctx.strokeStyle = abs.length ? '#4fd08a' : '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
   if (abs.length === 1) {
@@ -5630,7 +5867,9 @@ function drawMerchantScreen() {
   heads.forEach((h, i) => { text(h, gx[i], Y + 144, 14, i ? '#8ee8ff' : '#f2c14e', 'left', F_TEXT, 'bold'); ctx.fillStyle = i ? '#2a6a7a' : '#7a5a1a'; ctx.fillRect(gx[i], Y + 152, 3 * cw + 2 * gap, 2); });
   let hovered = null;
   const counts = { card: 0, buff: 0 };
+  const nc = m.offers.filter(o => o.kind === 'card').length, small = nc > 3;   // vier Karten (Sammler): kleinere Karten
   m.offers.forEach(o => {
+    const sm = small && o.kind === 'card', cw = sm ? 104 : 136, ch = sm ? 151 : 198, k = sm ? 104 / 220 : 0.62, gap = sm ? 8 : 14;
     const gi = o.kind === 'card' ? 0 : 1, i = counts[o.kind]++;
     const x = gx[gi] + i * (cw + gap), y = gy;
     if (mouse.fx >= x && mouse.fx <= x + cw && mouse.fy >= y && mouse.fy <= y + ch) hovered = o.item;
@@ -5872,7 +6111,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.01';
+const VERSION = 'v1.02';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -5995,6 +6234,8 @@ function statRows() {
   if (S.dash) row('Windstoß-Pause', fmt(dashCooldown(), 1) + ' s', ...pct(dashCooldown(), DASH.cooldown, true));
   if (S.lifesteal > 0) row('Lifesteal', fmt(S.lifesteal * 100, 0) + ' %', '+' + fmt(S.lifesteal * 100, 0) + ' %', 1);
   if (Math.abs(S.boltSpeed - 1) > 0.005) row('Bolzentempo', fmt(W().speed * S.boltSpeed / PX_PER_M, 1) + ' m/s', ...pct(S.boltSpeed, 1));
+  if (S.armor > 0) row('Schadensabzug', fmt(Math.min(60, S.armor * 100), 0) + ' %', '+' + fmt(Math.min(60, S.armor * 100), 0) + ' %', 1);
+  if (Math.abs(S.boltRange - 1) > 0.005) row('Bolzenreichweite', fmt(W().range * S.boltRange / PX_PER_M, 0) + ' m', ...pct(S.boltRange, 1));
   if (S.extraChoices > 0) row('Kartenwahl', fmt(3 + S.extraChoices, 0) + ' Karten', '+' + S.extraChoices, 1);
   if (Math.abs(S.priceMul - 1) > 0.005) row('Händlerpreise', fmt(S.priceMul * 100, 0) + ' %', ...pct(S.priceMul, 1, true));
   return rows;
