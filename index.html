@@ -5970,12 +5970,6 @@ function drawSkillScreen() {
     text(lk ? 'Gesperrt: ' + lk : rk >= hk.max ? 'Voll ausgebaut' : free > 0 ? 'Klick: 1 Punkt einsetzen' : 'Keine Punkte offen', 896, 190, 13, lk ? '#ff9a8a' : '#8a9aa0', 'left', F_TEXT, 'italic');
     if (hk.side) text('Gabelung: nicht beide Seiten möglich', 896, 212, 12.5, '#8a9aa0', 'left', F_TEXT);
   } else text('Fahre über einen Knoten', 896, 130, 15, '#8a9aa0', 'left', F_TEXT, 'italic');
-  rr(880, 252, 360, 150, 14); ctx.fillStyle = '#101a14'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
-  text('So stark ist ein Punkt', 896, 280, 15, '#f2c14e', 'left', F_TITLE);
-  ['Schaden +4 % · Leben +6 % · Lauftempo +2 %', 'Schussrate +3 % · Nachladen −4 % · Sicht +3 %', 'Zusammen etwa +3 % Gesamtstärke je Punkt.', 'Karten wirken zusätzlich und stärker.'].forEach((l, i) => text(l, 896, 306 + i * 22, 13, '#c8d4de', 'left', F_TEXT));
-  rr(880, 418, 360, 150, 14); ctx.fillStyle = '#101a14'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
-  text('Gabelungen', 896, 446, 15, '#f2c14e', 'left', F_TITLE);
-  ['Ab Stufe 6: links Angriff, rechts Überleben.', 'Man kann nicht beide Seiten ganz haben.', '„Zurücksetzen“ ist kostenlos und verteilt', 'alle Punkte neu, nur im Menü.'].forEach((l, i) => text(l, 896, 472 + i * 22, 13, '#c8d4de', 'left', F_TEXT));
   text('Entwurfswerte, die sich mit dem Spiel noch ändern.', 40, 690, 12.5, '#8a9aa0', 'left', F_TEXT, 'italic');
 }
 
@@ -6111,7 +6105,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.02';
+const VERSION = 'v1.03';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
