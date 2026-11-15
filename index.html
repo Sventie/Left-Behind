@@ -305,7 +305,7 @@ const CARDS = [
   // Nahkampf
   { id: 'klinge',   name: 'Geschärfte Klinge',    kind: 'Werte',  rarity: 'gewoehnlich', icon: 'sword',   max: 3, types: ['melee'], stat: '+15 % Schaden',       text: 'Ein Wetzstein, eine ruhige Nacht, eine bessere Schneide.', flavor: '„Scharf genug zum Rasieren.“', apply: S => { S.dmgMul *= 1.15; } },
   { id: 'lang',     name: 'Langes Eisen',         kind: 'Werte',  rarity: 'gewoehnlich', icon: 'sword',   max: 2, types: ['melee'], stat: '+20 % Reichweite',    text: 'Eine längere Klinge hält den Feind auf Abstand.', flavor: '„Ein Zoll kann ein Leben sein.“',      apply: S => { S.reachMul *= 1.2; } },
-  { id: 'breit',    name: 'Breiter Hieb',         kind: 'Effekt',  rarity: 'selten',      icon: 'arc',     max: 2, types: ['melee'], stat: '+30° Schwungbogen',   text: 'Dein Hieb erfasst mehr Gegner auf einmal.',      flavor: '„Wer zu nah steht, steht falsch.“',    apply: S => { S.arcAdd += 30; } },
+  { id: 'breithieb', name: 'Breiter Hieb',         kind: 'Effekt',  rarity: 'selten',      icon: 'arc',     max: 2, types: ['melee'], stat: '+30° Schwungbogen',   text: 'Dein Hieb erfasst mehr Gegner auf einmal.',      flavor: '„Wer zu nah steht, steht falsch.“',    apply: S => { S.arcAdd += 30; } },
   { id: 'wall',     name: 'Schildwall',           kind: 'Werte',  rarity: 'selten',      icon: 'shield',  max: 2, types: ['melee'], stat: 'Blockwinkel +30°', text: 'Dein Schild deckt dich auch seitlich.', flavor: '„Sie kommen nicht vorbei.“',           apply: S => { S.blockArc += 15; } },
   // Magie
   { id: 'macht',    name: 'Zauberkraft',          kind: 'Werte',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+15 % Schaden',       text: 'Die Magie fließt stärker durch den Stab.',       flavor: '„Mehr Glut, weniger Zweifel.“',        apply: S => { S.dmgMul *= 1.15; } },
@@ -410,7 +410,7 @@ const CARD_PARAM = {
   bolzen:   { stats: [{ k: 'v', n: 'Schaden', base: 5, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
   klinge:   { stats: [{ k: 'v', n: 'Schaden', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
   lang:     { stats: [{ k: 'v', n: 'Reichweite', base: 20, pre: '+', u: ' %' }], apply: (S, v) => { S.reachMul *= 1 + v.v / 100; } },
-  breit:    { stats: [{ k: 'v', n: 'Schwungbogen', base: 30, pre: '+', u: '°' }], apply: (S, v) => { S.arcAdd += v.v; } },
+  breithieb: { stats: [{ k: 'v', n: 'Schwungbogen', base: 30, pre: '+', u: '°' }], apply: (S, v) => { S.arcAdd += v.v; } },
   wall:     { stats: [{ k: 'v', n: 'Blockwinkel', base: 30, pre: '+', u: '°' }], apply: (S, v) => { S.blockArc += v.v / 2; } },
   macht:    { stats: [{ k: 'v', n: 'Schaden', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
   quell:    { stats: [{ k: 'v', n: 'Manaregeneration', base: 25, pre: '+', u: ' %' }], apply: (S, v) => { S.manaRegenMul *= 1 + v.v / 100; } },
@@ -6221,7 +6221,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.12';
+const VERSION = 'v1.13';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
