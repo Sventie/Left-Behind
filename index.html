@@ -72,7 +72,7 @@ const BASE = {                          // Basiswerte, Klasse und Karten veränd
 };
 const WEAPONS = {
   schwert:  { type: 'melee',  name: 'Langschwert',      damage: 38, interval: 0.55, reach: 62, arc: 110, swing: 0.18 },
-  armbrust: { type: 'ranged', name: 'Repetierarmbrust', damage: 20, interval: 0.20, reloadTime: 1.5, spread: 1.5, bloomPerShot: 1.8, bloomMax: 9, bloomRecover: 9, moveSpread: 4, speed: 900, range: 760 },
+  armbrust: { type: 'ranged', name: 'Repetierarmbrust', damage: 20, interval: 0.20, reloadTime: 1.5, spread: 1.5, bloomPerShot: 1.8, bloomMax: 9, bloomRecover: 9, moveSpread: 10, speed: 900, range: 760 },
   stab:     { type: 'spell',  name: 'Zauberstab',       damage: 30, interval: 0.45, cost: 14, regen: 16, regenDelay: 0.7, spread: 1.2, bloomPerShot: 1.4, bloomMax: 6, bloomRecover: 8, moveSpread: 3, speed: 640, range: 720, splash: 46 }
 };
 const CLASSES = [
@@ -207,13 +207,13 @@ const CARDS = [
   { id: 'stiefel',  name: 'Wanderstiefel',        kind: 'Segen',  rarity: 'gewoehnlich', icon: 'boot',    max: 3, stat: '+8 % Lauftempo',      text: 'Leder und Moos tragen dich schneller.',            flavor: '„Die Straße kennt keine Müdigkeit.“', apply: S => { S.moveSpeed *= 1.10; } },
   { id: 'schild',   name: 'Eichenschild',         kind: 'Segen',  rarity: 'gewoehnlich', icon: 'shield',  max: 3, stat: '+30 Leben',            text: 'Altes Eichenholz schützt deine Brust.',            flavor: '„Es hat Schlimmeres gesehen.“',        apply: S => { S.maxHp += 30; } },
   { id: 'irrlicht', name: 'Irrlicht',             kind: 'Segen', rarity: 'gewoehnlich',      icon: 'wisp',    max: 2, stat: 'Sichtweite +25 %',     text: 'Ein Irrlicht leuchtet den Weg weiter aus.',        flavor: '„Folge dem Licht. Nicht dem anderen.“', apply: S => { S.rangeMul *= 1.25; } },
-  { id: 'wind',     name: 'Windstoß',             kind: 'Fähigkeit', rarity: 'selten',      icon: 'wind',    max: 2, limit: 2, stat: 'Sprint (Leertaste)',   text: 'Ein Stoß treibt dich 4 m nach vorn. 12 s Abklingzeit, mit einer zweiten Karte nur 8 s.', flavor: '„Der Wald hält den Atem an.“',    apply: S => { S.dash = true; S.dashN += 1; } },
+  { id: 'wind',     name: 'Windstoß',             kind: 'Fähigkeit', rarity: 'selten',      icon: 'wind',    max: 2, limit: 2, stat: 'Sprint (Leertaste)',   text: 'Ein Stoß treibt dich 4 m nach vorn. 12 s Pause, mit zweiter Karte 8 s.', flavor: '„Der Wald hält den Atem an.“',    apply: S => { S.dash = true; S.dashN += 1; } },
   { id: 'leichtfuss', name: 'Leichtfuß',         kind: 'Segen', rarity: 'selten',      icon: 'boot',    max: 3, stat: '', text: 'Leichte Schritte, dünne Haut: schnell, aber leichter zu verletzen.', flavor: '„Wer rennt, braucht keine Rüstung.“', apply: S => {} },
   { id: 'falkenblick', name: 'Falkenblick',      kind: 'Segen', rarity: 'selten',      icon: 'eye',     max: 3, stat: '', text: 'Du siehst weiter und breiter.',                    flavor: '„Der Falke sieht alles.“',               apply: S => {} },
   { id: 'weitwinkel', name: 'Weitwinkel',        kind: 'Segen', rarity: 'episch',      icon: 'eye',     max: 2, stat: '', text: 'Ein riesiger Blickwinkel, aber nichts reicht ganz so weit.', flavor: '„Viel Himmel, wenig Tiefe.“',      apply: S => {} },
   { id: 'lebensraub', name: 'Lebensraub',        kind: 'Segen', rarity: 'gewoehnlich', icon: 'wisp',    max: 3, stat: '', text: 'Ein Teil jedes Treffers fließt als Leben zu dir zurück.', flavor: '„Was du nimmst, hält dich am Leben.“', apply: S => {} },
   { id: 'falke',    name: 'Falkenauge',           kind: 'Segen', rarity: 'gewoehnlich',      icon: 'eye',     max: 2, stat: 'Sichtkegel +25°',      text: 'Du siehst weiter zur Seite, ohne den Kopf zu drehen.', flavor: '„Nichts entgeht dem Jäger.“',    apply: S => { S.fov += 25; } },
-  { id: 'blitz',    name: 'Kettenblitz',          kind: 'Zauber', rarity: 'episch',      icon: 'bolt',    max: 2, stat: 'Kettenblitz-Treffer',  text: 'Treffer springen auf 2 weitere Gegner über.',      flavor: '„Der Himmel schuldet dir etwas.“',     apply: S => { S.chain += 2; } },
+  { id: 'blitz',    name: 'Kettenblitz',          kind: 'Zauber', rarity: 'episch',      icon: 'bolt',    max: 2, stat: 'Kettenblitz-Treffer',  text: 'Jeder dritte Schuss ist ein Blitz und springt auf bis zu 3 weitere Gegner.',      flavor: '„Der Himmel schuldet dir etwas.“',     apply: S => { S.chain += 2; } },
   { id: 'krone',    name: 'Krone der Verlorenen', kind: 'Zauber', rarity: 'legendaer',   icon: 'crown',   max: 1, stat: '4 statt 3 Karten',     text: 'Wähle nach jeder Stufe aus vier Karten.',          flavor: '„Wer sie trägt, wird nicht vergessen.“', apply: S => { S.extraChoices += 1; } },
   // Fernkampf
   { id: 'hand',     name: 'Ruhige Hand',          kind: 'Segen',  rarity: 'gewoehnlich', icon: 'target',  max: 3, types: ['ranged', 'spell'], stat: '−15 % Streuung', text: 'Ein tiefer Atemzug, ein sicherer Schuss.',        flavor: '„Erst atmen, dann schießen.“',         apply: S => { S.spreadMul *= 0.85; } },
@@ -223,7 +223,36 @@ const CARDS = [
   { id: 'spann15',   name: 'Schnellspanner',       kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 2, types: ['ranged'], stat: '', text: 'Die Sehne spannt sich wie von selbst.',           flavor: '„Klick, und weiter.“',                 apply: S => {} },
   { id: 'riesen',    name: 'Riesenköcher',         kind: 'Segen',  rarity: 'selten',      icon: 'quiver',  max: 1, limit: 1, types: ['ranged'], stat: '', text: 'Ein riesiger Köcher voller Bolzen. Das Spannen dauert länger.', flavor: '„Wer viel mitnimmt, braucht Zeit.“', apply: S => {} },
   { id: 'schwer',    name: 'Schwere Spitzen',      kind: 'Segen',  rarity: 'selten',      icon: 'quiver',  max: 3, types: ['ranged'], stat: '', text: 'Schwerere Bolzen schlagen härter, fliegen aber langsamer.', flavor: '„Schwer wie ein Versprechen.“',   apply: S => {} },
-  { id: 'spitze',   name: 'Spitze Bolzen',        kind: 'Segen',  rarity: 'selten',      icon: 'quiver',  max: 2, types: ['ranged'], stat: 'Durchschlag +1',     text: 'Der Bolzen durchbohrt einen Gegner und fliegt weiter.', flavor: '„Zwei auf einen Streich.“',     apply: S => { S.pierce += 1; } },
+  { id: 'schwach', name: 'Schwächere Bolzen', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Durchschlag mit vollem Schaden, dafür treffen alle Bolzen schwächer.', flavor: '„Zwei auf einen Streich, aber nicht ganz so fest.“', apply: S => {} },
+  { id: 'quer', name: 'Fangwinkel', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Prallt einmal ab, trifft danach härter und biegt zum nächsten Gegner.', flavor: '„Um die Ecke gedacht.“', apply: S => {} },
+  { id: 'zorn', name: 'Wachsender Zorn', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Schwächer, aber nach einem Abprall doppelt so hart. Braucht Abprall.', flavor: '„Je öfter er prallt, desto wütender.“', apply: S => {} },
+  { id: 'wucht', name: 'Wachsende Wucht', kind: 'Segen', rarity: 'episch', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Der Bolzen wird mit jedem Meter Flug stärker, bis zum Höchstwert.', flavor: '„Wer weit fliegt, schlägt hart ein.“', apply: S => {} },
+  { id: 'rueck', name: 'Rückstoß', kind: 'Segen', rarity: 'gewoehnlich', icon: 'shield', max: 3, types: ['ranged'], stat: '', text: 'Treffer stoßen Gegner ein Stück zurück. Bosse bleiben stehen.', flavor: '„Nicht so nah.“', apply: S => {} },
+  { id: 'stoss', name: 'Wuchtschlag', kind: 'Segen', rarity: 'selten', icon: 'shield', max: 3, types: ['ranged'], stat: '', text: 'Jeder vierte Treffer stößt den Gegner weit zurück und betäubt ihn.', flavor: '„Der vierte sitzt.“', apply: S => {} },
+  { id: 'lenk', name: 'Lenkgeschoss', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Der Bolzen folgt dem Mauszeiger im Flug.', flavor: '„Er hört auf deine Hand.“', apply: S => {} },
+  { id: 'suche', name: 'Zielsuchend', kind: 'Segen', rarity: 'selten', icon: 'eye', max: 3, types: ['ranged'], stat: '', text: 'Der Bolzen biegt zum nächsten Gegner vor ihm.', flavor: '„Er weiß, wo du hin willst.“', apply: S => {} },
+  { id: 'kurve', name: 'Kurvenbolzen', kind: 'Segen', rarity: 'selten', icon: 'wind', max: 3, types: ['ranged'], stat: '', text: 'Der Bolzen fliegt in einer Kurve, abwechselnd nach links und rechts.', flavor: '„Geradeaus ist langweilig.“', apply: S => {} },
+  { id: 'bumerang', name: 'Bumerang', kind: 'Segen', rarity: 'gewoehnlich', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Halbe Reichweite. Ein Bolzen ohne Treffer kehrt zurück.', flavor: '„Was fehlgeht, kommt wieder.“', apply: S => {} },
+  { id: 'frost', name: 'Frostbolzen', kind: 'Zauber', rarity: 'selten', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Treffer verlangsamen Gegner, mehrere Treffer verstärken es.', flavor: '„Kalt erwischt.“', apply: S => {} },
+  { id: 'eis', name: 'Eisfessel', kind: 'Zauber', rarity: 'selten', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Der dritte Treffer in Folge auf denselben Gegner friert ihn kurz ein.', flavor: '„Drei Mal ist Eis.“', apply: S => {} },
+  { id: 'novafrost', name: 'Frostnova', kind: 'Zauber', rarity: 'selten', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Fällt ein Gegner, explodiert er in Frost und verlangsamt alle in der Nähe.', flavor: '„Der letzte Atem ist eisig.“', apply: S => {} },
+  { id: 'gift', name: 'Giftbolzen', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Treffer vergiften: der Schaden kommt nach und nach dazu und stapelt sich.', flavor: '„Es dauert, aber es wirkt.“', apply: S => {} },
+  { id: 'faeulnis', name: 'Fäulnis', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Leichtes Gift. Stirbt ein Vergifteter, springt es auf Nachbarn über.', flavor: '„Es steckt an.“', apply: S => {} },
+  { id: 'brand', name: 'Brandbolzen', kind: 'Zauber', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Treffer entzünden. Brennende Gegner hinterlassen beim Tod Feuer.', flavor: '„Wo er fällt, brennt es weiter.“', apply: S => {} },
+  { id: 'glut', name: 'Glutregen', kind: 'Zauber', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Jeder fünfte Treffer lässt den Gegner in Funken explodieren und entzündet ihn.', flavor: '„Ein Funke genügt.“', apply: S => {} },
+  { id: 'blut', name: 'Blutung', kind: 'Zauber', rarity: 'gewoehnlich', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Treffer lassen bluten. Bewegte Gegner bluten doppelt so stark.', flavor: '„Rote Spur.“', apply: S => {} },
+  { id: 'blutrausch', name: 'Blutrausch', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Leichte Blutung. Fällt ein Blutender, schießt du kurz schneller.', flavor: '„Der Geruch macht gierig.“', apply: S => {} },
+  { id: 'tiefe', name: 'Tiefe Wunde', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Die Blutung hält doppelt so lang und wird insgesamt stärker.', flavor: '„Das heilt nicht so schnell.“', apply: S => {} },
+  { id: 'spalt', name: 'Spaltschuss', kind: 'Zauber', rarity: 'episch', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Teilt sich beim Treffer in zwei Splitter, mit Durchschlag beim zweiten.', flavor: '„Aus einem werden zwei.“', apply: S => {} },
+  { id: 'zielbombe', name: 'Zielbombe', kind: 'Zauber', rarity: 'episch', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Jeder fünfte Schuss bleibt stecken und explodiert nach einer Sekunde.', flavor: '„Es tickt.“', apply: S => {} },
+  { id: 'krit', name: 'Kritischer Treffer', kind: 'Segen', rarity: 'gewoehnlich', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Manche Treffer richten anderthalbfachen Schaden an.', flavor: '„Manchmal sitzt er einfach.“', apply: S => {} },
+  { id: 'meister', name: 'Meisterschuss', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Viele Treffer richten anderthalbfachen Schaden an.', flavor: '„Das war kein Zufall.“', apply: S => {} },
+  { id: 'todesstoss', name: 'Todesstoß', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Gegner unter einem Viertel Leben nehmen mehr Schaden.', flavor: '„Wer wankt, fällt.“', apply: S => {} },
+  { id: 'eroeffnung', name: 'Eröffnungsstoß', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Mehr Schaden, und noch mehr gegen Gegner mit vollem Leben.', flavor: '„Der erste Schlag zählt.“', apply: S => {} },
+  { id: 'markier', name: 'Markierlicht', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Mehr Sichtweite. Getroffene Gegner bleiben eine Weile auch im Dunkeln sichtbar.', flavor: '„Wer getroffen ist, leuchtet.“', apply: S => {} },
+  { id: 'bluttrunk', name: 'Bluttrunk', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Treffer gegen Elite und Bosse heilen dich.', flavor: '„Große Beute, großer Schluck.“', apply: S => {} },
+  { id: 'aderlassh', name: 'Aderlass-Treffer', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: 'Heilt 3 Leben (fest)', text: 'Jeder zehnte Treffer heilt dich um 3 Leben.', flavor: '„Ein Schluck zwischendurch.“', apply: S => { S.hooks.hit.push(() => { G.cnt.ader = (G.cnt.ader || 0) + 1; if (G.cnt.ader % 10 === 0) G.player.hp = Math.min(S.maxHp, G.player.hp + 3); }); } },
+  { id: 'spitze',   name: 'Spitze Bolzen',        kind: 'Segen',  rarity: 'selten',      icon: 'quiver',  max: 2, types: ['ranged'], stat: 'Durchschlag +1',     text: 'Durchschlag +1. Jeder Durchschlag macht weniger Schaden.', flavor: '„Zwei auf einen Streich.“',     apply: S => { S.pierce += 1; } },
   // Nahkampf
   { id: 'klinge',   name: 'Geschärfte Klinge',    kind: 'Segen',  rarity: 'gewoehnlich', icon: 'sword',   max: 3, types: ['melee'], stat: '+15 % Schaden',       text: 'Ein Wetzstein, eine ruhige Nacht, eine bessere Schneide.', flavor: '„Scharf genug zum Rasieren.“', apply: S => { S.dmgMul *= 1.15; } },
   { id: 'lang',     name: 'Langes Eisen',         kind: 'Segen',  rarity: 'gewoehnlich', icon: 'sword',   max: 2, types: ['melee'], stat: '+20 % Reichweite',    text: 'Eine längere Klinge hält den Feind auf Abstand.', flavor: '„Ein Zoll kann ein Leben sein.“',      apply: S => { S.reachMul *= 1.2; } },
@@ -242,7 +271,7 @@ const CARD_BY_ID = Object.fromEntries(CARDS.map(c => [c.id, c]));
 const TIER_ODDS = [10, 22, 40, 23, 5];   // Wahrscheinlichkeit je Tier in Prozent
 const TIER_COL = { 1: '#8a7a60', 2: '#6f7f5a', 3: '#3f7a4a', 4: '#2a6aa0', 5: '#b9801a' };
 const tierStep = base => base <= 25 ? 1 : base <= 50 ? 2 : base <= 80 ? 4 : 6;   // Schrittgröße je Tier („Staffel B“)
-const tierValue = (st, t) => Math.round((st.base + (st.bad ? -1 : 1) * (t - 3) * tierStep(st.base)) * 10) / 10;
+const tierValue = (st, t) => Math.round((st.base + (st.bad ? -1 : 1) * (t - 3) * (st.step || tierStep(st.base))) * 100) / 100;
 function rollTier() { let r = Math.random() * 100, i = 0; for (; i < 4; i++) { r -= TIER_ODDS[i]; if (r < 0) break; } return i + 1; }
 const numText = v => String(v).replace('.', ',');
 const valueText = (st, v) => st.pre + numText(v) + st.u;
@@ -298,7 +327,37 @@ const CARD_PARAM = {
   schwer:   { stats: [{ k: 'a', n: 'Schaden', base: 10, pre: '+', u: ' %' }, { k: 'b', n: 'Bolzentempo', base: 15, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.dmgMul *= 1 + v.a / 100; S.boltSpeed *= 1 - v.b / 100; } },
   falkenblick: { stats: [{ k: 'a', n: 'Sichtkegel', base: 15, pre: '+', u: '°' }, { k: 'b', n: 'Sichtweite', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.fov += v.a; S.rangeMul *= 1 + v.b / 100; } },
   weitwinkel: { stats: [{ k: 'a', n: 'Sichtkegel', base: 70, pre: '+', u: '°' }, { k: 'b', n: 'Sichtweite', base: 15, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.fov += v.a; S.rangeMul *= 1 - v.b / 100; } },
-  lebensraub: { stats: [{ k: 'v', n: 'Lifesteal', base: 5, pre: '+', u: ' %' }], apply: (S, v) => { S.lifesteal += v.v / 100; } }
+  lebensraub: { stats: [{ k: 'v', n: 'Lifesteal', base: 5, pre: '+', u: ' %' }], apply: (S, v) => { S.lifesteal += v.v / 100; } },
+  schwach: { stats: [{ k: 'v', n: 'Schaden', base: 8, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.pierce += 1; S.dmgMul *= 1 - v.v / 100; } },
+  quer: { stats: [{ k: 'v', n: 'Nach Abprall', base: 30, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.bounce += 1; S.mod.bounceK *= 1 + v.v / 100; S.mod.bounceHome = 1.2; } },
+  zorn: { stats: [{ k: 'a', n: 'Schaden', base: 20, pre: '−', u: ' %', bad: true }, { k: 'b', n: 'Nach Abprall', base: 100, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 - v.a / 100; S.mod.bounceK *= 1 + v.b / 100; } },
+  wucht: { stats: [{ k: 'a', n: 'Start', base: 60, pre: '', u: ' %' }, { k: 'b', n: 'Je Meter', base: 10, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.grow = { start: v.a / 100, perM: v.b / 100, max: 1.6 }; } },
+  rueck: { stats: [{ k: 'v', n: 'Rückstoß', base: 0.4, pre: '', u: ' m', step: 0.05 }], apply: (S, v) => { S.mod.knock = { dist: v.v * PX_PER_M, cd: 0.5 }; } },
+  stoss: { stats: [{ k: 'a', n: 'Stoßweite', base: 2, pre: '', u: ' m', step: 0.1 }, { k: 'b', n: 'Betäubung', base: 0.3, pre: '', u: ' s', step: 0.05 }], apply: (S, v) => { S.hooks.hit.push(c => { const e = c.e; e.wN = (e.wN || 0) + 1; if (e.hp > 0 && e.wN % 4 === 0 && !(e.wCd > 0)) { pushEnemy(e, Math.atan2(c.b.vy, c.b.vx), v.a * PX_PER_M); stunEnemy(e, v.b); e.wCd = 2; } }); } },
+  lenk: { stats: [{ k: 'v', n: 'Lenkung', base: 170, pre: '', u: '°/s' }], apply: (S, v) => { S.mod.homeMouse = v.v * Math.PI / 180; } },
+  suche: { stats: [{ k: 'v', n: 'Lenkung', base: 140, pre: '', u: '°/s' }], apply: (S, v) => { S.mod.homeAuto = v.v * Math.PI / 180; } },
+  kurve: { stats: [{ k: 'v', n: 'Kurve', base: 10, pre: '', u: '°' }], apply: (S, v) => { S.mod.curve = v.v * Math.PI / 180 / 0.8; } },
+  bumerang: { stats: [{ k: 'a', n: 'Rückweg', base: 50, pre: '', u: ' %' }, { k: 'b', n: 'Reichweite', base: 50, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.mod.ret = { k: v.a / 100, range: 1 - v.b / 100 }; } },
+  frost: { stats: [{ k: 'v', n: 'Verlangsamung', base: 20, pre: '−', u: ' %' }], apply: (S, v) => { S.mod.slow = { k: v.v / 100, dur: 2, max: 2 * v.v / 100 }; } },
+  eis: { stats: [{ k: 'v', n: 'Einfrieren', base: 1, pre: '', u: ' s', step: 0.1 }], apply: (S, v) => { S.hooks.hit.push(c => { const e = c.e; if (G.eisE === e) G.eisN++; else { G.eisE = e; G.eisN = 1; } if (G.eisN >= 3 && e.hp > 0) { stunEnemy(e, v.v); G.eisN = 0; } }); } },
+  novafrost: { stats: [{ k: 'v', n: 'Verlangsamung', base: 30, pre: '−', u: ' %' }], apply: (S, v) => { S.hooks.kill.push(c => { for (const o of G.enemies) if (o.hp > 0 && Math.hypot(o.x - c.e.x, o.y - c.e.y) < 80 + o.r) { o.slowK = 1 - v.v / 100; o.slowT = 2; } }); } },
+  gift: { stats: [{ k: 'v', n: 'Gift', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.dots.push({ type: 'gift', rps: v.v / 100 / 4, dur: 4, stack: true }); } },
+  faeulnis: { stats: [{ k: 'v', n: 'Gift', base: 12, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.dots.push({ type: 'gift', rps: v.v / 100 / 4, dur: 4, stack: true }); S.hooks.kill.push(c => { const g = (c.e.dots || []).filter(d => d.type === 'gift'); if (!g.length) return; for (const o of G.enemies) if (o !== c.e && o.hp > 0 && Math.hypot(o.x - c.e.x, o.y - c.e.y) < 80 + o.r) { o.dots = o.dots || []; for (const d of g) o.dots.push({ type: 'gift', rate: d.rate, left: d.left }); } }); } },
+  brand: { stats: [{ k: 'v', n: 'Brennschaden', base: 50, pre: '', u: ' %' }], apply: (S, v) => { S.mod.dots.push({ type: 'feuer', rps: v.v / 100, dur: 3, stack: false }); S.hooks.kill.push(c => { if ((c.e.dots || []).some(d => d.type === 'feuer')) addZone(c.e.x, c.e.y, 40, 3, W().damage * S.dmgMul * 0.2, 'feuer'); }); } },
+  glut: { stats: [{ k: 'v', n: 'Funkenschaden', base: 50, pre: '', u: ' %' }], apply: (S, v) => { S.hooks.hit.push(c => { G.cnt.glut = (G.cnt.glut || 0) + 1; if (G.cnt.glut % 5) return; const d = W().damage * S.dmgMul * v.v / 100; G.rings.push({ x: c.e.x, y: c.e.y, r: 60, life: 0.25, max: 0.25 }); for (const o of G.enemies) if (o.hp > 0 && Math.hypot(o.x - c.e.x, o.y - c.e.y) < 60 + o.r) { damageEnemy(o, d, 'feuer'); addDot(o, { type: 'feuer', rps: 0.5, dur: 3, stack: false }, W().damage * S.dmgMul); } }); } },
+  blut: { stats: [{ k: 'v', n: 'Blutung', base: 5, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.dots.push({ type: 'blut', rps: v.v / 100 / 4, dur: 4, stack: true }); } },
+  blutrausch: { stats: [{ k: 'v', n: 'Feuerrate', base: 10, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.dots.push({ type: 'blut', rps: 0.03 / 4, dur: 4, stack: true }); S.hooks.kill.push(c => { if ((c.e.dots || []).some(d => d.type === 'blut')) { G.rateT = 2; G.rateK = v.v / 100; } }); } },
+  tiefe: { stats: [{ k: 'v', n: 'Blutung', base: 7.5, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.dots.push({ type: 'blut', rps: v.v / 100 / 8, dur: 8, stack: true }); } },
+  spalt: { stats: [{ k: 'a', n: 'Splitter', base: 45, pre: '+', u: ' %' }, { k: 'b', n: 'Winkel', base: 12, pre: '', u: '°' }], apply: (S, v) => { S.mod.split = { n: 2, k: v.a / 100, ang: v.b, range: 320 }; } },
+  zielbombe: { stats: [{ k: 'a', n: 'Explosion', base: 60, pre: '+', u: ' %' }, { k: 'b', n: 'Radius', base: 2, pre: '', u: ' m', step: 0.1 }], apply: (S, v) => { S.mod.booms.push({ every: 5, r: v.b * PX_PER_M, k: v.a / 100, delay: 1, mode: 'stick' }); } },
+  krit: { stats: [{ k: 'v', n: 'Chance', base: 10, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.crit.push({ p: v.v / 100, k: 1.5 }); } },
+  meister: { stats: [{ k: 'v', n: 'Chance', base: 20, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.crit.push({ p: v.v / 100, k: 1.5 }); } },
+  todesstoss: { stats: [{ k: 'v', n: 'Schaden', base: 40, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.dmgVs.push({ test: e => e.hp < e.maxHp * 0.25, k: 1 + v.v / 100 }); } },
+  eroeffnung: { stats: [{ k: 'a', n: 'Schaden', base: 6, pre: '+', u: ' %' }, { k: 'b', n: 'Bei vollem Leben', base: 25, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.a / 100; S.mod.dmgVs.push({ test: e => e.hp >= e.maxHp, k: 1 + v.b / 100 }); } },
+  markier: { stats: [{ k: 'a', n: 'Sichtweite', base: 10, pre: '+', u: ' %' }, { k: 'b', n: 'Dauer', base: 4, pre: '', u: ' s', step: 0.5 }], apply: (S, v) => { S.rangeMul *= 1 + v.a / 100; S.mod.mark = Math.max(S.mod.mark, v.b); } },
+  bluttrunk: { stats: [{ k: 'v', n: 'Lifesteal', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.lsBig += v.v / 100; } },
+  spitze:   { stats: [{ k: 'v', n: 'Je Durchschlag', base: 75, pre: '', u: ' %' }], apply: (S, v) => { S.pierce += 1; S.mod.pierceK *= v.v / 100; } },
+  blitz:    { stats: [{ k: 'v', n: 'Sprungschaden', base: 70, pre: '', u: ' %' }], apply: (S, v) => { S.mod.lightning = { every: 3, n: 3, k: v.v / 100 }; } }
 };
 for (const id in CARD_PARAM) setupParam(CARD_BY_ID[id], CARD_PARAM[id]);
 const ICONS = {
@@ -757,7 +816,7 @@ const isFocusing = () => state === 'play' && wtype() === 'ranged' && mouse.rdown
 const isMeditating = () => state === 'play' && wtype() === 'spell' && mouse.rdown;
 
 function newMod() {   // Eigenschaften der Geschosse: Karten tragen hier ein, was jedes Geschoss können soll
-  return { pierceK: 1, bounce: 0, bounceK: 1, homeMouse: 0, homeAuto: 0, booms: [], dots: [], knock: null, slow: null, split: null, ret: null, crit: [] };
+  return { pierceK: 1, bounce: 0, bounceK: 1, bounceHome: 0, homeMouse: 0, homeAuto: 0, curve: 0, grow: null, lightning: null, mark: 0, dmgVs: [], lsBig: 0, booms: [], dots: [], knock: null, slow: null, split: null, ret: null, crit: [] };
 }
 function recomputeStats() {
   S = Object.assign({}, BASE, G.cls.base);
@@ -780,7 +839,7 @@ function newGame(cls, area) {
     obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
     kills: 0, dist: 0,
     merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
-    cards: [], offers: [], library: shuffle(deckOf(cls).slice()), booms: [], pzones: [], shotN: 0,
+    cards: [], offers: [], library: shuffle(deckOf(cls).slice()), booms: [], pzones: [], shotN: 0, cnt: {}, rateT: 0, rateK: 0,
     stage: 1, stageStart: 0, nextPick: area.len / (PICKS_PER_AREA + 0.5), atk: [], fires: [], fallen: [], ripples: [], curseT: 0, trails: [], hooks: [], pull: null, bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
@@ -1204,7 +1263,9 @@ function shotPattern() {
 function fireBolt(a, dmg, booms) {
   const p = G.player, w = W(), M = S.mod, bm = booms && booms.length ? booms[0] : null;
   addBullet(p.x, p.y, a, w.speed * S.boltSpeed, dmg, 'player', w.range * (M.ret ? M.ret.range : 1), S.pierce, {
-    M, gen: 0, hits: 0, bounces: 0, dmg0: dmg, boom: bm, sx: p.x, sy: p.y, pierce0: S.pierce,
+    M, gen: 0, hits: 0, bounces: 0, dmg0: dmg, boom: bm, sx: p.x, sy: p.y, pierce0: S.pierce, trav: 0,
+    chain: M.lightning && G.shotN % M.lightning.every === 0 ? M.lightning : null,   // Kettenblitz: jeder n-te Schuss
+    cv: M.curve ? (G.shotN % 2 ? 1 : -1) * M.curve : 0,   // Kurvenbolzen: abwechselnd links und rechts
     aimStop: bm && bm.mode === 'aim' ? Math.hypot(mouse.x - p.x, mouse.y + G.camTop - p.y) : 0
   });
 }
@@ -1228,7 +1289,7 @@ function playerAttack() {
     const booms = S.mod.booms.filter(bm => G.shotN % bm.every === 0);
     pat.bolts.forEach((q, i) => fireBolt(a + q.a * deg, w.damage * S.dmgMul * q.d, i === 0 ? booms : null));   // der Sprengsatz sitzt nur am ersten Bolzen des Schusses
     p.mag = Math.max(0, p.mag - pat.cost);
-    p.cooldown = w.interval * pat.slow / (1 + (S.rateMul - 1) * pat.eff);   // Feuerrate-Boni wirken bei Mustern nur zum Teil (pat.eff)
+    p.cooldown = w.interval * pat.slow / (1 + (S.rateMul - 1 + (G.rateT > 0 ? G.rateK : 0)) * pat.eff);   // Feuerrate-Boni wirken bei Mustern nur zum Teil (pat.eff)
     p.bloom = Math.min(w.bloomMax, p.bloom + w.bloomPerShot);
     muzzle(a, '#ffe9a8');
     sfx('shoot_crossbow');
@@ -1349,7 +1410,7 @@ function update(dt) {
   }
 
   // Waffe
-  p.cooldown = Math.max(0, p.cooldown - dt);
+  p.cooldown = Math.max(0, p.cooldown - dt); if (G.rateT > 0) G.rateT -= dt;
   p.bloom = Math.max(0, p.bloom - (w.bloomRecover || 0) * dt);
   if (w.type === 'spell') {
     p.manaDelay = Math.max(0, p.manaDelay - dt);
@@ -1768,6 +1829,7 @@ function updateEnemies(dt) {
     const T = ENEMY_TYPES[e.type];
     if (e.aura > 0) e.aura -= dt;
     tickStatus(e, dt);
+    if (e.stunT > 0) { e.stunT -= dt; e.mvd = false; continue; }   // betäubt oder eingefroren
     if (e.type === 'hexe') { updateHexe(e, dt); continue; }
     if (e.type === 'herr') { updateHerr(e, dt); continue; }
     if (e.type === 'trug') { updateTrug(e, dt); continue; }
@@ -2093,7 +2155,10 @@ function updateBullets(dt) {
         const dx = p.x - b.x, dy = p.y - b.y, d = Math.hypot(dx, dy) || 1, sp = Math.hypot(b.vx, b.vy);
         b.vx = dx / d * sp; b.vy = dy / d * sp;
         if (d < 22) { b.life = 0; continue; }
-      } else if (M.homeMouse > 0 || M.homeAuto > 0) steerBullet(b, M, dt);
+      } else if (M.homeMouse > 0 || M.homeAuto > 0 || (b.homeT > 0 && M.bounceHome > 0)) steerBullet(b, M, b.homeT > 0 ? Math.max(M.bounceHome, 0) : 0, dt);
+      if (b.cv) { const ca = Math.atan2(b.vy, b.vx) + b.cv * dt, cs = Math.hypot(b.vx, b.vy); b.vx = Math.cos(ca) * cs; b.vy = Math.sin(ca) * cs; }
+      if (b.homeT > 0) b.homeT -= dt;
+      b.trav += Math.hypot(b.vx, b.vy) * dt;
     }
     b.px = b.x; b.py = b.y;
     b.x += b.vx * dt; b.y += b.vy * dt;
@@ -2154,7 +2219,7 @@ function updateBullets(dt) {
 const KB_WEIGHT = { boss: 0, hexe: 0, herr: 0, schwarm: 0, schild: 0.5, waechter: 0.5, kriecher: 0.7, folter: 0.7 };   // wie weit Gegner zurückgestoßen werden
 const DOT_COL = { gift: '#8fe05a', feuer: '#ff9a4a', blut: '#e05a6a' };
 // Lenkung: Maus (Lenkgeschoss) oder nächster Gegner vor dem Bolzen (zielsuchend)
-function steerBullet(b, M, dt) {
+function steerBullet(b, M, extra, dt) {
   let tx = null, ty = null;
   if (M.homeMouse > 0) { tx = mouse.x; ty = mouse.y + G.camTop; }
   else {
@@ -2167,7 +2232,7 @@ function steerBullet(b, M, dt) {
     }
   }
   if (tx === null) return;
-  const rate = Math.max(M.homeMouse, M.homeAuto), cur = Math.atan2(b.vy, b.vx), want = Math.atan2(ty - b.y, tx - b.x);
+  const rate = Math.max(M.homeMouse, M.homeAuto, extra), cur = Math.atan2(b.vy, b.vx), want = Math.atan2(ty - b.y, tx - b.x);
   const turn = clamp(normAngle(want - cur), -rate * dt, rate * dt), sp = Math.hypot(b.vx, b.vy);
   b.vx = Math.cos(cur + turn) * sp; b.vy = Math.sin(cur + turn) * sp;
 }
@@ -2183,18 +2248,22 @@ function bounceBullet(b, o, hx, hy) {
   b.vx -= 2 * dot * nx; b.vy -= 2 * dot * ny;
   b.x = hx + nx * 2; b.y = hy + ny * 2; b.px = b.x; b.py = b.y;
   b.bounces++; b.dmg *= b.M.bounceK; b.ignore = [];
+  if (b.M.bounceHome > 0) b.homeT = 1.5;   // nach dem Abprall biegt der Bolzen zum nächsten Gegner
   spark(hx, hy, '#cfd8dc');
 }
 // Treffer eines Bolzens auf einen Gegner. Gibt true zurück, wenn der Bolzen weiterfliegt (Durchschlag).
 function bulletHitEnemy(b, e, hx, hy) {
   const M = b.M || newMod();
   let dmg = b.dmg;
+  if (M.grow) dmg *= clamp(M.grow.start + M.grow.perM * b.trav / PX_PER_M, M.grow.start, M.grow.max);   // Wachsende Wucht
+  for (const d of M.dmgVs) if (d.test(e)) dmg *= d.k;   // Todesstoß, Eröffnungsstoß
   for (const c of M.crit) if (Math.random() < c.p) dmg *= c.k;
   damageEnemy(e, dmg);
   if (S.lifesteal > 0) G.player.hp = Math.min(S.maxHp, G.player.hp + dmg * S.lifesteal);   // Lebensraub
+  if (M.lsBig > 0 && (e.elite || ENEMY_TYPES[e.type].boss)) G.player.hp = Math.min(S.maxHp, G.player.hp + dmg * M.lsBig);   // Bluttrunk
   b.hits++;
   spark(hx, hy, '#e8e8e8');
-  if (S.chain > 0) chainLightning(e, dmg * 0.5);
+  if (b.chain) chainLightning(e, dmg * b.chain.k, b.chain.n); else if (S.chain > 0) chainLightning(e, dmg * 0.5);
   hitEffects(b, e, dmg, M);
   runHooks('hit', { b, e, dmg });
   if (b.boom && b.boom.mode === 'stick') { boomAt(b, e.x, e.y, e); return false; }   // Zeitzünder: bleibt stecken
@@ -2204,6 +2273,7 @@ function bulletHitEnemy(b, e, hx, hy) {
   return false;
 }
 function hitEffects(b, e, dmg, M) {
+  if (M.mark) e.markT = Math.max(e.markT || 0, M.mark);   // Markierlicht: bleibt sichtbar
   if (e.hp > 0) {
     for (const d of M.dots) addDot(e, d, dmg);
     if (M.slow) {
@@ -2222,7 +2292,7 @@ function splitBullet(b, e, sp) {
   const ang = Math.atan2(b.vy, b.vx), speed = Math.hypot(b.vx, b.vy), M2 = Object.assign({}, b.M, { split: null, boom: null });
   for (let i = 0; i < sp.n; i++) {
     const off = sp.n > 1 ? -sp.ang + 2 * sp.ang * i / (sp.n - 1) : 0, d = b.dmg0 * sp.k;
-    addBullet(e.x, e.y, ang + off * deg, speed, d, 'player', sp.range || 320, S.pierce, { M: M2, gen: 1, hits: 0, bounces: 0, dmg0: d, ignore: [e], sx: e.x, sy: e.y, boom: null, pierce0: S.pierce });
+    addBullet(e.x, e.y, ang + off * deg, speed, d, 'player', sp.range || 320, S.pierce, { M: M2, gen: 1, hits: 0, bounces: 0, dmg0: d, ignore: [e], sx: e.x, sy: e.y, boom: null, pierce0: S.pierce, trav: 0, chain: b.chain });
   }
 }
 function addDot(e, d, dmg) {
@@ -2231,7 +2301,15 @@ function addDot(e, d, dmg) {
   e.dots.push({ type: d.type, rate: dmg * d.rps, left: d.dur });
 }
 // Gift, Feuer und Blutung: Schaden über Zeit, alle 0,4 s gebündelt
+function pushEnemy(e, ang, dist) {   // zurückstoßen, je nach Typ (Bosse gar nicht)
+  const w = KB_WEIGHT[e.type] !== undefined ? KB_WEIGHT[e.type] : 1;
+  if (w > 0) moveCircle(e, Math.cos(ang) * dist * w, Math.sin(ang) * dist * w);
+  return w;
+}
+function stunEnemy(e, t) { if ((KB_WEIGHT[e.type] !== undefined ? KB_WEIGHT[e.type] : 1) > 0) e.stunT = Math.max(e.stunT || 0, t); }
 function tickStatus(e, dt) {
+  if (e.markT > 0) e.markT -= dt;
+  if (e.wCd > 0) e.wCd -= dt;
   if (e.kbT > 0) e.kbT -= dt;
   if (e.slowT > 0) { e.slowT -= dt; if (e.slowT <= 0) e.slowK = 1; }
   if (e.dots && (e.dots.length || e.dotAcc > 0)) {
@@ -2318,11 +2396,11 @@ function damageEnemy(e, dmg, dot) {   // dot: Art des Schadens über Zeit (kein 
     runHooks('kill', { e, dot });
   }
 }
-function chainLightning(from, dmg) {
+function chainLightning(from, dmg, n) {
   const near = G.enemies
     .filter(o => o !== from && o.hp > 0 && Math.hypot(o.x - from.x, o.y - from.y) < 170)
     .sort((a, b) => Math.hypot(a.x - from.x, a.y - from.y) - Math.hypot(b.x - from.x, b.y - from.y))
-    .slice(0, S.chain);
+    .slice(0, n === undefined ? S.chain : n);
   for (const o of near) {
     G.arcs.push({ x1: from.x, y1: from.y, x2: o.x, y2: o.y, life: 0.18 });
     damageEnemy(o, dmg);
@@ -2402,6 +2480,7 @@ function visPoly(cx, cy, center, half, range, segs, step) {
   return pts;
 }
 function visible(e) {
+  if (e.markT > 0) return true;
   const p = G.player, V = visionParams();
   const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy);
   if (d > V.range + e.r) return false;
@@ -3997,7 +4076,7 @@ function drawCard(c, x, y, k, hover, at) {   // at: Bildschirmposition der Karte
     const tipMode = isInst && hover && k >= 0.95 && (lx < 0 || lx > 220 || ly < 0 || ly > 320);   // Tooltip neben der Maus: Spanne gleich unter jedem Stat
     if (c.stats) c.stats.forEach((st, i) => {
       const ry = ry0 + i * (tipMode ? 32 : 18);
-      text(fit(st.n, 104, '14px ' + F_TEXT), 20, ry, 14, '#3a2a18', 'left', F_TEXT);
+      text(fit(st.n, 96, '14px ' + F_TEXT), 20, ry, 14, '#3a2a18', 'left', F_TEXT);
       if (isInst) {
         const t = c.t[st.k] || 3;
         text(valueText(st, vals[st.k]), 152, ry, 14, st.bad ? '#8a2a30' : '#17703f', 'right', F_TITLE);
@@ -5291,7 +5370,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.95';
+const VERSION = 'v0.96';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
