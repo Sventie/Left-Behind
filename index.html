@@ -68,7 +68,7 @@ const BASE = {                          // Basiswerte, Klasse und Karten veränd
   lifesteal: 0,                         // Anteil des Schadens, der als Leben zurückkommt
   boltSpeed: 1,                         // Tempo der Bolzen
   core: null, lastBolt: 0, still: null, ramp: null, noReload: false, zorn: 0, charge: null, round: null,
-  rage: null, blink: null, mirror: null, sac: null, thirst: null, bleed: null, hitHeal: 0, enemyHaste: 0, star: null, peek: 0, sr: null, crown: false,   // Muster und Auslöser der Karten (siehe shotDmgK, chargeStep)
+  orb: null, rage: null, blink: null, mirror: null, sac: null, thirst: null, bleed: null, hitHeal: 0, enemyHaste: 0, star: null, peek: 0, sr: null, crown: false,   // Muster und Auslöser der Karten (siehe shotDmgK, chargeStep)
   priceMul: 1.0,                        // Händlerpreise
   rerolls: 1                            // Neuwürfe der Kartenwahl pro Lauf
 };
@@ -254,6 +254,11 @@ const CARDS = [
   { id: 'markier', name: 'Markierlicht', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Mehr Sichtweite. Getroffene Gegner bleiben eine Weile auch im Dunkeln sichtbar.', flavor: '„Wer getroffen ist, leuchtet.“', apply: S => {} },
   { id: 'bluttrunk', name: 'Bluttrunk', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Treffer gegen Elite und Bosse heilen dich.', flavor: '„Große Beute, großer Schluck.“', apply: S => {} },
   { id: 'aderlassh', name: 'Aderlass-Treffer', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: 'Heilt 3 Leben (fest)', text: 'Jeder zehnte Treffer heilt dich um 3 Leben.', flavor: '„Ein Schluck zwischendurch.“', apply: S => { S.hooks.hit.push(() => { G.cnt.ader = (G.cnt.ader || 0) + 1; if (G.cnt.ader % 10 === 0) G.player.hp = Math.min(S.maxHp, G.player.hp + 3); }); } },
+  { id: 'knochenpakt', name: 'Knochenpakt', kind: 'Zauber', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Alle paar Meter erscheint ein Ghul an deiner Seite, höchstens drei.', flavor: '„Die Toten dienen dem, der geht.“', apply: S => {} },
+  { id: 'wolfsbund', name: 'Wolfsbund', kind: 'Zauber', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Ein Wolf begleitet dich. Fällt er, kehrt er nach einigen Metern zurück.', flavor: '„Der Wald schickt einen Freund.“', apply: S => {} },
+  { id: 'ueberlaeufer', name: 'Überläufer', kind: 'Zauber', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Gefallene Gegner stehen manchmal auf und kämpfen kurz für dich.', flavor: '„Auch Feinde haben Seiten.“', apply: S => {} },
+  { id: 'seelenfaenger', name: 'Seelenfänger', kind: 'Zauber', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Jeder 15. Gefallene kämpft für dich, bis er fällt. Höchstens zwei.', flavor: '„Er sammelt, was übrig bleibt.“', apply: S => {} },
+  { id: 'irrlichtb', name: 'Irrlicht-Begleiter', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 2, stat: '', text: 'Ein Irrlicht schwebt um dich herum und leuchtet einen Kreis aus.', flavor: '„Folge dem Licht. Es folgt dir.“', apply: S => {} },
   { id: 'kronenwahl', name: 'Kronenwahl', kind: 'Zauber', rarity: 'episch', icon: 'crown', max: 1, limit: 1, stat: 'Jede 3. Wahl: 5 Karten (fest)', text: 'Jede dritte Wahl zeigt fünf Karten, mindestens eine davon selten oder besser.', flavor: '„Die Krone gibt, wem sie will.“', apply: S => { S.crown = true; } },
   { id: 'opfer', name: 'Blutopfer', kind: 'Zauber', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Jeder Bolzen kostet dich Leben, ein Treffer gibt es zurück.', flavor: '„Wer trifft, gewinnt. Wer fehlt, blutet.“', apply: S => {} },
   { id: 'durst', name: 'Blutdurst', kind: 'Zauber', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Wenig Leben macht stärker, viel Leben schwächer.', flavor: '„Nur am Rand des Todes bist du stark.“', apply: S => {} },
@@ -440,7 +445,12 @@ const CARD_PARAM = {
   jagdbeute: { stats: [{ k: 'a', n: 'Schaden an ihm', base: 40, pre: '+', u: ' %' }, { k: 'b', n: 'Schaden an dir', base: 25, pre: '+', u: ' %', down: true, neg: true }], apply: (S, v) => { S.marks.push({ mode: 'strong', take: v.a / 100, deal: v.b / 100 }); } },
   todeszeichen: { stats: [{ k: 'a', n: 'Schaden an ihnen', base: 30, pre: '+', u: ' %' }, { k: 'b', n: 'Schaden an dir', base: 20, pre: '+', u: ' %', down: true, neg: true }], apply: (S, v) => { S.marks.push({ mode: 'cycle', take: v.a / 100, deal: v.b / 100, on: 4, pause: 6 }); } },
   sternenblick: { stats: [{ k: 'a', n: 'Frontkegel', base: 30, pre: '−', u: '°', bad: true, step: 2 }, { k: 'b', n: 'Streifen', base: 20, pre: '+', u: '°' }], apply: (S, v) => { S.fov -= v.a; S.star = { w: v.b }; } },
-  spaehblick: { stats: [{ k: 'a', n: 'Reichweite', base: 5, pre: '', u: ' m', step: 0.5 }], apply: (S, v) => { S.peek = Math.max(S.peek, v.a * PX_PER_M); } }
+  spaehblick: { stats: [{ k: 'a', n: 'Reichweite', base: 5, pre: '', u: ' m', step: 0.5 }], apply: (S, v) => { S.peek = Math.max(S.peek, v.a * PX_PER_M); } },
+  knochenpakt: { stats: [{ k: 'a', n: 'Abstand', base: 10, pre: '', u: ' m', down: true }], apply: (S, v) => { S.hooks.walk.push(c => { G.cnt.ghul = (G.cnt.ghul || 0) + c.d; if (G.cnt.ghul >= v.a * PX_PER_M) { G.cnt.ghul = 0; if (G.allies.filter(a => a.kind === 'ghul').length < 3) spawnAlly('ghul'); } }); } },
+  wolfsbund: { stats: [{ k: 'a', n: 'Rückkehr nach', base: 10, pre: '', u: ' m', down: true }], apply: (S, v) => { S.hooks.walk.push(c => { if (G.allies.some(a => a.kind === 'wolf')) return; G.cnt.wolf = (G.cnt.wolf || 0) + c.d; if (G.cnt.wolf >= v.a * PX_PER_M || !G.cnt.wolfInit) { G.cnt.wolf = 0; G.cnt.wolfInit = true; spawnAlly('wolf'); } }); } },
+  ueberlaeufer: { stats: [{ k: 'a', n: 'Chance', base: 20, pre: '+', u: ' %' }, { k: 'b', n: 'Dauer', base: 10, pre: '', u: ' s', step: 0.5 }], apply: (S, v) => { S.hooks.kill.push(c => { if (!NO_CONV.includes(c.e.type) && Math.random() < v.a / 100) spawnAlly('conv', c.e, v.b); }); } },
+  seelenfaenger: { stats: [{ k: 'a', n: 'Gefallene', base: 15, pre: '', u: '', down: true }], apply: (S, v) => { S.hooks.kill.push(c => { G.cnt.seele = (G.cnt.seele || 0) + 1; if (G.cnt.seele >= v.a && !NO_CONV.includes(c.e.type) && G.allies.filter(a => a.kind === 'conv' && !a.life).length < 2) { G.cnt.seele = 0; spawnAlly('conv', c.e, 0); } }); } },
+  irrlichtb: { stats: [{ k: 'a', n: 'Lichtkreis', base: 3, pre: '', u: ' m', step: 0.2 }], apply: (S, v) => { S.orb = { r: Math.max(S.orb ? S.orb.r : 0, v.a * PX_PER_M) }; } }
 };
 for (const id in CARD_PARAM) setupParam(CARD_BY_ID[id], CARD_PARAM[id]);
 const ICONS = {
@@ -922,7 +932,7 @@ function newGame(cls, area) {
     obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
     kills: 0, dist: 0,
     merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
-    cards: [], offers: [], library: shuffle(deckOf(cls).slice()), booms: [], pzones: [], shotN: 0, cnt: {}, rateT: 0, rateK: 0, abil: { rage: { t: 0, cd: 0 }, blink: { cd: 0 } }, srT: 0, dmgT: 0, dmgK: 0, bleedT: 0, mk: { rand: null, strong: null, cy: [], cyT: 0, cyOn: false }, fresh: true, ramp: 0, stillT: 0, roundT: 0, speedT: 0, speedK: 0, hurtAt: -99, barkReady: false, chargeK: 1, walked: 0, eisN: 0,
+    cards: [], offers: [], library: shuffle(deckOf(cls).slice()), booms: [], pzones: [], allies: [], orb: null, shotN: 0, cnt: {}, rateT: 0, rateK: 0, abil: { rage: { t: 0, cd: 0 }, blink: { cd: 0 } }, srT: 0, dmgT: 0, dmgK: 0, bleedT: 0, mk: { rand: null, strong: null, cy: [], cyT: 0, cyOn: false }, fresh: true, ramp: 0, stillT: 0, roundT: 0, speedT: 0, speedK: 0, hurtAt: -99, barkReady: false, chargeK: 1, walked: 0, eisN: 0,
     stage: 1, stageStart: 0, nextPick: area.len / (PICKS_PER_AREA + 0.5), atk: [], fires: [], fallen: [], ripples: [], curseT: 0, trails: [], hooks: [], pull: null, bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
@@ -1589,6 +1599,7 @@ function update(dt) {
   generate();
 
   updateEnemies(dt);
+  updateAllies(dt);
   updateAtk(dt);
   if (G.area.id === 'moor') { updateMoor(dt); updateHexeHazards(dt); }
   if (G.dist >= G.bossDist && !G.bossSpawned) spawnBoss();
@@ -1979,6 +1990,80 @@ function startRun(i) {
   state = 'play';
 }
 
+
+// ---------- Begleiter: eigene Figuren, die für dich kämpfen ----------
+const ALLY_TYPES = { ghul: { hp: 40, chase: 140, r: 13, dmg: 12 }, wolf: { hp: 25, chase: 200, r: 11, dmg: 9 } };
+const NO_CONV = ['boss', 'hexe', 'herr', 'trug', 'kessel', 'irrlicht', 'schwarm'];
+const allyStage = () => Math.max(0, enemyStage() - 2);   // Begleiter wachsen mit den Gegnern: Gegnerstufe minus 2
+function spawnAlly(kind, from, life) {
+  const p = G.player, T = ALLY_TYPES[kind] || ALLY_TYPES.ghul, st = allyStage(), hpK = Math.pow(ENEMY_HP_STEP, st), dK = Math.pow(ENEMY_DMG_STEP, st);
+  const a = { ally: true, kind, type: kind === 'wolf' ? 'wolf' : 'rusher', x: from ? from.x : p.x + rand(-50, 50), y: from ? from.y : p.y + rand(30, 60), r: T.r, hp: T.hp * hpK, maxHp: T.hp * hpK, dmg: T.dmg * dK, chase: T.chase, angle: -Math.PI / 2, hit: 0, cd: 0.4, life: life || 0, dashT: 0, dashCd: 0, melee: 0 };
+  if (from && kind === 'conv') {   // übergelaufener Gegner: behält Aussehen und Werte, halb so viel Leben
+    const E = ENEMY_TYPES[from.type];
+    Object.assign(a, { type: from.type, r: from.r, hp: from.maxHp * 0.5, maxHp: from.maxHp * 0.5, dmg: (E.mdmg || (from.type === 'wolf' ? 9 : 10)) * from.dmgMul, chase: E.chase, angle: from.angle, el: from.el, kh: from.kh });
+  }
+  G.allies.push(a); sfx('card_pick', 0.5);
+  for (let i = 0; i < 10; i++) G.parts.push({ x: a.x, y: a.y, vx: rand(-90, 90), vy: rand(-90, 90), life: 0.4, color: '#6ad6c8' });
+  return a;
+}
+function updateAllies(dt) {
+  const p = G.player;
+  for (const a of G.allies) {
+    a.hit = Math.max(0, a.hit - dt); a.cd -= dt; a.dashCd -= dt;
+    if (a.life > 0) { a.life -= dt; if (a.life <= 0) { a.hp = 0; continue; } }
+    let tgt = null, bd = 400;
+    for (const e of G.enemies) {
+      if (!markable(e)) continue;
+      const d = Math.hypot(e.x - a.x, e.y - a.y);
+      if (d < bd && Math.hypot(e.x - p.x, e.y - p.y) < 560) { bd = d; tgt = e; }
+    }
+    let mx, my, sp = a.chase;
+    if (tgt) { mx = tgt.x - a.x; my = tgt.y - a.y; }
+    else { mx = p.x - a.x; my = p.y - a.y; if (Math.hypot(mx, my) < 90) sp = 0; }
+    const d = Math.hypot(mx, my) || 1;
+    if (a.dashT > 0) { a.dashT -= dt; moveCircle(a, a.dx * 560 * dt, a.dy * 560 * dt); }
+    else if (tgt && d < a.r + tgt.r + 6) { if (a.cd <= 0) { damageEnemy(tgt, a.dmg); a.cd = a.kind === 'wolf' ? 0.6 : 0.9; spark(tgt.x, tgt.y, '#6ad6c8'); } }
+    else if (sp > 0) {
+      if (a.kind === 'wolf' && tgt && d < 230 && d > 80 && a.dashCd <= 0) { a.dashT = 0.25; a.dashCd = 1.6; a.dx = mx / d; a.dy = my / d; }   // Sprung wie beim Gegner-Wolf
+      else moveCircle(a, mx / d * sp * dt, my / d * sp * dt);
+    }
+    if (tgt || sp > 0) a.angle = Math.atan2(my, mx);
+    // Gegner im Nahkampf greifen den Begleiter an, wenn er näher ist als du
+    for (const e of G.enemies) {
+      if (e.hp <= 0 || e.state === 'idle' || e.melee > 0) continue;
+      const E = ENEMY_TYPES[e.type], md = E.mdmg || (e.type === 'wolf' ? 9 : 0);
+      if (!md || e.type === 'schwarm') continue;
+      const da = Math.hypot(e.x - a.x, e.y - a.y), dp = Math.hypot(e.x - p.x, e.y - p.y);
+      if (da < e.r + a.r + 4 && da < dp) { a.hp -= md * e.dmgMul; a.hit = 0.15; e.melee = 0.9; spark(a.x, a.y, '#d33'); }
+    }
+  }
+  for (const a of G.allies) if (a.hp <= 0 && !a.gone) { a.gone = true; for (let i = 0; i < 12; i++) G.parts.push({ x: a.x, y: a.y, vx: rand(-100, 100), vy: rand(-100, 100), life: 0.4, color: '#6ad6c8' }); }
+  G.allies = G.allies.filter(a => a.hp > 0);
+  // Irrlicht-Begleiter: schwebt unregelmäßig um dich herum
+  if (S.orb) {
+    const o = G.orb || (G.orb = { x: p.x, y: p.y - 80, tx: p.x, ty: p.y - 80, t: 0 });
+    o.t -= dt;
+    if (o.t <= 0) { o.t = rand(0.8, 1.8); const ang = p.angle + rand(-1.6, 1.6), r = rand(50, 150); o.tx = p.x + Math.cos(ang) * r; o.ty = p.y + Math.sin(ang) * r; }
+    o.x += (o.tx - o.x) * Math.min(1, dt * 2.2); o.y += (o.ty - o.y) * Math.min(1, dt * 2.2);
+  } else G.orb = null;
+}
+function drawAllies() {
+  for (const a of G.allies) {
+    if (a.type === 'wolf') { if (a.kh) drawWolf(a); else drawWolf(a); }
+    else if (a.type === 'grunt') drawSkeleton(a);
+    else if (a.type === 'kriecher') drawKriecher(a);
+    else if (a.type === 'armbrust') drawArmbrust(a);
+    else if (a.type === 'waechter') drawWaechter(a);
+    else if (a.type === 'folter') drawFolter(a);
+    else if (a.type === 'magier') drawMagier(a);
+    else if (a.type === 'schild') drawSchild(a);
+    else if (a.type === 'heiler') drawHeiler(a);
+    else drawGhoul(a, 0.76, '#4f7a70', '#7ab0a4', '#102420');
+    ctx.strokeStyle = 'rgba(106,214,200,.85)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a.x, a.y, a.r + 5, 0, 7); ctx.stroke();
+    if (a.hit > 0) { ctx.globalAlpha = 0.6; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(a.x, a.y, a.r, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+    ctx.fillStyle = '#000'; ctx.fillRect(a.x - 14, a.y - a.r - 12, 28, 4); ctx.fillStyle = '#6ad6c8'; ctx.fillRect(a.x - 14, a.y - a.r - 12, 28 * Math.max(0, a.hp / a.maxHp), 4);
+  }
+}
 function updateEnemies(dt) {
   const p = G.player;
   for (const e of G.enemies) {
@@ -2676,6 +2761,7 @@ function visPoly(cx, cy, center, half, range, segs, step) {
 }
 function visible(e) {
   if (e.markT > 0) return true;
+  if (G.orb && S.orb && Math.hypot(e.x - G.orb.x, e.y - G.orb.y) < S.orb.r + e.r) return true;   // Licht des Irrlicht-Begleiters
   const p = G.player, V = visionParams();
   const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy);
   if (d > V.range + e.r) return false;
@@ -3192,6 +3278,7 @@ function drawEntities() {
     ctx.strokeStyle = 'rgba(111,224,160,' + Math.min(1, b.t * 3) + ')'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.setLineDash([2, 6]);
     ctx.beginPath(); ctx.moveTo(b.a.x, b.a.y); ctx.quadraticCurveTo((b.a.x + b.b.x) / 2 + (b.b.y - b.a.y) * 0.15, (b.a.y + b.b.y) / 2 - (b.b.x - b.a.x) * 0.15, b.b.x, b.b.y); ctx.stroke(); ctx.setLineDash([]);
   }
+  drawAllies();
   // Geschosse
   for (const b of G.bullets) {
     if (b.from === 'enemy' && !pointVisible(b.x, b.y)) continue;
@@ -4231,6 +4318,7 @@ function drawFogInto() {
   fctx.setTransform(scale, 0, 0, scale, FIELD_X * scale, -G.camTop * scale);
   fctx.fillStyle = '#000';
   const polys = [cone, ring];
+  if (G.orb && S.orb) polys.push(visPoly(G.orb.x, G.orb.y, 0, Math.PI, S.orb.r, segs, 0.05));
   if (V.stripes) for (let q = 1; q < 8; q++) polys.push(visPoly(p.x, p.y, p.angle + q * Math.PI / 4, V.stripes / 2, V.range, segs, 0.006));
   for (const poly of polys) {
     fctx.beginPath();
@@ -4500,6 +4588,13 @@ function drawStatus() {   // farbige Schrift unten links im Spielfeld, über der
     text(label, 20, y - 2, 16, c, 'left', F_TEXT, 'bold'); y -= 32;
   }
 }
+function drawOrb() {   // das Irrlicht selbst: ein schwebendes Licht
+  const o = G.orb; if (!o || !S.orb) return;
+  const y = o.y - G.camTop, f = 0.85 + 0.15 * Math.sin(G.time * 5);
+  const g = ctx.createRadialGradient(o.x, y, 1, o.x, y, 26 * f); g.addColorStop(0, 'rgba(255,244,190,.95)'); g.addColorStop(0.4, 'rgba(255,214,120,.5)'); g.addColorStop(1, 'rgba(255,214,120,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(o.x, y, 26 * f, 0, 7); ctx.fill();
+  ctx.fillStyle = '#fff6c8'; ctx.beginPath(); ctx.arc(o.x, y, 4, 0, 7); ctx.fill();
+}
 function drawMarksAndPeek() {   // Markierungen (Gezeichnet) und Spähblick-Punkte, liegen über der Dunkelheit
   const p = G.player, k = G.mk;
   const marked = [];
@@ -4523,6 +4618,7 @@ function drawMarksAndPeek() {   // Markierungen (Gezeichnet) und Spähblick-Punk
   }
 }
 function drawFieldHUD() {
+  drawOrb();
   drawMarksAndPeek();
   drawWallWarn(); drawStatus();
   if (G.deltaT > 0) {   // Punktezuwachs neben der Punktezahl im Rahmen
@@ -5610,7 +5706,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.98';
+const VERSION = 'v0.99';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
