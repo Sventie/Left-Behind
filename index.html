@@ -123,7 +123,7 @@ const xpFor = L => Math.round(XP_K * Math.pow(L, XP_P));
 function levelRaw(xp) { let L = 0; while (xpFor(L + 1) <= xp) L++; return L; }
 const levelCap = () => 5 + 5 * AREAS.filter(a => SAVE.bossDownBy && SAVE.bossDownBy[a.id]).length;
 const accLevel = () => Math.min(levelCap(), levelRaw(SAVE.xp || 0));
-// ---------- Fähigkeiten (Skilltree) ----------
+// ---------- Talente (Skilltree) ----------
 // Stufe 1–5: Werte · Stufe 6–10 (Wald-Boss): Gabelung links Angriff / rechts Überleben · Stufe 11–15 (Moor-Boss): Besonderes. Ein Punkt je Konto-Stufe.
 // ---------- Gegnerstufe ----------
 // Jedes Gebiet startet höher; jede Kartenwahl (auch ohne Karte) bringt eine Stufe. Boss: feste Stufe. Endlos: doppelt so schnell.
@@ -207,158 +207,158 @@ const RARITY = {
 // types: für welche Waffenarten die Karte angeboten wird (leer = alle)
 const CARDS = [
   // für alle
-  { id: 'stiefel',  name: 'Wanderstiefel',        kind: 'Segen',  rarity: 'gewoehnlich', icon: 'boot',    max: 3, stat: '+8 % Lauftempo',      text: 'Leder und Moos tragen dich schneller.',            flavor: '„Die Straße kennt keine Müdigkeit.“', apply: S => { S.moveSpeed *= 1.10; } },
-  { id: 'schild',   name: 'Eichenschild',         kind: 'Segen',  rarity: 'gewoehnlich', icon: 'shield',  max: 3, stat: '+30 Leben',            text: 'Altes Eichenholz schützt deine Brust.',            flavor: '„Es hat Schlimmeres gesehen.“',        apply: S => { S.maxHp += 30; } },
-  { id: 'irrlicht', name: 'Irrlicht',             kind: 'Segen', rarity: 'gewoehnlich',      icon: 'wisp',    max: 2, stat: 'Sichtweite +25 %',     text: 'Ein Irrlicht leuchtet den Weg weiter aus.',        flavor: '„Folge dem Licht. Nicht dem anderen.“', apply: S => { S.rangeMul *= 1.25; } },
-  { id: 'wind',     name: 'Windstoß',             kind: 'Fähigkeit', rarity: 'selten',      icon: 'wind',    max: 2, limit: 2, ability: 'dash', stat: 'Sprint (Fähigkeit)',   text: 'Ein Stoß treibt dich 4 m nach vorn. 12 s Pause, mit zweiter Karte 8 s.', flavor: '„Der Wald hält den Atem an.“',    apply: S => { S.dash = true; S.dashN += 1; } },
-  { id: 'leichtfuss', name: 'Leichtfuß',         kind: 'Segen', rarity: 'selten',      icon: 'boot',    max: 3, stat: '', text: 'Leichte Schritte, dünne Haut: schnell, aber leichter zu verletzen.', flavor: '„Wer rennt, braucht keine Rüstung.“', apply: S => {} },
-  { id: 'falkenblick', name: 'Falkenblick',      kind: 'Segen', rarity: 'selten',      icon: 'eye',     max: 3, stat: '', text: 'Du siehst weiter und breiter.',                    flavor: '„Der Falke sieht alles.“',               apply: S => {} },
-  { id: 'weitwinkel', name: 'Weitwinkel',        kind: 'Segen', rarity: 'episch',      icon: 'eye',     max: 2, stat: '', text: 'Ein riesiger Blickwinkel, aber nichts reicht ganz so weit.', flavor: '„Viel Himmel, wenig Tiefe.“',      apply: S => {} },
-  { id: 'lebensraub', name: 'Lebensraub',        kind: 'Segen', rarity: 'gewoehnlich', icon: 'wisp',    max: 3, stat: '', text: 'Ein Teil jedes Treffers fließt als Leben zu dir zurück.', flavor: '„Was du nimmst, hält dich am Leben.“', apply: S => {} },
-  { id: 'falke',    name: 'Falkenauge',           kind: 'Segen', rarity: 'gewoehnlich',      icon: 'eye',     max: 2, stat: 'Sichtkegel +25°',      text: 'Du siehst weiter zur Seite, ohne den Kopf zu drehen.', flavor: '„Nichts entgeht dem Jäger.“',    apply: S => { S.fov += 25; } },
-  { id: 'blitz',    name: 'Kettenblitz',          kind: 'Zauber', rarity: 'episch',      icon: 'bolt',    max: 2, stat: 'Kettenblitz-Treffer',  text: 'Jeder dritte Schuss ist ein Blitz und springt auf bis zu 3 weitere Gegner.',      flavor: '„Der Himmel schuldet dir etwas.“',     apply: S => { S.chain += 2; } },
-  { id: 'krone',    name: 'Krone der Verlorenen', kind: 'Zauber', rarity: 'selten',   icon: 'crown',   max: 1, stat: '4 statt 3 Karten',     text: 'Wähle nach jeder Stufe aus vier Karten.',          flavor: '„Wer sie trägt, wird nicht vergessen.“', apply: S => { S.extraChoices += 1; } },
+  { id: 'stiefel',  name: 'Wanderstiefel',        kind: 'Werte',  rarity: 'gewoehnlich', icon: 'boot',    max: 3, stat: '+8 % Lauftempo',      text: 'Leder und Moos tragen dich schneller.',            flavor: '„Die Straße kennt keine Müdigkeit.“', apply: S => { S.moveSpeed *= 1.10; } },
+  { id: 'schild',   name: 'Eichenschild',         kind: 'Werte',  rarity: 'gewoehnlich', icon: 'shield',  max: 3, stat: '+30 Leben',            text: 'Altes Eichenholz schützt deine Brust.',            flavor: '„Es hat Schlimmeres gesehen.“',        apply: S => { S.maxHp += 30; } },
+  { id: 'irrlicht', name: 'Irrlicht',             kind: 'Werte', rarity: 'gewoehnlich',      icon: 'wisp',    max: 2, stat: 'Sichtweite +25 %',     text: 'Ein Irrlicht leuchtet den Weg weiter aus.',        flavor: '„Folge dem Licht. Nicht dem anderen.“', apply: S => { S.rangeMul *= 1.25; } },
+  { id: 'wind',     name: 'Windstoß',             kind: 'Aktiv', rarity: 'selten',      icon: 'wind',    max: 2, limit: 2, ability: 'dash', stat: 'Sprint (Fähigkeit)',   text: 'Ein Stoß treibt dich 4 m nach vorn. 12 s Pause, mit zweiter Karte 8 s.', flavor: '„Der Wald hält den Atem an.“',    apply: S => { S.dash = true; S.dashN += 1; } },
+  { id: 'leichtfuss', name: 'Leichtfuß',         kind: 'Werte', rarity: 'selten',      icon: 'boot',    max: 3, stat: '', text: 'Leichte Schritte, dünne Haut: schnell, aber leichter zu verletzen.', flavor: '„Wer rennt, braucht keine Rüstung.“', apply: S => {} },
+  { id: 'falkenblick', name: 'Falkenblick',      kind: 'Werte', rarity: 'selten',      icon: 'eye',     max: 3, stat: '', text: 'Du siehst weiter und breiter.',                    flavor: '„Der Falke sieht alles.“',               apply: S => {} },
+  { id: 'weitwinkel', name: 'Weitwinkel',        kind: 'Werte', rarity: 'episch',      icon: 'eye',     max: 2, stat: '', text: 'Ein riesiger Blickwinkel, aber nichts reicht ganz so weit.', flavor: '„Viel Himmel, wenig Tiefe.“',      apply: S => {} },
+  { id: 'lebensraub', name: 'Lebensraub',        kind: 'Werte', rarity: 'gewoehnlich', icon: 'wisp',    max: 3, stat: '', text: 'Ein Teil jedes Treffers fließt als Leben zu dir zurück.', flavor: '„Was du nimmst, hält dich am Leben.“', apply: S => {} },
+  { id: 'falke',    name: 'Falkenauge',           kind: 'Werte', rarity: 'gewoehnlich',      icon: 'eye',     max: 2, stat: 'Sichtkegel +25°',      text: 'Du siehst weiter zur Seite, ohne den Kopf zu drehen.', flavor: '„Nichts entgeht dem Jäger.“',    apply: S => { S.fov += 25; } },
+  { id: 'blitz',    name: 'Kettenblitz',          kind: 'Effekt', rarity: 'episch',      icon: 'bolt',    max: 2, stat: 'Kettenblitz-Treffer',  text: 'Jeder dritte Schuss ist ein Blitz und springt auf bis zu 3 weitere Gegner.',      flavor: '„Der Himmel schuldet dir etwas.“',     apply: S => { S.chain += 2; } },
+  { id: 'krone',    name: 'Krone der Verlorenen', kind: 'Werte', rarity: 'selten',   icon: 'crown',   max: 1, stat: '4 statt 3 Karten',     text: 'Wähle nach jeder Stufe aus vier Karten.',          flavor: '„Wer sie trägt, wird nicht vergessen.“', apply: S => { S.extraChoices += 1; } },
   // Fernkampf
-  { id: 'hand',     name: 'Ruhige Hand',          kind: 'Segen',  rarity: 'gewoehnlich', icon: 'target',  max: 3, types: ['ranged', 'spell'], stat: '−15 % Streuung', text: 'Ein tiefer Atemzug, ein sicherer Schuss.',        flavor: '„Erst atmen, dann schießen.“',         apply: S => { S.spreadMul *= 0.85; } },
-  { id: 'spanner',  name: 'Meisterspanner',       kind: 'Segen',  rarity: 'selten', icon: 'quiver',  max: 2, types: ['ranged'], stat: '−25 % Spannzeit',    text: 'Die Sehne spannt sich wie von selbst.',           flavor: '„Klick, und weiter.“',                 apply: S => { S.reloadMul *= 0.75; } },
-  { id: 'koecher',  name: 'Tiefer Köcher',        kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 3, types: ['ranged'], stat: '+2 Bolzen im Magazin', text: 'Mehr Platz, mehr Schüsse bis zum Spannen.',      flavor: '„Man kann nie zu viele haben.“',       apply: S => { S.magSize += 2; } },
-  { id: 'bolzen',   name: 'Scharfe Bolzen',       kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 3, types: ['ranged'], stat: '+15 % Schaden',      text: 'Frisch geschliffene Spitzen schlagen tiefer ein.', flavor: '„Der Schmied sparte nicht.“',          apply: S => { S.dmgMul *= 1.15; } },
-  { id: 'spann15',   name: 'Schnellspanner',       kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 2, types: ['ranged'], stat: '', text: 'Die Sehne spannt sich wie von selbst.',           flavor: '„Klick, und weiter.“',                 apply: S => {} },
-  { id: 'riesen',    name: 'Riesenköcher',         kind: 'Segen',  rarity: 'selten',      icon: 'quiver',  max: 1, limit: 1, types: ['ranged'], stat: '', text: 'Ein riesiger Köcher voller Bolzen. Das Spannen dauert länger.', flavor: '„Wer viel mitnimmt, braucht Zeit.“', apply: S => {} },
-  { id: 'schwer',    name: 'Schwere Spitzen',      kind: 'Segen',  rarity: 'selten',      icon: 'quiver',  max: 3, types: ['ranged'], stat: '', text: 'Schwerere Bolzen schlagen härter, fliegen aber langsamer.', flavor: '„Schwer wie ein Versprechen.“',   apply: S => {} },
-  { id: 'schwach', name: 'Schwächere Bolzen', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Durchschlag mit vollem Schaden, dafür treffen alle Bolzen schwächer.', flavor: '„Zwei auf einen Streich, aber nicht ganz so fest.“', apply: S => {} },
-  { id: 'quer', name: 'Fangwinkel', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Prallt einmal ab, trifft danach härter und biegt zum nächsten Gegner.', flavor: '„Um die Ecke gedacht.“', apply: S => {} },
-  { id: 'zorn', name: 'Wachsender Zorn', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Schwächer, aber nach einem Abprall doppelt so hart. Braucht Abprall.', flavor: '„Je öfter er prallt, desto wütender.“', apply: S => {} },
-  { id: 'wucht', name: 'Wachsende Wucht', kind: 'Segen', rarity: 'episch', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Der Bolzen wird mit jedem Meter Flug stärker, bis zum Höchstwert.', flavor: '„Wer weit fliegt, schlägt hart ein.“', apply: S => {} },
-  { id: 'rueck', name: 'Rückstoß', kind: 'Segen', rarity: 'gewoehnlich', icon: 'shield', max: 3, types: ['ranged'], stat: '', text: 'Treffer stoßen Gegner ein Stück zurück. Bosse bleiben stehen.', flavor: '„Nicht so nah.“', apply: S => {} },
-  { id: 'stoss', name: 'Wuchtschlag', kind: 'Segen', rarity: 'selten', icon: 'shield', max: 3, types: ['ranged'], stat: '', text: 'Jeder vierte Treffer stößt den Gegner weit zurück und betäubt ihn.', flavor: '„Der vierte sitzt.“', apply: S => {} },
-  { id: 'lenk', name: 'Lenkgeschoss', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Der Bolzen folgt dem Mauszeiger im Flug.', flavor: '„Er hört auf deine Hand.“', apply: S => {} },
-  { id: 'suche', name: 'Zielsuchend', kind: 'Segen', rarity: 'selten', icon: 'eye', max: 3, types: ['ranged'], stat: '', text: 'Der Bolzen biegt zum nächsten Gegner vor ihm.', flavor: '„Er weiß, wo du hin willst.“', apply: S => {} },
-  { id: 'kurve', name: 'Kurvenbolzen', kind: 'Segen', rarity: 'selten', icon: 'wind', max: 3, types: ['ranged'], stat: '', text: 'Der Bolzen fliegt in einer Kurve, abwechselnd nach links und rechts.', flavor: '„Geradeaus ist langweilig.“', apply: S => {} },
-  { id: 'bumerang', name: 'Bumerang', kind: 'Segen', rarity: 'gewoehnlich', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Halbe Reichweite. Ein Bolzen ohne Treffer kehrt zurück.', flavor: '„Was fehlgeht, kommt wieder.“', apply: S => {} },
-  { id: 'frost', name: 'Frostbolzen', kind: 'Zauber', rarity: 'selten', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Treffer verlangsamen Gegner, mehrere Treffer verstärken es.', flavor: '„Kalt erwischt.“', apply: S => {} },
-  { id: 'eis', name: 'Eisfessel', kind: 'Zauber', rarity: 'selten', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Der dritte Treffer in Folge auf denselben Gegner friert ihn kurz ein.', flavor: '„Drei Mal ist Eis.“', apply: S => {} },
-  { id: 'novafrost', name: 'Frostnova', kind: 'Zauber', rarity: 'selten', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Fällt ein Gegner, explodiert er in Frost und verlangsamt alle in der Nähe.', flavor: '„Der letzte Atem ist eisig.“', apply: S => {} },
-  { id: 'gift', name: 'Giftbolzen', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Treffer vergiften: der Schaden kommt nach und nach dazu und stapelt sich.', flavor: '„Es dauert, aber es wirkt.“', apply: S => {} },
-  { id: 'faeulnis', name: 'Fäulnis', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Leichtes Gift. Stirbt ein Vergifteter, springt es auf Nachbarn über.', flavor: '„Es steckt an.“', apply: S => {} },
-  { id: 'brand', name: 'Brandbolzen', kind: 'Zauber', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Treffer entzünden. Brennende Gegner hinterlassen beim Tod Feuer.', flavor: '„Wo er fällt, brennt es weiter.“', apply: S => {} },
-  { id: 'glut', name: 'Glutregen', kind: 'Zauber', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Jeder fünfte Treffer lässt den Gegner in Funken explodieren und entzündet ihn.', flavor: '„Ein Funke genügt.“', apply: S => {} },
-  { id: 'blut', name: 'Blutung', kind: 'Zauber', rarity: 'gewoehnlich', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Treffer lassen bluten. Bewegte Gegner bluten doppelt so stark.', flavor: '„Rote Spur.“', apply: S => {} },
-  { id: 'blutrausch', name: 'Blutrausch', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Leichte Blutung. Fällt ein Blutender, schießt du kurz schneller.', flavor: '„Der Geruch macht gierig.“', apply: S => {} },
-  { id: 'tiefe', name: 'Tiefe Wunde', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Die Blutung hält doppelt so lang und wird insgesamt stärker.', flavor: '„Das heilt nicht so schnell.“', apply: S => {} },
-  { id: 'spalt', name: 'Spaltschuss', kind: 'Zauber', rarity: 'episch', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Teilt sich beim Treffer in zwei Splitter, mit Durchschlag beim zweiten.', flavor: '„Aus einem werden zwei.“', apply: S => {} },
-  { id: 'zielbombe', name: 'Zielbombe', kind: 'Zauber', rarity: 'episch', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Jeder fünfte Schuss bleibt stecken und explodiert nach einer Sekunde.', flavor: '„Es tickt.“', apply: S => {} },
-  { id: 'krit', name: 'Kritischer Treffer', kind: 'Segen', rarity: 'gewoehnlich', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Manche Treffer richten anderthalbfachen Schaden an.', flavor: '„Manchmal sitzt er einfach.“', apply: S => {} },
-  { id: 'meister', name: 'Meisterschuss', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Viele Treffer richten anderthalbfachen Schaden an.', flavor: '„Das war kein Zufall.“', apply: S => {} },
-  { id: 'todesstoss', name: 'Todesstoß', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Gegner unter einem Viertel Leben nehmen mehr Schaden.', flavor: '„Wer wankt, fällt.“', apply: S => {} },
-  { id: 'eroeffnung', name: 'Eröffnungsstoß', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Mehr Schaden, und noch mehr gegen Gegner mit vollem Leben.', flavor: '„Der erste Schlag zählt.“', apply: S => {} },
-  { id: 'markier', name: 'Markierlicht', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Mehr Sichtweite. Getroffene Gegner bleiben eine Weile auch im Dunkeln sichtbar.', flavor: '„Wer getroffen ist, leuchtet.“', apply: S => {} },
-  { id: 'bluttrunk', name: 'Bluttrunk', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Treffer gegen Elite und Bosse heilen dich.', flavor: '„Große Beute, großer Schluck.“', apply: S => {} },
-  { id: 'aderlassh', name: 'Aderlass-Treffer', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: 'Heilt 3 Leben (fest)', text: 'Jeder zehnte Treffer heilt dich um 3 Leben.', flavor: '„Ein Schluck zwischendurch.“', apply: S => { S.hooks.hit.push(() => { G.cnt.ader = (G.cnt.ader || 0) + 1; if (G.cnt.ader % 10 === 0) G.player.hp = Math.min(S.maxHp, G.player.hp + 3); }); } },
-  { id: 'knochenpakt', name: 'Knochenpakt', kind: 'Zauber', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Alle paar Meter erscheint ein Ghul an deiner Seite, höchstens drei.', flavor: '„Die Toten dienen dem, der geht.“', apply: S => {} },
-  { id: 'wolfsbund', name: 'Wolfsbund', kind: 'Zauber', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Ein Wolf begleitet dich. Fällt er, kehrt er nach einigen Metern zurück.', flavor: '„Der Wald schickt einen Freund.“', apply: S => {} },
-  { id: 'ueberlaeufer', name: 'Überläufer', kind: 'Zauber', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Gefallene Gegner stehen manchmal auf und kämpfen kurz für dich.', flavor: '„Auch Feinde haben Seiten.“', apply: S => {} },
-  { id: 'seelenfaenger', name: 'Seelenfänger', kind: 'Zauber', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Jeder 15. Gefallene kämpft für dich, bis er fällt. Höchstens zwei.', flavor: '„Er sammelt, was übrig bleibt.“', apply: S => {} },
-  { id: 'irrlichtb', name: 'Irrlicht-Begleiter', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 2, stat: '', text: 'Ein Irrlicht schwebt um dich herum und leuchtet einen Kreis aus.', flavor: '„Folge dem Licht. Es folgt dir.“', apply: S => {} },
-  { id: 'kronenwahl', name: 'Kronenwahl', kind: 'Zauber', rarity: 'episch', icon: 'crown', max: 1, limit: 1, stat: 'Jede 3. Wahl: 5 Karten (fest)', text: 'Jede dritte Wahl zeigt fünf Karten, mindestens eine davon selten oder besser.', flavor: '„Die Krone gibt, wem sie will.“', apply: S => { S.crown = true; } },
-  { id: 'opfer', name: 'Blutopfer', kind: 'Zauber', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Jeder Bolzen kostet dich Leben, ein Treffer gibt es zurück.', flavor: '„Wer trifft, gewinnt. Wer fehlt, blutet.“', apply: S => {} },
-  { id: 'durst', name: 'Blutdurst', kind: 'Zauber', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Wenig Leben macht stärker, viel Leben schwächer.', flavor: '„Nur am Rand des Todes bist du stark.“', apply: S => {} },
-  { id: 'aderlass', name: 'Aderlass', kind: 'Zauber', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Alle 10 s Leben weg, jeder Gefallene heilt und stärkt.', flavor: '„Wer nicht blutet, kämpft nicht.“', apply: S => {} },
-  { id: 'spiegel', name: 'Spiegelblut', kind: 'Zauber', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Deine Schüsse heilen nur. Gegner nehmen den Schaden, den sie dir zufügen.', flavor: '„Sie töten sich selbst.“', apply: S => {} },
-  { id: 'hast', name: 'Hast', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Mehr Schaden, aber alle Gegner laufen schneller.', flavor: '„Wer schnell ist, kämpft hart.“', apply: S => {} },
-  { id: 'zeitdruck', name: 'Zeitdruck', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Viel mehr Schaden, aber alle Gegner laufen deutlich schneller.', flavor: '„Die Zeit rennt.“', apply: S => {} },
-  { id: 'blutzoll', name: 'Blutzoll', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, stat: '', text: 'Weniger Leben, dafür heilen dich deine Treffer.', flavor: '„Der Preis ist Blut.“', apply: S => {} },
-  { id: 'tribut', name: 'Laufender Tribut', kind: 'Zauber', rarity: 'episch', icon: 'flask', max: 3, stat: '', text: 'Du verlierst beim Laufen Leben, dafür heilen dich Treffer stark.', flavor: '„Jeder Schritt kostet.“', apply: S => {} },
-  { id: 'bluttausch', name: 'Bluttausch', kind: 'Zauber', rarity: 'episch', icon: 'flask', max: 3, stat: '', text: 'Weniger Leben. Jeder Treffer heilt einen Teil deines Lebens.', flavor: '„Ein Tausch, der sich lohnt.“', apply: S => {} },
-  { id: 'raserei', name: 'Raserei', kind: 'Fähigkeit', ability: 'rage', rarity: 'episch', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: '10 s Raserei, 25 s Pause. Du erleidest +50 % Schaden.', flavor: '„Nichts hält dich auf. Nichts schützt dich.“', apply: S => {} },
-  { id: 'siegesrausch', name: 'Siegesrausch', kind: 'Zauber', rarity: 'selten', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Fünf Gefallene in 8 s machen dich 5 s lang stärker.', flavor: '„Wer siegt, will mehr.“', apply: S => {} },
-  { id: 'blitzschritt', name: 'Blitzschritt', kind: 'Fähigkeit', ability: 'blink', rarity: 'episch', icon: 'wind', max: 3, stat: '', text: 'Teleport zur Maus, Feuerspur hinter dir.', flavor: '„Er war hier. Er ist dort.“', apply: S => {} },
-  { id: 'schattenschritt', name: 'Schattenschritt', kind: 'Fähigkeit', ability: 'blink', rarity: 'episch', icon: 'wind', max: 3, stat: '', text: 'Teleport zur Maus, Gegner in der Nähe verlieren dich.', flavor: '„Wo er war, ist nur Schatten.“', apply: S => {} },
-  { id: 'gezeichnet', name: 'Gezeichnet', kind: 'Zauber', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Ein zufälliger Gegner nimmt mehr Schaden, trifft aber härter.', flavor: '„Wer markiert ist, ist doppelt gefährlich.“', apply: S => {} },
-  { id: 'jagdbeute', name: 'Jagdbeute', kind: 'Zauber', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Der stärkste Gegner ist gezeichnet. Fällt er, trifft es den nächsten.', flavor: '„Der Größte zuerst.“', apply: S => {} },
-  { id: 'todeszeichen', name: 'Todeszeichen', kind: 'Zauber', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Bis zu 3 Gegner sind 4 s gezeichnet, dann 6 s Pause.', flavor: '„Drei Namen auf der Liste.“', apply: S => {} },
-  { id: 'sternenblick', name: 'Sternenblick', kind: 'Segen', rarity: 'gewoehnlich', icon: 'eye', max: 3, stat: '', text: 'Schmalerer Blick nach vorn, dafür sieben Streifen rundum.', flavor: '„Der Himmel hat viele Augen.“', apply: S => {} },
-  { id: 'spaehblick', name: 'Spähblick', kind: 'Segen', rarity: 'selten', icon: 'eye', max: 3, stat: '', text: 'Gegner hinter dir erscheinen als roter Punkt am Rand.', flavor: '„Kein Rücken ist sicher.“', apply: S => {} },
-  { id: 'schrot', name: 'Schrotflinte', kind: 'Zauber', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Drei Bolzen im Kegel, kostet zwei Bolzen.', flavor: '„Wer nah ist, spürt es.“', apply: S => {} },
-  { id: 'breit', name: 'Breitseite', kind: 'Zauber', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Fünf Bolzen im weiten Fächer, kostet drei Bolzen.', flavor: '„Eine Wand aus Bolzen.“', apply: S => {} },
-  { id: 'feuer1', name: 'Schnellfeuer', kind: 'Zauber', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Doppelt so schnell schießen, aber jeder Schuss trifft schwächer.', flavor: '„Wer viel trifft, braucht nicht fest zu treffen.“', apply: S => {} },
-  { id: 'dauer', name: 'Dauerfeuer', kind: 'Zauber', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Jeder Schuss macht dich schneller, bis zum Spannen.', flavor: '„Der Rhythmus trägt.“', apply: S => {} },
-  { id: 'fliess', name: 'Fließband', kind: 'Zauber', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Kein Spannen mehr, dafür schwächer und langsamer.', flavor: '„Der Köcher füllt sich von selbst.“', apply: S => {} },
-  { id: 'rueckschuss', name: 'Rückwärtsschuss', kind: 'Zauber', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Jeder Schuss geht auch nach hinten, ohne zusätzlichen Bolzen.', flavor: '„Auch hinten hast du Augen.“', apply: S => {} },
-  { id: 'rundum', name: 'Rundumschuss', kind: 'Zauber', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'In festen Abständen fliegt ein Bolzen in alle acht Richtungen.', flavor: '„Von allen Seiten.“', apply: S => {} },
-  { id: 'gespannt', name: 'Gespannte Sehne', kind: 'Zauber', rarity: 'episch', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Wer kurz stillsteht, schießt den nächsten Schuss mit viel mehr Schaden.', flavor: '„Atme, ziele, lass los.“', apply: S => {} },
-  { id: 'ladeschuss', name: 'Ladeschuss', kind: 'Zauber', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Halten lädt auf, Loslassen schießt.', flavor: '„Geduld wird belohnt.“', apply: S => {} },
-  { id: 'bombe', name: 'Bombenleger', kind: 'Zauber', rarity: 'selten', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Auf deinem Weg fallen Bomben, die auch dich treffen.', flavor: '„Wer rennt, hinterlässt etwas.“', apply: S => {} },
-  { id: 'wegz', name: 'Wegzehrung', kind: 'Segen', rarity: 'gewoehnlich', icon: 'boot', max: 3, stat: '', text: 'Du heilst dich ein wenig, je weiter du läufst.', flavor: '„Der Weg nährt.“', apply: S => {} },
-  { id: 'rast', name: 'Rastplatz', kind: 'Segen', rarity: 'selten', icon: 'boot', max: 3, stat: '', text: 'Du heilst dich beim Laufen, wenn dich lange nichts traf.', flavor: '„Wer nicht getroffen wird, erholt sich.“', apply: S => {} },
-  { id: 'beute', name: 'Kriegsbeute', kind: 'Segen', rarity: 'selten', icon: 'boot', max: 3, stat: '', text: 'Jeder zwölfte Gefallene lässt eine Heilkugel fallen.', flavor: '„Aus der Beute wächst Leben.“', apply: S => {} },
-  { id: 'zornl', name: 'Zornladung', kind: 'Fähigkeit', rarity: 'gewoehnlich', icon: 'wind', max: 3, stat: '', text: 'Fähigkeiten laden nur durch Schaden auf, nicht durch Zeit.', flavor: '„Ohne Kampf kein Schwung.“', apply: S => {} },
-  { id: 'rueckenw', name: 'Rückenwind', kind: 'Segen', rarity: 'selten', icon: 'boot', max: 3, stat: '', text: 'Mehr Tempo, nach jedem Gefallenen kurz noch mehr.', flavor: '„Der Sieg treibt dich an.“', apply: S => {} },
-  { id: 'rinde', name: 'Eichenrinde', kind: 'Segen', rarity: 'episch', icon: 'shield', max: 3, stat: '', text: 'Mehr Leben. Alle paar Meter fängt die Rinde einen Treffer ab.', flavor: '„Der Wald schützt die Seinen.“', apply: S => {} },
-  { id: 'moos', name: 'Moosherz', kind: 'Segen', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Mehr Leben. Alle zehn Gefallenen heilst du dich um 2 Leben.', flavor: '„Moos wächst, wo Leben endet.“', apply: S => {} },
-  { id: 'serie', name: 'Serienschütze', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Jeder Treffer in Folge macht mehr Schaden. Ein Fehlschuss setzt zurück.', flavor: '„Treffer auf Treffer.“', apply: S => {} },
-  { id: 'kern', name: 'Kernschuss', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Der erste Schuss nach dem Spannen trifft genau und macht mehr Schaden.', flavor: '„Eine Chance, ein Treffer.“', apply: S => {} },
-  { id: 'flink', name: 'Flinke Sehne', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Schneller spannen. Nach dem Spannen kurz schneller schießen.', flavor: '„Klick und los.“', apply: S => {} },
-  { id: 'feder', name: 'Federspanner', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Schneller spannen. Der Windstoß füllt 4 Bolzen sofort nach.', flavor: '„Bewegung spannt die Sehne.“', apply: S => {} },
-  { id: 'doppel', name: 'Doppelboden', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: '3 Bolzen mehr. Der letzte Bolzen jedes Magazins schlägt härter ein.', flavor: '„Das Beste zum Schluss.“', apply: S => {} },
-  { id: 'spitze',   name: 'Spitze Bolzen',        kind: 'Segen',  rarity: 'selten',      icon: 'quiver',  max: 2, types: ['ranged'], stat: 'Durchschlag +1',     text: 'Durchschlag +1. Jeder Durchschlag macht weniger Schaden.', flavor: '„Zwei auf einen Streich.“',     apply: S => { S.pierce += 1; } },
+  { id: 'hand',     name: 'Ruhige Hand',          kind: 'Werte',  rarity: 'gewoehnlich', icon: 'target',  max: 3, types: ['ranged', 'spell'], stat: '−15 % Streuung', text: 'Ein tiefer Atemzug, ein sicherer Schuss.',        flavor: '„Erst atmen, dann schießen.“',         apply: S => { S.spreadMul *= 0.85; } },
+  { id: 'spanner',  name: 'Meisterspanner',       kind: 'Werte',  rarity: 'selten', icon: 'quiver',  max: 2, types: ['ranged'], stat: '−25 % Spannzeit',    text: 'Die Sehne spannt sich wie von selbst.',           flavor: '„Klick, und weiter.“',                 apply: S => { S.reloadMul *= 0.75; } },
+  { id: 'koecher',  name: 'Tiefer Köcher',        kind: 'Werte',  rarity: 'gewoehnlich', icon: 'quiver',  max: 3, types: ['ranged'], stat: '+2 Bolzen im Magazin', text: 'Mehr Platz, mehr Schüsse bis zum Spannen.',      flavor: '„Man kann nie zu viele haben.“',       apply: S => { S.magSize += 2; } },
+  { id: 'bolzen',   name: 'Scharfe Bolzen',       kind: 'Werte',  rarity: 'gewoehnlich', icon: 'quiver',  max: 3, types: ['ranged'], stat: '+15 % Schaden',      text: 'Frisch geschliffene Spitzen schlagen tiefer ein.', flavor: '„Der Schmied sparte nicht.“',          apply: S => { S.dmgMul *= 1.15; } },
+  { id: 'spann15',   name: 'Schnellspanner',       kind: 'Werte',  rarity: 'gewoehnlich', icon: 'quiver',  max: 2, types: ['ranged'], stat: '', text: 'Die Sehne spannt sich wie von selbst.',           flavor: '„Klick, und weiter.“',                 apply: S => {} },
+  { id: 'riesen',    name: 'Riesenköcher',         kind: 'Werte',  rarity: 'selten',      icon: 'quiver',  max: 1, limit: 1, types: ['ranged'], stat: '', text: 'Ein riesiger Köcher voller Bolzen. Das Spannen dauert länger.', flavor: '„Wer viel mitnimmt, braucht Zeit.“', apply: S => {} },
+  { id: 'schwer',    name: 'Schwere Spitzen',      kind: 'Werte',  rarity: 'selten',      icon: 'quiver',  max: 3, types: ['ranged'], stat: '', text: 'Schwerere Bolzen schlagen härter, fliegen aber langsamer.', flavor: '„Schwer wie ein Versprechen.“',   apply: S => {} },
+  { id: 'schwach', name: 'Schwächere Bolzen', kind: 'Effekt', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Durchschlag mit vollem Schaden, dafür treffen alle Bolzen schwächer.', flavor: '„Zwei auf einen Streich, aber nicht ganz so fest.“', apply: S => {} },
+  { id: 'quer', name: 'Fangwinkel', kind: 'Effekt', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Prallt einmal ab, trifft danach härter und biegt zum nächsten Gegner.', flavor: '„Um die Ecke gedacht.“', apply: S => {} },
+  { id: 'zorn', name: 'Wachsender Zorn', kind: 'Effekt', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Schwächer, aber nach einem Abprall doppelt so hart. Braucht Abprall.', flavor: '„Je öfter er prallt, desto wütender.“', apply: S => {} },
+  { id: 'wucht', name: 'Wachsende Wucht', kind: 'Effekt', rarity: 'episch', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Der Bolzen wird mit jedem Meter Flug stärker, bis zum Höchstwert.', flavor: '„Wer weit fliegt, schlägt hart ein.“', apply: S => {} },
+  { id: 'rueck', name: 'Rückstoß', kind: 'Effekt', rarity: 'gewoehnlich', icon: 'shield', max: 3, types: ['ranged'], stat: '', text: 'Treffer stoßen Gegner ein Stück zurück. Bosse bleiben stehen.', flavor: '„Nicht so nah.“', apply: S => {} },
+  { id: 'stoss', name: 'Wuchtschlag', kind: 'Effekt', rarity: 'selten', icon: 'shield', max: 3, types: ['ranged'], stat: '', text: 'Jeder vierte Treffer stößt den Gegner weit zurück und betäubt ihn.', flavor: '„Der vierte sitzt.“', apply: S => {} },
+  { id: 'lenk', name: 'Lenkgeschoss', kind: 'Effekt', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Der Bolzen folgt dem Mauszeiger im Flug.', flavor: '„Er hört auf deine Hand.“', apply: S => {} },
+  { id: 'suche', name: 'Zielsuchend', kind: 'Effekt', rarity: 'selten', icon: 'eye', max: 3, types: ['ranged'], stat: '', text: 'Der Bolzen biegt zum nächsten Gegner vor ihm.', flavor: '„Er weiß, wo du hin willst.“', apply: S => {} },
+  { id: 'kurve', name: 'Kurvenbolzen', kind: 'Effekt', rarity: 'selten', icon: 'wind', max: 3, types: ['ranged'], stat: '', text: 'Der Bolzen fliegt in einer Kurve, abwechselnd nach links und rechts.', flavor: '„Geradeaus ist langweilig.“', apply: S => {} },
+  { id: 'bumerang', name: 'Bumerang', kind: 'Effekt', rarity: 'gewoehnlich', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Halbe Reichweite. Ein Bolzen ohne Treffer kehrt zurück.', flavor: '„Was fehlgeht, kommt wieder.“', apply: S => {} },
+  { id: 'frost', name: 'Frostbolzen', kind: 'Effekt', rarity: 'selten', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Treffer verlangsamen Gegner, mehrere Treffer verstärken es.', flavor: '„Kalt erwischt.“', apply: S => {} },
+  { id: 'eis', name: 'Eisfessel', kind: 'Effekt', rarity: 'selten', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Der dritte Treffer in Folge auf denselben Gegner friert ihn kurz ein.', flavor: '„Drei Mal ist Eis.“', apply: S => {} },
+  { id: 'novafrost', name: 'Frostnova', kind: 'Effekt', rarity: 'selten', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Fällt ein Gegner, explodiert er in Frost und verlangsamt alle in der Nähe.', flavor: '„Der letzte Atem ist eisig.“', apply: S => {} },
+  { id: 'gift', name: 'Giftbolzen', kind: 'Effekt', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Treffer vergiften: der Schaden kommt nach und nach dazu und stapelt sich.', flavor: '„Es dauert, aber es wirkt.“', apply: S => {} },
+  { id: 'faeulnis', name: 'Fäulnis', kind: 'Effekt', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Leichtes Gift. Stirbt ein Vergifteter, springt es auf Nachbarn über.', flavor: '„Es steckt an.“', apply: S => {} },
+  { id: 'brand', name: 'Brandbolzen', kind: 'Effekt', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Treffer entzünden. Brennende Gegner hinterlassen beim Tod Feuer.', flavor: '„Wo er fällt, brennt es weiter.“', apply: S => {} },
+  { id: 'glut', name: 'Glutregen', kind: 'Effekt', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Jeder fünfte Treffer lässt den Gegner in Funken explodieren und entzündet ihn.', flavor: '„Ein Funke genügt.“', apply: S => {} },
+  { id: 'blut', name: 'Blutung', kind: 'Effekt', rarity: 'gewoehnlich', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Treffer lassen bluten. Bewegte Gegner bluten doppelt so stark.', flavor: '„Rote Spur.“', apply: S => {} },
+  { id: 'blutrausch', name: 'Blutrausch', kind: 'Effekt', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Leichte Blutung. Fällt ein Blutender, schießt du kurz schneller.', flavor: '„Der Geruch macht gierig.“', apply: S => {} },
+  { id: 'tiefe', name: 'Tiefe Wunde', kind: 'Effekt', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Die Blutung hält doppelt so lang und wird insgesamt stärker.', flavor: '„Das heilt nicht so schnell.“', apply: S => {} },
+  { id: 'spalt', name: 'Spaltschuss', kind: 'Effekt', rarity: 'episch', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Teilt sich beim Treffer in zwei Splitter, mit Durchschlag beim zweiten.', flavor: '„Aus einem werden zwei.“', apply: S => {} },
+  { id: 'zielbombe', name: 'Zielbombe', kind: 'Effekt', rarity: 'episch', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Jeder fünfte Schuss bleibt stecken und explodiert nach einer Sekunde.', flavor: '„Es tickt.“', apply: S => {} },
+  { id: 'krit', name: 'Kritischer Treffer', kind: 'Effekt', rarity: 'gewoehnlich', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Manche Treffer richten anderthalbfachen Schaden an.', flavor: '„Manchmal sitzt er einfach.“', apply: S => {} },
+  { id: 'meister', name: 'Meisterschuss', kind: 'Effekt', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Viele Treffer richten anderthalbfachen Schaden an.', flavor: '„Das war kein Zufall.“', apply: S => {} },
+  { id: 'todesstoss', name: 'Todesstoß', kind: 'Effekt', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Gegner unter einem Viertel Leben nehmen mehr Schaden.', flavor: '„Wer wankt, fällt.“', apply: S => {} },
+  { id: 'eroeffnung', name: 'Eröffnungsstoß', kind: 'Effekt', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Mehr Schaden, und noch mehr gegen Gegner mit vollem Leben.', flavor: '„Der erste Schlag zählt.“', apply: S => {} },
+  { id: 'markier', name: 'Markierlicht', kind: 'Effekt', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Mehr Sichtweite. Getroffene Gegner bleiben eine Weile auch im Dunkeln sichtbar.', flavor: '„Wer getroffen ist, leuchtet.“', apply: S => {} },
+  { id: 'bluttrunk', name: 'Bluttrunk', kind: 'Effekt', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Treffer gegen Elite und Bosse heilen dich.', flavor: '„Große Beute, großer Schluck.“', apply: S => {} },
+  { id: 'aderlassh', name: 'Aderlass-Treffer', kind: 'Effekt', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: 'Heilt 3 Leben (fest)', text: 'Jeder zehnte Treffer heilt dich um 3 Leben.', flavor: '„Ein Schluck zwischendurch.“', apply: S => { S.hooks.hit.push(() => { G.cnt.ader = (G.cnt.ader || 0) + 1; if (G.cnt.ader % 10 === 0) G.player.hp = Math.min(S.maxHp, G.player.hp + 3); }); } },
+  { id: 'knochenpakt', name: 'Knochenpakt', kind: 'Effekt', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Alle paar Meter erscheint ein Ghul an deiner Seite, höchstens drei.', flavor: '„Die Toten dienen dem, der geht.“', apply: S => {} },
+  { id: 'wolfsbund', name: 'Wolfsbund', kind: 'Effekt', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Ein Wolf begleitet dich. Fällt er, kehrt er nach einigen Metern zurück.', flavor: '„Der Wald schickt einen Freund.“', apply: S => {} },
+  { id: 'ueberlaeufer', name: 'Überläufer', kind: 'Effekt', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Gefallene Gegner stehen manchmal auf und kämpfen kurz für dich.', flavor: '„Auch Feinde haben Seiten.“', apply: S => {} },
+  { id: 'seelenfaenger', name: 'Seelenfänger', kind: 'Effekt', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Jeder 15. Gefallene kämpft für dich, bis er fällt. Höchstens zwei.', flavor: '„Er sammelt, was übrig bleibt.“', apply: S => {} },
+  { id: 'irrlichtb', name: 'Irrlicht-Begleiter', kind: 'Effekt', rarity: 'selten', icon: 'wisp', max: 2, stat: '', text: 'Ein Irrlicht schwebt um dich herum und leuchtet einen Kreis aus.', flavor: '„Folge dem Licht. Es folgt dir.“', apply: S => {} },
+  { id: 'kronenwahl', name: 'Kronenwahl', kind: 'Effekt', rarity: 'episch', icon: 'crown', max: 1, limit: 1, stat: 'Jede 3. Wahl: 5 Karten (fest)', text: 'Jede dritte Wahl zeigt fünf Karten, mindestens eine davon selten oder besser.', flavor: '„Die Krone gibt, wem sie will.“', apply: S => { S.crown = true; } },
+  { id: 'opfer', name: 'Blutopfer', kind: 'Effekt', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Jeder Bolzen kostet dich Leben, ein Treffer gibt es zurück.', flavor: '„Wer trifft, gewinnt. Wer fehlt, blutet.“', apply: S => {} },
+  { id: 'durst', name: 'Blutdurst', kind: 'Effekt', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Wenig Leben macht stärker, viel Leben schwächer.', flavor: '„Nur am Rand des Todes bist du stark.“', apply: S => {} },
+  { id: 'aderlass', name: 'Aderlass', kind: 'Effekt', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Alle 10 s Leben weg, jeder Gefallene heilt und stärkt.', flavor: '„Wer nicht blutet, kämpft nicht.“', apply: S => {} },
+  { id: 'spiegel', name: 'Spiegelblut', kind: 'Effekt', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Deine Schüsse heilen nur. Gegner nehmen den Schaden, den sie dir zufügen.', flavor: '„Sie töten sich selbst.“', apply: S => {} },
+  { id: 'hast', name: 'Hast', kind: 'Effekt', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Mehr Schaden, aber alle Gegner laufen schneller.', flavor: '„Wer schnell ist, kämpft hart.“', apply: S => {} },
+  { id: 'zeitdruck', name: 'Zeitdruck', kind: 'Effekt', rarity: 'selten', icon: 'flask', max: 3, types: ['ranged'], stat: '', text: 'Viel mehr Schaden, aber alle Gegner laufen deutlich schneller.', flavor: '„Die Zeit rennt.“', apply: S => {} },
+  { id: 'blutzoll', name: 'Blutzoll', kind: 'Werte', rarity: 'selten', icon: 'flask', max: 3, stat: '', text: 'Weniger Leben, dafür heilen dich deine Treffer.', flavor: '„Der Preis ist Blut.“', apply: S => {} },
+  { id: 'tribut', name: 'Laufender Tribut', kind: 'Effekt', rarity: 'episch', icon: 'flask', max: 3, stat: '', text: 'Du verlierst beim Laufen Leben, dafür heilen dich Treffer stark.', flavor: '„Jeder Schritt kostet.“', apply: S => {} },
+  { id: 'bluttausch', name: 'Bluttausch', kind: 'Effekt', rarity: 'episch', icon: 'flask', max: 3, stat: '', text: 'Weniger Leben. Jeder Treffer heilt einen Teil deines Lebens.', flavor: '„Ein Tausch, der sich lohnt.“', apply: S => {} },
+  { id: 'raserei', name: 'Raserei', kind: 'Aktiv', ability: 'rage', rarity: 'episch', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: '10 s Raserei, 25 s Pause. Du erleidest +50 % Schaden.', flavor: '„Nichts hält dich auf. Nichts schützt dich.“', apply: S => {} },
+  { id: 'siegesrausch', name: 'Siegesrausch', kind: 'Effekt', rarity: 'selten', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Fünf Gefallene in 8 s machen dich 5 s lang stärker.', flavor: '„Wer siegt, will mehr.“', apply: S => {} },
+  { id: 'blitzschritt', name: 'Blitzschritt', kind: 'Aktiv', ability: 'blink', rarity: 'episch', icon: 'wind', max: 3, stat: '', text: 'Teleport zur Maus, Feuerspur hinter dir.', flavor: '„Er war hier. Er ist dort.“', apply: S => {} },
+  { id: 'schattenschritt', name: 'Schattenschritt', kind: 'Aktiv', ability: 'blink', rarity: 'episch', icon: 'wind', max: 3, stat: '', text: 'Teleport zur Maus, Gegner in der Nähe verlieren dich.', flavor: '„Wo er war, ist nur Schatten.“', apply: S => {} },
+  { id: 'gezeichnet', name: 'Gezeichnet', kind: 'Effekt', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Ein zufälliger Gegner nimmt mehr Schaden, trifft aber härter.', flavor: '„Wer markiert ist, ist doppelt gefährlich.“', apply: S => {} },
+  { id: 'jagdbeute', name: 'Jagdbeute', kind: 'Effekt', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Der stärkste Gegner ist gezeichnet. Fällt er, trifft es den nächsten.', flavor: '„Der Größte zuerst.“', apply: S => {} },
+  { id: 'todeszeichen', name: 'Todeszeichen', kind: 'Effekt', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Bis zu 3 Gegner sind 4 s gezeichnet, dann 6 s Pause.', flavor: '„Drei Namen auf der Liste.“', apply: S => {} },
+  { id: 'sternenblick', name: 'Sternenblick', kind: 'Effekt', rarity: 'gewoehnlich', icon: 'eye', max: 3, stat: '', text: 'Schmalerer Blick nach vorn, dafür sieben Streifen rundum.', flavor: '„Der Himmel hat viele Augen.“', apply: S => {} },
+  { id: 'spaehblick', name: 'Spähblick', kind: 'Effekt', rarity: 'selten', icon: 'eye', max: 3, stat: '', text: 'Gegner hinter dir erscheinen als roter Punkt am Rand.', flavor: '„Kein Rücken ist sicher.“', apply: S => {} },
+  { id: 'schrot', name: 'Schrotflinte', kind: 'Effekt', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Drei Bolzen im Kegel, kostet zwei Bolzen.', flavor: '„Wer nah ist, spürt es.“', apply: S => {} },
+  { id: 'breit', name: 'Breitseite', kind: 'Effekt', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Fünf Bolzen im weiten Fächer, kostet drei Bolzen.', flavor: '„Eine Wand aus Bolzen.“', apply: S => {} },
+  { id: 'feuer1', name: 'Schnellfeuer', kind: 'Werte', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Doppelt so schnell schießen, aber jeder Schuss trifft schwächer.', flavor: '„Wer viel trifft, braucht nicht fest zu treffen.“', apply: S => {} },
+  { id: 'dauer', name: 'Dauerfeuer', kind: 'Effekt', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Jeder Schuss macht dich schneller, bis zum Spannen.', flavor: '„Der Rhythmus trägt.“', apply: S => {} },
+  { id: 'fliess', name: 'Fließband', kind: 'Effekt', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Kein Spannen mehr, dafür schwächer und langsamer.', flavor: '„Der Köcher füllt sich von selbst.“', apply: S => {} },
+  { id: 'rueckschuss', name: 'Rückwärtsschuss', kind: 'Effekt', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Jeder Schuss geht auch nach hinten, ohne zusätzlichen Bolzen.', flavor: '„Auch hinten hast du Augen.“', apply: S => {} },
+  { id: 'rundum', name: 'Rundumschuss', kind: 'Effekt', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'In festen Abständen fliegt ein Bolzen in alle acht Richtungen.', flavor: '„Von allen Seiten.“', apply: S => {} },
+  { id: 'gespannt', name: 'Gespannte Sehne', kind: 'Effekt', rarity: 'episch', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Wer kurz stillsteht, schießt den nächsten Schuss mit viel mehr Schaden.', flavor: '„Atme, ziele, lass los.“', apply: S => {} },
+  { id: 'ladeschuss', name: 'Ladeschuss', kind: 'Effekt', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Halten lädt auf, Loslassen schießt.', flavor: '„Geduld wird belohnt.“', apply: S => {} },
+  { id: 'bombe', name: 'Bombenleger', kind: 'Effekt', rarity: 'selten', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Auf deinem Weg fallen Bomben, die auch dich treffen.', flavor: '„Wer rennt, hinterlässt etwas.“', apply: S => {} },
+  { id: 'wegz', name: 'Wegzehrung', kind: 'Effekt', rarity: 'gewoehnlich', icon: 'boot', max: 3, stat: '', text: 'Du heilst dich ein wenig, je weiter du läufst.', flavor: '„Der Weg nährt.“', apply: S => {} },
+  { id: 'rast', name: 'Rastplatz', kind: 'Effekt', rarity: 'selten', icon: 'boot', max: 3, stat: '', text: 'Du heilst dich beim Laufen, wenn dich lange nichts traf.', flavor: '„Wer nicht getroffen wird, erholt sich.“', apply: S => {} },
+  { id: 'beute', name: 'Kriegsbeute', kind: 'Effekt', rarity: 'selten', icon: 'boot', max: 3, stat: '', text: 'Jeder zwölfte Gefallene lässt eine Heilkugel fallen.', flavor: '„Aus der Beute wächst Leben.“', apply: S => {} },
+  { id: 'zornl', name: 'Zornladung', kind: 'Effekt', rarity: 'gewoehnlich', icon: 'wind', max: 3, stat: '', text: 'Fähigkeiten laden nur durch Schaden auf, nicht durch Zeit.', flavor: '„Ohne Kampf kein Schwung.“', apply: S => {} },
+  { id: 'rueckenw', name: 'Rückenwind', kind: 'Effekt', rarity: 'selten', icon: 'boot', max: 3, stat: '', text: 'Mehr Tempo, nach jedem Gefallenen kurz noch mehr.', flavor: '„Der Sieg treibt dich an.“', apply: S => {} },
+  { id: 'rinde', name: 'Eichenrinde', kind: 'Effekt', rarity: 'episch', icon: 'shield', max: 3, stat: '', text: 'Mehr Leben. Alle paar Meter fängt die Rinde einen Treffer ab.', flavor: '„Der Wald schützt die Seinen.“', apply: S => {} },
+  { id: 'moos', name: 'Moosherz', kind: 'Effekt', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Mehr Leben. Alle zehn Gefallenen heilst du dich um 2 Leben.', flavor: '„Moos wächst, wo Leben endet.“', apply: S => {} },
+  { id: 'serie', name: 'Serienschütze', kind: 'Effekt', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Jeder Treffer in Folge macht mehr Schaden. Ein Fehlschuss setzt zurück.', flavor: '„Treffer auf Treffer.“', apply: S => {} },
+  { id: 'kern', name: 'Kernschuss', kind: 'Effekt', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Der erste Schuss nach dem Spannen trifft genau und macht mehr Schaden.', flavor: '„Eine Chance, ein Treffer.“', apply: S => {} },
+  { id: 'flink', name: 'Flinke Sehne', kind: 'Effekt', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Schneller spannen. Nach dem Spannen kurz schneller schießen.', flavor: '„Klick und los.“', apply: S => {} },
+  { id: 'feder', name: 'Federspanner', kind: 'Effekt', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Schneller spannen. Der Windstoß füllt 4 Bolzen sofort nach.', flavor: '„Bewegung spannt die Sehne.“', apply: S => {} },
+  { id: 'doppel', name: 'Doppelboden', kind: 'Effekt', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: '3 Bolzen mehr. Der letzte Bolzen jedes Magazins schlägt härter ein.', flavor: '„Das Beste zum Schluss.“', apply: S => {} },
+  { id: 'spitze',   name: 'Spitze Bolzen',        kind: 'Effekt',  rarity: 'selten',      icon: 'quiver',  max: 2, types: ['ranged'], stat: 'Durchschlag +1',     text: 'Durchschlag +1. Jeder Durchschlag macht weniger Schaden.', flavor: '„Zwei auf einen Streich.“',     apply: S => { S.pierce += 1; } },
   // Nahkampf
-  { id: 'klinge',   name: 'Geschärfte Klinge',    kind: 'Segen',  rarity: 'gewoehnlich', icon: 'sword',   max: 3, types: ['melee'], stat: '+15 % Schaden',       text: 'Ein Wetzstein, eine ruhige Nacht, eine bessere Schneide.', flavor: '„Scharf genug zum Rasieren.“', apply: S => { S.dmgMul *= 1.15; } },
-  { id: 'lang',     name: 'Langes Eisen',         kind: 'Segen',  rarity: 'gewoehnlich', icon: 'sword',   max: 2, types: ['melee'], stat: '+20 % Reichweite',    text: 'Eine längere Klinge hält den Feind auf Abstand.', flavor: '„Ein Zoll kann ein Leben sein.“',      apply: S => { S.reachMul *= 1.2; } },
-  { id: 'breit',    name: 'Breiter Hieb',         kind: 'Segen',  rarity: 'selten',      icon: 'arc',     max: 2, types: ['melee'], stat: '+30° Schwungbogen',   text: 'Dein Hieb erfasst mehr Gegner auf einmal.',      flavor: '„Wer zu nah steht, steht falsch.“',    apply: S => { S.arcAdd += 30; } },
-  { id: 'wall',     name: 'Schildwall',           kind: 'Segen',  rarity: 'selten',      icon: 'shield',  max: 2, types: ['melee'], stat: 'Blockwinkel +30°', text: 'Dein Schild deckt dich auch seitlich.', flavor: '„Sie kommen nicht vorbei.“',           apply: S => { S.blockArc += 15; } },
+  { id: 'klinge',   name: 'Geschärfte Klinge',    kind: 'Werte',  rarity: 'gewoehnlich', icon: 'sword',   max: 3, types: ['melee'], stat: '+15 % Schaden',       text: 'Ein Wetzstein, eine ruhige Nacht, eine bessere Schneide.', flavor: '„Scharf genug zum Rasieren.“', apply: S => { S.dmgMul *= 1.15; } },
+  { id: 'lang',     name: 'Langes Eisen',         kind: 'Werte',  rarity: 'gewoehnlich', icon: 'sword',   max: 2, types: ['melee'], stat: '+20 % Reichweite',    text: 'Eine längere Klinge hält den Feind auf Abstand.', flavor: '„Ein Zoll kann ein Leben sein.“',      apply: S => { S.reachMul *= 1.2; } },
+  { id: 'breit',    name: 'Breiter Hieb',         kind: 'Effekt',  rarity: 'selten',      icon: 'arc',     max: 2, types: ['melee'], stat: '+30° Schwungbogen',   text: 'Dein Hieb erfasst mehr Gegner auf einmal.',      flavor: '„Wer zu nah steht, steht falsch.“',    apply: S => { S.arcAdd += 30; } },
+  { id: 'wall',     name: 'Schildwall',           kind: 'Werte',  rarity: 'selten',      icon: 'shield',  max: 2, types: ['melee'], stat: 'Blockwinkel +30°', text: 'Dein Schild deckt dich auch seitlich.', flavor: '„Sie kommen nicht vorbei.“',           apply: S => { S.blockArc += 15; } },
   // Magie
-  { id: 'macht',    name: 'Zauberkraft',          kind: 'Segen',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+15 % Schaden',       text: 'Die Magie fließt stärker durch den Stab.',       flavor: '„Mehr Glut, weniger Zweifel.“',        apply: S => { S.dmgMul *= 1.15; } },
-  { id: 'quell',    name: 'Manaquell',            kind: 'Segen',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+25 % Manaregeneration', text: 'Eine verborgene Quelle füllt dich schneller auf.', flavor: '„Das Wasser ist kalt und klar.“',    apply: S => { S.manaRegenMul *= 1.25; } },
-  { id: 'brunnen',  name: 'Tiefer Brunnen',       kind: 'Segen',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+25 Mana',            text: 'Mehr Reserve für den nächsten Zauber.',          flavor: '„Man schöpft, bis der Eimer reißt.“',  apply: S => { S.manaMax += 25; } },
-  { id: 'funke',    name: 'Zauberfunke',          kind: 'Zauber', rarity: 'selten',      icon: 'blast',   max: 2, types: ['spell'], stat: '+30 % Flächenradius', text: 'Die Explosion reißt einen größeren Kreis auf.',  flavor: '„Nichts bleibt heil.“',                apply: S => { S.splashMul *= 1.3; } },
-  { id: 'durch',    name: 'Durchdringender Funke', kind: 'Zauber', rarity: 'selten',     icon: 'blast',   max: 2, types: ['spell'], stat: 'Durchschlag +1',      text: 'Der Zauber explodiert und fliegt weiter.',       flavor: '„Er hört nicht auf.“',                 apply: S => { S.pierce += 1; } },
-  { id: 'flinkefinger', name: 'Flinke Finger', kind: 'Segen', rarity: 'gewoehnlich', icon: 'bolt', max: 4, types: ['ranged'], stat: '', text: 'Die Finger sitzen lockerer am Abzug.', flavor: '„Schneller, als der Wind weht.“', apply: S => {} },
-  { id: 'heissfinger', name: 'Heißer Finger', kind: 'Segen', rarity: 'gewoehnlich', icon: 'bolt', max: 4, types: ['ranged'], stat: '', text: 'Schneller schießen, aber ungenauer.', flavor: '„Wer zittert, trifft nicht.“', apply: S => {} },
-  { id: 'lederwams', name: 'Lederwams', kind: 'Segen', rarity: 'gewoehnlich', icon: 'shield', max: 4, stat: '', text: 'Zäh gegerbtes Leder fängt einen Teil jedes Treffers ab.', flavor: '„Alt, aber dicht.“', apply: S => {} },
-  { id: 'lederharnisch', name: 'Lederharnisch', kind: 'Segen', rarity: 'gewoehnlich', icon: 'shield', max: 4, stat: '', text: 'Mehr Schutz, dafür etwas schwerfälliger.', flavor: '„Er knarzt bei jedem Schritt.“', apply: S => {} },
-  { id: 'weitschuss', name: 'Weitschuss', kind: 'Segen', rarity: 'gewoehnlich', icon: 'arc', max: 4, types: ['ranged'], stat: '', text: 'Deine Bolzen fliegen weiter.', flavor: '„Auch das Ferne ist nah.“', apply: S => {} },
-  { id: 'weitsicht', name: 'Weitsicht', kind: 'Segen', rarity: 'gewoehnlich', icon: 'eye', max: 4, types: ['ranged'], stat: '', text: 'Bolzen fliegen weiter, du siehst weiter.', flavor: '„Wer weit sieht, schießt weit.“', apply: S => {} },
-  { id: 'schnellbolzen', name: 'Schneller Bolzen', kind: 'Segen', rarity: 'gewoehnlich', icon: 'quiver', max: 4, types: ['ranged'], stat: '', text: 'Schnellere Bolzen, die auch etwas weiter fliegen.', flavor: '„Kaum zu sehen, schon da.“', apply: S => {} },
-  { id: 'zaehesleder', name: 'Zähes Leder', kind: 'Segen', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Fängt Treffer ab und gibt dir mehr Leben.', flavor: '„Gegerbt in drei Wintern.“', apply: S => {} },
-  { id: 'fernbolzen', name: 'Fernbolzen', kind: 'Segen', rarity: 'selten', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Bolzen fliegen deutlich weiter und etwas schneller.', flavor: '„Er hört erst im nächsten Tal auf.“', apply: S => {} },
-  { id: 'pfeilfeder', name: 'Pfeilfeder', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Schnellere Bolzen, die etwas härter treffen.', flavor: '„Federleicht und scharf.“', apply: S => {} },
-  { id: 'hartnaeckig', name: 'Hartnäckig', kind: 'Segen', rarity: 'selten', icon: 'crown', max: 3, stat: '', text: 'Händlerpreise sinken, dazu ein Neuwurf mehr je Lauf.', flavor: '„Nicht mit mir.“', apply: S => {} },
-  { id: 'sammler', name: 'Sammler', kind: 'Segen', rarity: 'selten', icon: 'crown', max: 3, stat: '', text: 'Preise sinken, der Händler zeigt eine Karte mehr.', flavor: '„Wer sucht, der findet.“', apply: S => {} },
-  { id: 'eisenhaut', name: 'Eisenhaut', kind: 'Segen', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Viel Schutz, du bewegst dich langsamer.', flavor: '„Schwer wie eine Burg.“', apply: S => {} },
-  { id: 'panzerhemd', name: 'Panzerhemd', kind: 'Segen', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Sehr viel Schutz, aber langsam und umständlich.', flavor: '„Es klirrt. Es hält.“', apply: S => {} },
-  { id: 'dornenhecke', name: 'Dornenhecke', kind: 'Segen', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Wer dich trifft, bekommt einen Teil des Schadens zurück.', flavor: '„Wer sie anfasst, blutet.“', apply: S => {} },
-  { id: 'salve', name: 'Salve', kind: 'Fähigkeit', rarity: 'selten', icon: 'quiver', max: 2, limit: 2, ability: 'volley', types: ['ranged'], stat: '', text: 'Ein Fächer aus 12 Bolzen (±25°) nach vorn.', flavor: '„Alle auf einmal.“', apply: S => {} },
-  { id: 'dornennetz', name: 'Dornennetz', kind: 'Fähigkeit', rarity: 'selten', icon: 'lock', max: 2, limit: 2, ability: 'net', stat: '', text: 'Netz bremst Gegner, Gefangene nehmen +20 % Schaden.', flavor: '„Wer sich darin regt, verliert.“', apply: S => {} },
-  { id: 'pfeilregen', name: 'Pfeilregen', kind: 'Fähigkeit', rarity: 'selten', icon: 'quiver', max: 2, limit: 2, ability: 'rain', stat: '', text: 'Pfeilhagel an der Maus, 3 m Radius.', flavor: '„Der Himmel schießt zurück.“', apply: S => {} },
-  { id: 'feuerregen', name: 'Feuerregen', kind: 'Fähigkeit', rarity: 'selten', icon: 'blast', max: 2, limit: 2, ability: 'rain', stat: '', text: 'Feuerhagel an der Maus, 3 m Radius.', flavor: '„Wo er fällt, brennt der Boden.“', apply: S => {} },
-  { id: 'hitzigefinger', name: 'Hitzige Finger', kind: 'Segen', rarity: 'selten', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Deutlich schneller schießen, dafür streut es.', flavor: '„Der Puls fliegt.“', apply: S => {} },
-  { id: 'fieberhaende', name: 'Fieberhände', kind: 'Segen', rarity: 'selten', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Schneller schießen, aber langsamer spannen.', flavor: '„Die Hände zittern vor Eifer.“', apply: S => {} },
-  { id: 'nervositaet', name: 'Nervosität', kind: 'Segen', rarity: 'selten', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Schneller schießen, dafür weniger Leben.', flavor: '„Immer in Bewegung.“', apply: S => {} },
-  { id: 'scharfschuetze', name: 'Scharfschütze', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Viel treffsicherer, aber etwas langsamer.', flavor: '„Ein Schuss. Ein Ziel.“', apply: S => {} },
-  { id: 'praezision', name: 'Präzisionsschuss', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Treffsicher und härter, aber langsamer.', flavor: '„Atmen. Zielen. Treffen.“', apply: S => {} },
-  { id: 'ruhigerzug', name: 'Ruhiger Zug', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Viel treffsicherer, dafür dauert das Spannen länger.', flavor: '„Ruhe ist die halbe Miete.“', apply: S => {} },
-  { id: 'zielfernrohr', name: 'Zielfernrohr', kind: 'Segen', rarity: 'selten', icon: 'eye', max: 3, types: ['ranged'], stat: '', text: 'Weitere Sicht und mehr Schaden, aber enger Blick.', flavor: '„Die Welt wird ein Punkt.“', apply: S => {} },
-  { id: 'fernglas', name: 'Fernglas', kind: 'Segen', rarity: 'selten', icon: 'eye', max: 3, types: ['ranged'], stat: '', text: 'Weit sehen, Ferne treffen härter, enger Blick.', flavor: '„Dort hinten bewegt sich was.“', apply: S => {} },
-  { id: 'langbogen', name: 'Langbogen', kind: 'Segen', rarity: 'selten', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Schnelle, weit fliegende Bolzen, etwas schwächer.', flavor: '„Aus alter Zeit.“', apply: S => {} },
-  { id: 'weitschuetze', name: 'Weitschütze', kind: 'Segen', rarity: 'selten', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Sehr weite Reichweite, dafür streut es mehr.', flavor: '„Weit ist gut, nah ist besser.“', apply: S => {} },
-  { id: 'fernschuss', name: 'Fernschuss', kind: 'Segen', rarity: 'selten', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Je weiter ein Bolzen fliegt, desto härter trifft er.', flavor: '„Er wird nur besser.“', apply: S => {} },
-  { id: 'beutezug', name: 'Beutezug', kind: 'Segen', rarity: 'selten', icon: 'crown', max: 3, stat: '', text: 'Preise sinken, Gefallene lassen mehr Mondsilber da.', flavor: '„Wer jagt, der sammelt.“', apply: S => {} },
-  { id: 'dornenmantel', name: 'Dornenmantel', kind: 'Segen', rarity: 'episch', icon: 'shield', max: 2, stat: '', text: 'Ein großer Teil jedes erlittenen Treffers trifft den Angreifer.', flavor: '„Er schmerzt beim Anfassen.“', apply: S => {} },
-  { id: 'stachelwelle', name: 'Stachelwelle', kind: 'Zauber', rarity: 'episch', icon: 'blast', max: 2, stat: '', text: 'Jeder erlittene Treffer löst eine Dornenwelle aus.', flavor: '„Wer mich trifft, stolpert.“', apply: S => {} },
-  { id: 'wolkenbruch', name: 'Wolkenbruch', kind: 'Zauber', rarity: 'episch', icon: 'bolt', max: 2, stat: '', text: 'Alle paar Sekunden schlagen Blitze in drei Gegner.', flavor: '„Der Himmel hat genug.“', apply: S => {} },
-  { id: 'todesexplosion', name: 'Todesexplosion', kind: 'Zauber', rarity: 'episch', icon: 'blast', max: 2, stat: '', text: 'Fällt ein Gegner, explodiert er und verletzt Umstehende.', flavor: '„Selbst im Tod noch laut.“', apply: S => {} },
-  { id: 'kopfgeld', name: 'Kopfgeld', kind: 'Segen', rarity: 'episch', icon: 'crown', max: 2, stat: '', text: 'Elite und Bosse lassen mehr Mondsilber fallen.', flavor: '„Tot oder lebendig. Meist tot.“', apply: S => {} },
-  { id: 'heilquelle', name: 'Heilquelle', kind: 'Zauber', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Alle paar Meter entsteht eine Quelle, die dich heilt.', flavor: '„Wo du gehst, quillt Wasser.“', apply: S => {} },
-  { id: 'sturzfalke', name: 'Sturzfalke', kind: 'Zauber', rarity: 'episch', icon: 'wind', max: 2, stat: '', text: 'Ein Falke begleitet dich und stürzt auf Gegner.', flavor: '„Er sieht, was du nicht siehst.“', apply: S => {} },
-  { id: 'schutzfeld', name: 'Schutzfeld', kind: 'Fähigkeit', rarity: 'episch', icon: 'shield', max: 2, limit: 2, ability: 'field', stat: '', text: 'Ein Kreis um dich, in dem du viel weniger Schaden nimmst.', flavor: '„Hier bist du sicher.“', apply: S => {} },
-  { id: 'schildwall', name: 'Schildwall', kind: 'Fähigkeit', rarity: 'episch', icon: 'shield', max: 2, limit: 2, ability: 'shield', stat: '', text: 'Kurz halbierter Schaden, wohin du auch gehst.', flavor: '„Ein Schritt zurück gilt nicht.“', apply: S => {} },
-  { id: 'heilruf', name: 'Heilruf', kind: 'Fähigkeit', rarity: 'episch', icon: 'wisp', max: 2, limit: 2, ability: 'heal', stat: '', text: 'Heilt dich über einige Sekunden. Pause über Meter.', flavor: '„Der Wald antwortet.“', apply: S => {} },
-  { id: 'heilsalbe', name: 'Heilsalbe', kind: 'Fähigkeit', rarity: 'episch', icon: 'flask', max: 2, limit: 2, ability: 'heal', stat: '', text: 'Heilt viel, dafür langsam. Pause über Meter.', flavor: '„Bitter, aber gut.“', apply: S => {} },
-  { id: 'geisterbolzen', name: 'Geisterbolzen', kind: 'Zauber', rarity: 'legendaer', icon: 'wisp', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Bolzen fliegen durch alle Gegner und Wände.', flavor: '„Nichts hält ihn auf.“', apply: S => {} },
-  { id: 'rudelherr', name: 'Rudelherr', kind: 'Zauber', rarity: 'legendaer', icon: 'wisp', max: 3, limit: 1, stat: '', text: 'Begleiter doppelt so stark, mehr Ghule und Wölfe.', flavor: '„Das Rudel gehorcht.“', apply: S => {} },
-  { id: 'rudelfuehrer', name: 'Rudelführer', kind: 'Zauber', rarity: 'legendaer', icon: 'wisp', max: 3, limit: 1, stat: '', text: 'Begleiter erben Lifesteal und Treffer-Effekte.', flavor: '„Dein Biss ist ihr Biss.“', apply: S => {} },
-  { id: 'zeitfalle', name: 'Zeitfalle', kind: 'Zauber', rarity: 'legendaer', icon: 'moon', max: 3, limit: 1, stat: '', text: 'Gegner in deiner Nähe sind deutlich langsamer.', flavor: '„Hier läuft die Zeit anders.“', apply: S => {} },
+  { id: 'macht',    name: 'Zauberkraft',          kind: 'Werte',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+15 % Schaden',       text: 'Die Magie fließt stärker durch den Stab.',       flavor: '„Mehr Glut, weniger Zweifel.“',        apply: S => { S.dmgMul *= 1.15; } },
+  { id: 'quell',    name: 'Manaquell',            kind: 'Werte',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+25 % Manaregeneration', text: 'Eine verborgene Quelle füllt dich schneller auf.', flavor: '„Das Wasser ist kalt und klar.“',    apply: S => { S.manaRegenMul *= 1.25; } },
+  { id: 'brunnen',  name: 'Tiefer Brunnen',       kind: 'Werte',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+25 Mana',            text: 'Mehr Reserve für den nächsten Zauber.',          flavor: '„Man schöpft, bis der Eimer reißt.“',  apply: S => { S.manaMax += 25; } },
+  { id: 'funke',    name: 'Zauberfunke',          kind: 'Werte', rarity: 'selten',      icon: 'blast',   max: 2, types: ['spell'], stat: '+30 % Flächenradius', text: 'Die Explosion reißt einen größeren Kreis auf.',  flavor: '„Nichts bleibt heil.“',                apply: S => { S.splashMul *= 1.3; } },
+  { id: 'durch',    name: 'Durchdringender Funke', kind: 'Effekt', rarity: 'selten',     icon: 'blast',   max: 2, types: ['spell'], stat: 'Durchschlag +1',      text: 'Der Zauber explodiert und fliegt weiter.',       flavor: '„Er hört nicht auf.“',                 apply: S => { S.pierce += 1; } },
+  { id: 'flinkefinger', name: 'Flinke Finger', kind: 'Werte', rarity: 'gewoehnlich', icon: 'bolt', max: 4, types: ['ranged'], stat: '', text: 'Die Finger sitzen lockerer am Abzug.', flavor: '„Schneller, als der Wind weht.“', apply: S => {} },
+  { id: 'heissfinger', name: 'Heißer Finger', kind: 'Werte', rarity: 'gewoehnlich', icon: 'bolt', max: 4, types: ['ranged'], stat: '', text: 'Schneller schießen, aber ungenauer.', flavor: '„Wer zittert, trifft nicht.“', apply: S => {} },
+  { id: 'lederwams', name: 'Lederwams', kind: 'Werte', rarity: 'gewoehnlich', icon: 'shield', max: 4, stat: '', text: 'Zäh gegerbtes Leder fängt einen Teil jedes Treffers ab.', flavor: '„Alt, aber dicht.“', apply: S => {} },
+  { id: 'lederharnisch', name: 'Lederharnisch', kind: 'Werte', rarity: 'gewoehnlich', icon: 'shield', max: 4, stat: '', text: 'Mehr Schutz, dafür etwas schwerfälliger.', flavor: '„Er knarzt bei jedem Schritt.“', apply: S => {} },
+  { id: 'weitschuss', name: 'Weitschuss', kind: 'Werte', rarity: 'gewoehnlich', icon: 'arc', max: 4, types: ['ranged'], stat: '', text: 'Deine Bolzen fliegen weiter.', flavor: '„Auch das Ferne ist nah.“', apply: S => {} },
+  { id: 'weitsicht', name: 'Weitsicht', kind: 'Werte', rarity: 'gewoehnlich', icon: 'eye', max: 4, types: ['ranged'], stat: '', text: 'Bolzen fliegen weiter, du siehst weiter.', flavor: '„Wer weit sieht, schießt weit.“', apply: S => {} },
+  { id: 'schnellbolzen', name: 'Schneller Bolzen', kind: 'Werte', rarity: 'gewoehnlich', icon: 'quiver', max: 4, types: ['ranged'], stat: '', text: 'Schnellere Bolzen, die auch etwas weiter fliegen.', flavor: '„Kaum zu sehen, schon da.“', apply: S => {} },
+  { id: 'zaehesleder', name: 'Zähes Leder', kind: 'Werte', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Fängt Treffer ab und gibt dir mehr Leben.', flavor: '„Gegerbt in drei Wintern.“', apply: S => {} },
+  { id: 'fernbolzen', name: 'Fernbolzen', kind: 'Werte', rarity: 'selten', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Bolzen fliegen deutlich weiter und etwas schneller.', flavor: '„Er hört erst im nächsten Tal auf.“', apply: S => {} },
+  { id: 'pfeilfeder', name: 'Pfeilfeder', kind: 'Werte', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Schnellere Bolzen, die etwas härter treffen.', flavor: '„Federleicht und scharf.“', apply: S => {} },
+  { id: 'hartnaeckig', name: 'Hartnäckig', kind: 'Werte', rarity: 'selten', icon: 'crown', max: 3, stat: '', text: 'Händlerpreise sinken, dazu ein Neuwurf mehr je Lauf.', flavor: '„Nicht mit mir.“', apply: S => {} },
+  { id: 'sammler', name: 'Sammler', kind: 'Werte', rarity: 'selten', icon: 'crown', max: 3, stat: '', text: 'Preise sinken, der Händler zeigt eine Karte mehr.', flavor: '„Wer sucht, der findet.“', apply: S => {} },
+  { id: 'eisenhaut', name: 'Eisenhaut', kind: 'Werte', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Viel Schutz, du bewegst dich langsamer.', flavor: '„Schwer wie eine Burg.“', apply: S => {} },
+  { id: 'panzerhemd', name: 'Panzerhemd', kind: 'Werte', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Sehr viel Schutz, aber langsam und umständlich.', flavor: '„Es klirrt. Es hält.“', apply: S => {} },
+  { id: 'dornenhecke', name: 'Dornenhecke', kind: 'Effekt', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Wer dich trifft, bekommt einen Teil des Schadens zurück.', flavor: '„Wer sie anfasst, blutet.“', apply: S => {} },
+  { id: 'salve', name: 'Salve', kind: 'Aktiv', rarity: 'selten', icon: 'quiver', max: 2, limit: 2, ability: 'volley', types: ['ranged'], stat: '', text: 'Ein Fächer aus 12 Bolzen (±25°) nach vorn.', flavor: '„Alle auf einmal.“', apply: S => {} },
+  { id: 'dornennetz', name: 'Dornennetz', kind: 'Aktiv', rarity: 'selten', icon: 'lock', max: 2, limit: 2, ability: 'net', stat: '', text: 'Netz bremst Gegner, Gefangene nehmen +20 % Schaden.', flavor: '„Wer sich darin regt, verliert.“', apply: S => {} },
+  { id: 'pfeilregen', name: 'Pfeilregen', kind: 'Aktiv', rarity: 'selten', icon: 'quiver', max: 2, limit: 2, ability: 'rain', stat: '', text: 'Pfeilhagel an der Maus, 3 m Radius.', flavor: '„Der Himmel schießt zurück.“', apply: S => {} },
+  { id: 'feuerregen', name: 'Feuerregen', kind: 'Aktiv', rarity: 'selten', icon: 'blast', max: 2, limit: 2, ability: 'rain', stat: '', text: 'Feuerhagel an der Maus, 3 m Radius.', flavor: '„Wo er fällt, brennt der Boden.“', apply: S => {} },
+  { id: 'hitzigefinger', name: 'Hitzige Finger', kind: 'Werte', rarity: 'selten', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Deutlich schneller schießen, dafür streut es.', flavor: '„Der Puls fliegt.“', apply: S => {} },
+  { id: 'fieberhaende', name: 'Fieberhände', kind: 'Werte', rarity: 'selten', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Schneller schießen, aber langsamer spannen.', flavor: '„Die Hände zittern vor Eifer.“', apply: S => {} },
+  { id: 'nervositaet', name: 'Nervosität', kind: 'Werte', rarity: 'selten', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Schneller schießen, dafür weniger Leben.', flavor: '„Immer in Bewegung.“', apply: S => {} },
+  { id: 'scharfschuetze', name: 'Scharfschütze', kind: 'Werte', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Viel treffsicherer, aber etwas langsamer.', flavor: '„Ein Schuss. Ein Ziel.“', apply: S => {} },
+  { id: 'praezision', name: 'Präzisionsschuss', kind: 'Werte', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Treffsicher und härter, aber langsamer.', flavor: '„Atmen. Zielen. Treffen.“', apply: S => {} },
+  { id: 'ruhigerzug', name: 'Ruhiger Zug', kind: 'Werte', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Viel treffsicherer, dafür dauert das Spannen länger.', flavor: '„Ruhe ist die halbe Miete.“', apply: S => {} },
+  { id: 'zielfernrohr', name: 'Zielfernrohr', kind: 'Werte', rarity: 'selten', icon: 'eye', max: 3, types: ['ranged'], stat: '', text: 'Weitere Sicht und mehr Schaden, aber enger Blick.', flavor: '„Die Welt wird ein Punkt.“', apply: S => {} },
+  { id: 'fernglas', name: 'Fernglas', kind: 'Effekt', rarity: 'selten', icon: 'eye', max: 3, types: ['ranged'], stat: '', text: 'Weit sehen, Ferne treffen härter, enger Blick.', flavor: '„Dort hinten bewegt sich was.“', apply: S => {} },
+  { id: 'langbogen', name: 'Langbogen', kind: 'Werte', rarity: 'selten', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Schnelle, weit fliegende Bolzen, etwas schwächer.', flavor: '„Aus alter Zeit.“', apply: S => {} },
+  { id: 'weitschuetze', name: 'Weitschütze', kind: 'Werte', rarity: 'selten', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Sehr weite Reichweite, dafür streut es mehr.', flavor: '„Weit ist gut, nah ist besser.“', apply: S => {} },
+  { id: 'fernschuss', name: 'Fernschuss', kind: 'Effekt', rarity: 'selten', icon: 'arc', max: 3, types: ['ranged'], stat: '', text: 'Je weiter ein Bolzen fliegt, desto härter trifft er.', flavor: '„Er wird nur besser.“', apply: S => {} },
+  { id: 'beutezug', name: 'Beutezug', kind: 'Werte', rarity: 'selten', icon: 'crown', max: 3, stat: '', text: 'Preise sinken, Gefallene lassen mehr Mondsilber da.', flavor: '„Wer jagt, der sammelt.“', apply: S => {} },
+  { id: 'dornenmantel', name: 'Dornenmantel', kind: 'Effekt', rarity: 'episch', icon: 'shield', max: 2, stat: '', text: 'Ein großer Teil jedes erlittenen Treffers trifft den Angreifer.', flavor: '„Er schmerzt beim Anfassen.“', apply: S => {} },
+  { id: 'stachelwelle', name: 'Stachelwelle', kind: 'Effekt', rarity: 'episch', icon: 'blast', max: 2, stat: '', text: 'Jeder erlittene Treffer löst eine Dornenwelle aus.', flavor: '„Wer mich trifft, stolpert.“', apply: S => {} },
+  { id: 'wolkenbruch', name: 'Wolkenbruch', kind: 'Effekt', rarity: 'episch', icon: 'bolt', max: 2, stat: '', text: 'Alle paar Sekunden schlagen Blitze in drei Gegner.', flavor: '„Der Himmel hat genug.“', apply: S => {} },
+  { id: 'todesexplosion', name: 'Todesexplosion', kind: 'Effekt', rarity: 'episch', icon: 'blast', max: 2, stat: '', text: 'Fällt ein Gegner, explodiert er und verletzt Umstehende.', flavor: '„Selbst im Tod noch laut.“', apply: S => {} },
+  { id: 'kopfgeld', name: 'Kopfgeld', kind: 'Effekt', rarity: 'episch', icon: 'crown', max: 2, stat: '', text: 'Elite und Bosse lassen mehr Mondsilber fallen.', flavor: '„Tot oder lebendig. Meist tot.“', apply: S => {} },
+  { id: 'heilquelle', name: 'Heilquelle', kind: 'Effekt', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Alle paar Meter entsteht eine Quelle, die dich heilt.', flavor: '„Wo du gehst, quillt Wasser.“', apply: S => {} },
+  { id: 'sturzfalke', name: 'Sturzfalke', kind: 'Effekt', rarity: 'episch', icon: 'wind', max: 2, stat: '', text: 'Ein Falke begleitet dich und stürzt auf Gegner.', flavor: '„Er sieht, was du nicht siehst.“', apply: S => {} },
+  { id: 'schutzfeld', name: 'Schutzfeld', kind: 'Aktiv', rarity: 'episch', icon: 'shield', max: 2, limit: 2, ability: 'field', stat: '', text: 'Ein Kreis um dich, in dem du viel weniger Schaden nimmst.', flavor: '„Hier bist du sicher.“', apply: S => {} },
+  { id: 'schildwall', name: 'Schildwall', kind: 'Aktiv', rarity: 'episch', icon: 'shield', max: 2, limit: 2, ability: 'shield', stat: '', text: 'Kurz halbierter Schaden, wohin du auch gehst.', flavor: '„Ein Schritt zurück gilt nicht.“', apply: S => {} },
+  { id: 'heilruf', name: 'Heilruf', kind: 'Aktiv', rarity: 'episch', icon: 'wisp', max: 2, limit: 2, ability: 'heal', stat: '', text: 'Heilt dich über einige Sekunden. Pause über Meter.', flavor: '„Der Wald antwortet.“', apply: S => {} },
+  { id: 'heilsalbe', name: 'Heilsalbe', kind: 'Aktiv', rarity: 'episch', icon: 'flask', max: 2, limit: 2, ability: 'heal', stat: '', text: 'Heilt viel, dafür langsam. Pause über Meter.', flavor: '„Bitter, aber gut.“', apply: S => {} },
+  { id: 'geisterbolzen', name: 'Geisterbolzen', kind: 'Effekt', rarity: 'legendaer', icon: 'wisp', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Bolzen fliegen durch alle Gegner und Wände.', flavor: '„Nichts hält ihn auf.“', apply: S => {} },
+  { id: 'rudelherr', name: 'Rudelherr', kind: 'Effekt', rarity: 'legendaer', icon: 'wisp', max: 3, limit: 1, stat: '', text: 'Begleiter doppelt so stark, mehr Ghule und Wölfe.', flavor: '„Das Rudel gehorcht.“', apply: S => {} },
+  { id: 'rudelfuehrer', name: 'Rudelführer', kind: 'Effekt', rarity: 'legendaer', icon: 'wisp', max: 3, limit: 1, stat: '', text: 'Begleiter erben Lifesteal und Treffer-Effekte.', flavor: '„Dein Biss ist ihr Biss.“', apply: S => {} },
+  { id: 'zeitfalle', name: 'Zeitfalle', kind: 'Effekt', rarity: 'legendaer', icon: 'moon', max: 3, limit: 1, stat: '', text: 'Gegner in deiner Nähe sind deutlich langsamer.', flavor: '„Hier läuft die Zeit anders.“', apply: S => {} },
 ];
 const CARD_BY_ID = Object.fromEntries(CARDS.map(c => [c.id, c]));
 
@@ -4973,7 +4973,7 @@ function drawPickScreen() {
   text('KARTENWAHL · ' + Math.floor(G.dist) + ' M', 640, 62, 19, '#8ee8ff', 'center', F_TEXT, '500');
   ctx.font = '50px ' + F_TITLE; ctx.textAlign = 'center';
   ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 8;
-  ctx.fillStyle = silverGrad(80, 130); ctx.fillText('Wähle einen Segen', 640, 118);
+  ctx.fillStyle = silverGrad(80, 130); ctx.fillText('Wähle eine Karte', 640, 118);
   ctx.shadowBlur = 0;
   const gl = ctx.createLinearGradient(450, 0, 830, 0); gl.addColorStop(0, 'rgba(242,193,78,0)'); gl.addColorStop(0.5, '#f2c14e'); gl.addColorStop(1, 'rgba(242,193,78,0)');
   ctx.fillStyle = gl; ctx.fillRect(450, 134, 380, 2);
@@ -5075,8 +5075,8 @@ function drawSelectScreen() {
 }
 
 // ---------- Kartenbuch (Sammlung) und Deck ----------
-const CATS = ['Segen', 'Zauber', 'Fähigkeit'];
-const CAT_SUB = { Segen: 'Statuswerte', Zauber: 'Wirkungen', Fähigkeit: 'Aktionen' };
+const CATS = ['Werte', 'Effekt', 'Aktiv'];   // Werte: reine Zahlen · Effekt: verändert, wie du schießt, triffst oder überlebst · Aktiv: Fähigkeit auf einer Taste
+const CAT_SUB = { Werte: 'reine Zahlen', Effekt: 'besondere Wirkungen', Aktiv: 'eigene Taste' };
 let deckClass = 0, bookSpread = 0, deckFilter = 'all', deckPage = 0, deckHoverIdx = -1, deckMsg = null;
 let deckStats = new Set(), deckRar = new Set(), deckAb = false, deckStatScroll = 0, deckOpen = null, deckPopOff = 0, deckPanel = null, deckPop = null;   // Filter (Stats, Seltenheit, Fähigkeiten), geöffneter Stapel
 const rarIdx = c => RARITY_KEYS.indexOf(c.rarity);
@@ -5135,7 +5135,6 @@ function drawBookScreen() {
   const pages = bookPages(), spreads = Math.max(1, Math.ceil(pages.length / 2));
   bookSpread = clamp(bookSpread, 0, spreads - 1);
   text('Gesammelt: ' + CARDS.filter(c => usable(c) && SAVE.owned[c.id] > 0).length + ' / ' + CARDS.filter(usable).length, 1010, 46, 17, '#c8d4de', 'right', F_TEXT);
-  uiButton(1030, 18, 210, 42, 'Recycling · ' + surplusList().reduce((a, x) => a + x.n, 0), () => { recyclePage = 0; state = 'recycle'; }, { size: 15 });
 
   // Ledereinband ganz außen
   const X = 88, Y = 92, Wd = 1104, Ht = 552;
@@ -5152,7 +5151,7 @@ function drawBookScreen() {
   // liegt diese Seite schon links, steckt der Reiter im linken Stapel, sonst im rechten, und zwar zwischen den richtigen Blättern.
   const R = spreads - 1 - bookSpread, firstOf = cat => Math.max(0, Math.floor(pages.findIndex(p => p.cat === cat) / 2));
   const lpI = bookSpread * 2, curCat = pages[lpI] ? pages[lpI].cat : CATS[0];
-  const tabs = [['Segen', 'Segen', 130, 150], ['Zauber', 'Zauber', 290, 150], ['Fähigkeiten', 'Fähigkeit', 450, 168]].map(([label, cat, y, h], idx) => {
+  const tabs = [['Werte', 'Werte', 130, 150], ['Effekt', 'Effekt', 290, 150], ['Aktiv', 'Aktiv', 450, 150]].map(([label, cat, y, h], idx) => {
     const t = firstOf(cat);   // erste Seite der Kategorie liegt links auf Doppelseite t
     const side = bookSpread >= t ? 'L' : 'R', k = side === 'L' ? bookSpread - t : t - 1 - bookSpread;
     return { label, y, h, idx, side, k: Math.min(k, 4), on: curCat === cat, go: () => { bookSpread = t; } };
@@ -5272,7 +5271,7 @@ const DECK_STAT_GROUPS = [['ANGRIFF', ['Schaden', 'Feuerrate', 'Spannzeit', 'Bol
 function deckPool(cls) {
   const inD = new Set(SAVE.decks[cls.id]);   // jede Karte einzeln, außer denen, die schon im Deck liegen
   let list = SAVE.cards.filter(c => usable(c) && compat(c, cls) && !inD.has(c.u));
-  if (deckAb) list = list.filter(c => c.kind === 'Fähigkeit');
+  if (deckAb) list = list.filter(c => c.kind === 'Aktiv');
   if (deckRar.size) list = list.filter(c => deckRar.has(c.rarity));
   for (const n of deckStats) list = list.filter(c => (c.stats || []).some(st => st.n === n));   // alle gewählten Stats (UND)
   return list.sort((a, b) => rarIdx(a) - rarIdx(b) || cardOrder(a.id) - cardOrder(b.id) || tierSum(b) - tierSum(a) || a.u - b.u);
@@ -5402,7 +5401,7 @@ function drawDeckScreen() {
   if (deckOpen && !gm.has(deckOpen)) deckOpen = null;
   const noF = !deckStats.size && !deckRar.size && !deckAb;
   let cx0 = 400;
-  [['Alle', 'all', 66, null], ['Fähigkeiten', 'ab', 118, null]].forEach(([l, id, w]) => {
+  [['Alle', 'all', 66, null], ['Aktiv', 'ab', 80, null]].forEach(([l, id, w]) => {
     chip(cx0, 334, w, l, id === 'all' ? noF : deckAb, () => { if (id === 'all') deckResetFilters(); else { deckAb = !deckAb; deckPage = 0; deckOpen = null; } }); cx0 += w + 8;
   });
   ctx.fillStyle = '#2e3e32'; ctx.fillRect(cx0 + 2, 340, 1, 22); cx0 += 14;
@@ -5681,7 +5680,7 @@ function drawShopScreen() {
     uiButton(x + 20, y + 388, pw - 40, 42, unlocked ? 'Öffnen · ' + p.price.toLocaleString('de-DE') : 'Gesperrt', () => buyPack(p), { primary: true, disabled: !unlocked || !afford });
     if (unlocked && !afford) text('Zu wenig Mondsilber', x + pw / 2, y + 380, 14, '#ff9a9a', 'center', F_TEXT, 'italic');
   });
-  text('1 Mondsilber pro Meter, 1 bis 5 pro Gefallenem · Doppelte Karten tauschst du im Recycling gegen Mondsilber', 640, 668, 16, '#b8c4d0', 'center', F_TEXT);
+  text('1 Mondsilber pro Meter, 1 bis 5 pro Gefallenem', 640, 668, 16, '#b8c4d0', 'center', F_TEXT);
   if (!packUnlocked(PACKS.find(p => p.unlockBoss))) text('Wer den Bogenmeister besiegt, schaltet das Drachen-Booster frei', 640, 692, 15, '#8a9aa0', 'center', F_TEXT, 'italic');
 }
 
@@ -5818,6 +5817,7 @@ function drawForgeScreen() {
   drawTopBar('forge');
   drawSilver(1240, 20);
   titleText('Kartenschmiede', 40, 126, 38);
+  uiButton(40, 660, 250, 42, 'Recycling · ' + surplusList().reduce((a, x) => a + x.n, 0) + ' Doppelte', () => { recyclePage = 0; state = 'recycle'; }, { size: 15 });
   text('Verbrauche eine Karte, um die Stats einer anderen neu zu würfeln.', 40, 152, 15, '#8a9aa0', 'left', F_TEXT, 'italic');
   // Plätze links
   const k = 190 / 220, SW = 190, SH = Math.round(320 * k);
@@ -5827,9 +5827,9 @@ function drawForgeScreen() {
     else { ctx.setLineDash([6, 5]); rr(x, 190, SW, SH, 12); ctx.fillStyle = 'rgba(255,255,255,.02)'; ctx.fill(); ctx.strokeStyle = '#3a4a3e'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]); text('+', x + SW / 2, 190 + SH / 2 - 6, 40, '#6a7a70', 'center', F_TEXT); wrap(hint, SW - 40, '15px ' + F_TEXT).forEach((l, i) => text(l, x + SW / 2, 190 + SH / 2 + 24 + i * 18, 15, '#6a7a70', 'center', F_TEXT)); }
   };
   slot(60, '1 · ZIELKARTE', forgeT, 'Karte aus der Sammlung wählen', '#f2c14e');
-  slot(290, '2 · ROHSTOFF', forgeM, 'Danach eine Karte mit gleichem Stat', '#8ee8ff');
+  slot(290, '2 · ROHSTOFF', forgeM, 'Danach eine Karte mit gleichem Stat, auch eine Kopie derselben Karte', '#8ee8ff');
   // Sammlung rechts
-  const kinds = [['Alle', 'all', 70], ['Segen', 'Segen', 86], ['Zauber', 'Zauber', 86], ['Fähigkeiten', 'Fähigkeit', 122]];
+  const kinds = [['Alle', 'all', 70], ['Werte', 'Werte', 86], ['Effekt', 'Effekt', 86], ['Aktiv', 'Aktiv', 86]];
   kinds.reduce((x, [l, id, w]) => { chip(x, 108, w, l, forgeFilter === id, () => { forgeFilter = id; forgePage = 0; }); return x + w + 8; }, 548);
   let list = SAVE.cards.filter(c => forgeFilter === 'all' || c.kind === forgeFilter);
   const elig = c => forgeT && (c === forgeT || c === forgeM || forgeShared(forgeT, c).length) ? 0 : 1;   // passende Karten stehen vorn
@@ -5909,7 +5909,7 @@ function recycleCard(c, n) {
 function drawRecycleScreen() {
   uiBtns = [];
   screenBackdrop();
-  uiButton(40, 18, 150, 42, '‹ Kartenbuch', () => { state = 'book'; });
+  uiButton(40, 18, 150, 42, '‹ Schmiede', () => openForge());
   drawSilver(1240, 20);
   titleText('Recycling', 40, 130, 42);
   text('Kopien über dem Deck-Limit ihrer Seltenheit tauschst du gegen Mondsilber.', 40, 158, 19, '#c8d4de', 'left', F_TEXT, 'italic');
@@ -6007,7 +6007,7 @@ function drawSilverTotal(rx, y) {
   text('davon ' + runSilver() + ' aus diesem Lauf', rx, y + 56, 13, '#8a9aa0', 'right', F_TEXT, 'italic');
 }
 
-// ---------- Bildschirm „Fähigkeiten“ ----------
+// ---------- Bildschirm „Talente“ ----------
 let skillFrom = 'menu', skillHover = null;
 function openSkills(from) { skillFrom = from || 'menu'; skillHover = null; state = 'skills'; }
 function closeSkills() { state = skillFrom === 'dead' && G ? 'dead' : skillFrom === 'select' ? 'select' : 'menu'; }
@@ -6017,8 +6017,8 @@ function drawSkillScreen() {
   ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
   for (const st of stars) { ctx.fillStyle = 'rgba(255,255,255,' + st[3] * 0.6 + ')'; ctx.fillRect(st[0], st[1], st[2], st[2]); }
   g = ctx.createRadialGradient(640, 420, 100, 640, 420, 700); g.addColorStop(0, 'rgba(60,110,120,.2)'); g.addColorStop(1, 'rgba(2,5,4,.7)'); ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
-  kicker('HAUPTMENÜ · FÄHIGKEITEN', 40, 32, 'left');
-  titleText('Fähigkeiten', 40, 76, 40, 'left');
+  kicker('HAUPTMENÜ · TALENTE', 40, 32, 'left');
+  titleText('Talente', 40, 76, 40, 'left');
   uiButton(1130, 36, 110, 40, 'Zurück', closeSkills, { size: 15 });
   const lv = accLevel(), cap = levelCap(), xp = SAVE.xp || 0, free = skillPointsFree();
   // linke Leiste
@@ -6085,7 +6085,7 @@ const stars = Array.from({ length: 120 }, () => [Math.random() * FRAME_W, Math.r
 const pines = Array.from({ length: 40 }, (_, i) => [i * 34 - 10, 540 + Math.random() * 60, 70 + Math.random() * 70]);
 const menuButtons = [
   { label: 'Neuer Durchlauf', main: true, x: 80, y: 386, w: 330, h: 50, action: () => openAreas() },
-  { label: 'Fähigkeiten', skills: true, x: 80, y: 440, w: 330, h: 50, action: () => openSkills('menu') },
+  { label: 'Talente', skills: true, x: 80, y: 440, w: 330, h: 50, action: () => openSkills('menu') },
   { label: 'Kartenbuch', x: 80, y: 494, w: 330, h: 50, action: () => { bookSpread = 0; state = 'book'; } },
   { label: 'Deck', x: 80, y: 548, w: 330, h: 50, action: () => { deckClass = ACTIVE_CI; deckHoverIdx = -1; deckOpen = null; state = 'deck'; } },
   { label: 'Shop', x: 80, y: 602, w: 330, h: 50, action: () => { state = 'shop'; } },
@@ -6212,7 +6212,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.06';
+const VERSION = 'v1.07';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -6766,8 +6766,8 @@ function drawControlsScreen() {
   actRow(lx, 260, w, 'Nach links', '', 'left');
   actRow(lx, 314, w, 'Zurück', 'nur innerhalb des Bildes', 'down');
   actRow(lx, 368, w, 'Nach rechts', '', 'right');
-  actRow(lx, 422, w, 'Fähigkeit 1', 'zuerst gewählte Fähigkeitskarte', 'abil1');
-  actRow(lx, 476, w, 'Fähigkeit 2', 'zweite gewählte Fähigkeitskarte', 'abil2');
+  actRow(lx, 422, w, 'Fähigkeit 1', 'zuerst gewählte Aktiv-Karte', 'abil1');
+  actRow(lx, 476, w, 'Fähigkeit 2', 'zweite gewählte Aktiv-Karte', 'abil2');
   secHead('Kampf und Welt', rx, 190, w);
   actRow(rx, 206, w, 'Schießen', '', null, { mouse: 'l', fixed: true });
   actRow(rx, 260, w, 'Fokus', 'ruhiger zielen, langsamer laufen', null, { mouse: 'r', fixed: true });
@@ -6974,7 +6974,7 @@ function drawDeadScreen() {
   else text('Weg + Punkte der Gefallenen', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
   { const pts = skillPointsFree(), up = G.lvAfter > G.lvBefore;
     text('+ ' + (G.xpGain || 0).toLocaleString('de-DE') + ' EP  ·  Stufe ' + G.lvAfter + (up ? '  (neu!)' : '') + (G.lvAfter >= levelCap() ? '  · Stufengrenze erreicht' : '') + (pts > 0 ? '  ·  ' + pts + (pts === 1 ? ' Punkt offen' : ' Punkte offen') : ''), 640, 414, 17, pts > 0 || up ? '#4fd08a' : '#8ee8ff', 'center', F_TEXT, 'bold');
-    if (pts > 0) uiButton(1010, 394, 220, 36, 'Zu den Fähigkeiten', () => { fbEl.name.blur(); openSkills('dead'); }, { size: 14 }); }
+    if (pts > 0) uiButton(1010, 394, 220, 36, 'Zu den Talenten', () => { fbEl.name.blur(); openSkills('dead'); }, { size: 14 }); }
   if (SCORES_URL && (CHEAT || G.cheated)) text('Testmodus: kein Eintrag in die Rangliste', 640, 470, 17, '#8a9aa0', 'center', F_TEXT, 'italic');
   if (form) {
     text('Dein Name für die Rangliste', 640, 446, 18, '#f0e6c8', 'center', F_TEXT);
@@ -7181,7 +7181,7 @@ function drawIntroScreen() {
   drawMenu(); overlay(0.82);
   const X = 100, Y = 40, Wd = 1080, Ht = 640, P = introPage;
   windowFrame(X, Y, Wd, Ht);
-  const kick = ['WILLKOMMEN', 'DER LAUF', 'DER BILDSCHIRM', 'KARTEN UND MONDSILBER', 'KARTEN GENAUER'][P], title = ['Left Behind', 'So funktioniert ein Lauf', 'Das ist dein Spielfeld', 'Wie du stärker wirst', 'Werte, Schmiede und Fähigkeiten'][P];
+  const kick = ['WILLKOMMEN', 'DER LAUF', 'DER BILDSCHIRM', 'KARTEN UND MONDSILBER', 'KARTEN GENAUER'][P], title = ['Left Behind', 'So funktioniert ein Lauf', 'Das ist dein Spielfeld', 'Wie du stärker wirst', 'Werte, Schmiede und Aktiv-Karten'][P];
   kicker(kick, X + 44, Y + 46); titleText(title, X + 44, Y + 94, P === 2 ? 38 : 42, 'left');
   if (P === 0) {
     let y = Y + 150;
@@ -7240,7 +7240,7 @@ function drawIntroScreen() {
     const cols = [
       { ic: 'target', c: '#f0e6c8', ic2: '#f2c14e', t: '1 · Werte und Tiers', d: 'Jede Karte hat eigene, zufällig gewürfelte Werte. Das Tier (T1 bis T5) zeigt, wie gut ein Wert ausgefallen ist. T5 ist das Beste. Bei einem roten Nachteil ist T5 der kleinste Nachteil. Fahre über einen Wert, um die Spanne zu sehen.' },
       { ic: 'blast', c: '#f2c14e', ic2: '#f2c14e', t: '2 · Die Schmiede', d: 'In der Schmiede verbrauchst du eine Karte, um die Werte einer anderen neu zu würfeln. Beide brauchen mindestens einen gleichen Stat. Der neue Wurf kann auch schlechter ausfallen.' },
-      { ic: 'wind', c: '#8ee8ff', ic2: '#8ee8ff', t: '3 · Fähigkeiten', d: 'Fähigkeitskarten legst du auf zwei Tasten (' + keyLabel(bind('abil1')) + ' und ' + keyLabel(bind('abil2')) + '), die zuerst gewählte zuerst. Danach kommen keine weiteren Fähigkeiten mehr zur Wahl. Manche laden über Meter auf, nicht über Zeit.' }];
+      { ic: 'wind', c: '#8ee8ff', ic2: '#8ee8ff', t: '3 · Aktiv-Karten', d: 'Karten der Art „Aktiv“ legst du auf zwei Tasten (' + keyLabel(bind('abil1')) + ' und ' + keyLabel(bind('abil2')) + '), die zuerst gewählte zuerst. Danach kommen keine weiteren Aktiv-Karten mehr zur Wahl. Manche laden über Meter auf, nicht über Zeit.' }];
     cols.forEach((c, i) => {
       const x = X + 36 + i * 344, y = Y + 128;
       rr(x, y, 320, 370, 14); ctx.fillStyle = '#0c1510'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
@@ -7294,7 +7294,7 @@ addEventListener('keydown', e => {
     return;
   }
   if (state === 'forge') { if (e.code === 'Escape') { if (forgeRes) forgeRes = null; else state = 'menu'; } return; }
-  if (state === 'recycle') { if (e.code === 'Escape') state = 'book'; if (e.code === 'ArrowRight') recyclePage++; if (e.code === 'ArrowLeft') recyclePage--; return; }
+  if (state === 'recycle') { if (e.code === 'Escape') openForge(); if (e.code === 'ArrowRight') recyclePage++; if (e.code === 'ArrowLeft') recyclePage--; return; }
   if (state === 'open' && packOpen && packOpen.phase === 'tear' && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { packOpen.tear = 1; return; }
   if (state === 'open') { if (e.code === 'Escape' && packOpen && packOpen.cards.every(it => it.t)) { state = 'shop'; packOpen = null; } return; }
   if (state === 'book') {
