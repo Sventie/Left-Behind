@@ -5758,7 +5758,7 @@ function forgeShared(t, m) {
   const ids = new Set(m.stats.map(st => statId(m, st)));
   return t.stats.filter(st => ids.has(statId(t, st)));
 }
-function openForge() { forgeT = forgeM = forgeRes = null; forgeGhostFor = null; forgePage = 0; armedAct = null; for (const c of SAVE.cards) SAVE.seen[c.id] = true; persist(); state = 'forge'; }
+function openForge() { forgeT = forgeM = forgeRes = null; forgeGhostFor = null; forgePage = 0; armedAct = null; for (const c of SAVE.cards) if (usable(c)) SAVE.seen[c.id] = true; persist(); state = 'forge'; }
 function forgeClick(c) {
   if (c === forgeT) { forgeT = forgeM = null; sfx('empty_click'); return; }
   if (c === forgeM) { forgeM = null; sfx('empty_click'); return; }
@@ -5833,7 +5833,7 @@ function drawForgeScreen() {
   // Sammlung rechts
   const kinds = [['Alle', 'all', 70], ['Werte', 'Werte', 86], ['Effekt', 'Effekt', 86], ['Aktiv', 'Aktiv', 86]];
   kinds.reduce((x, [l, id, w]) => { chip(x, 108, w, l, forgeFilter === id, () => { forgeFilter = id; forgePage = 0; }); return x + w + 8; }, 548);
-  let list = SAVE.cards.filter(c => forgeFilter === 'all' || c.kind === forgeFilter);
+  let list = SAVE.cards.filter(c => usable(c) && (forgeFilter === 'all' || c.kind === forgeFilter));
   if (forgeT) {   // mit Zielkarte: nur mögliche Rohstoffe. Besitzt du sie, normal; kennst du sie nur, ausgegraut. Alles andere fehlt.
     list = list.filter(c => c !== forgeT && (c === forgeM || forgeShared(forgeT, c).length));
     if (forgeGhostFor !== forgeT) {
@@ -6221,7 +6221,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.11';
+const VERSION = 'v1.12';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -6444,11 +6444,10 @@ function drawTestPanel() {
   chip(c1, top + 14, 78, 'Karten', testTab === 'card', () => { testTab = 'card'; testScroll.l = 0; });
   chip(c1 + 84, top + 14, 78, 'Tränke', testTab === 'buff', () => { testTab = 'buff'; testScroll.l = 0; });
   chip(c1 + 168, top + 14, 126, 'Eigenschaften', testTab === 'mods', () => { testTab = 'mods'; testScroll.l = 0; }, '#8ee8ff');
-  chip(c1 + 300, top + 14, 130, testShowAll ? 'Alle Streiter' : 'Nur Streiter', testShowAll, () => { testShowAll = !testShowAll; testScroll.l = 0; });
   text('Tier der Stats:', c1, top + 72, 14, '#c8d4de', 'left', F_TEXT);
   [['Zufall', 0, 76], ['T1', 1, 44], ['T2', 2, 44], ['T3', 3, 44], ['T4', 4, 44], ['T5', 5, 44]].reduce((x, [l, v, w]) => { chip(x, top + 54, w, l, testTier === v, () => { testTier = v; }, v ? TIER_COL[v] : undefined); return x + w + 6; }, c1 + 110);
   const cls = G.cls, wt = WEAPONS[cls.weapon].type;
-  let list = (testTab === 'card' ? CARDS : BUFFS).filter(c => testShowAll || !c.types || c.types.includes(wt));
+  let list = (testTab === 'card' ? CARDS : BUFFS).filter(c => !c.types || c.types.includes(wt));   // nur, was der Waldläufer nutzen kann
   if (testTab === 'mods') list = TEST_MODS.map(m => Object.assign(Object.create(m), { name: m.n, stat: m.d, rarity: G.testMods && G.testMods[m.id] ? 'selten' : 'gewoehnlich', icon: 'quiver', kind: 'Eigenschaft' }));
   else list = list.slice().sort((a, b) => (CATS.indexOf(a.kind) - CATS.indexOf(b.kind)) || rarIdx(a) - rarIdx(b) || (testTab === 'card' ? cardOrder(a.id) - cardOrder(b.id) : 0));
   const lt = top + 96, lh = bot - lt, rowH = 40;
