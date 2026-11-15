@@ -6086,15 +6086,16 @@ function drawSkillScreen() {
 const stars = Array.from({ length: 120 }, () => [Math.random() * FRAME_W, Math.random() * 420, Math.random() * 1.4 + 0.4, Math.random() * 0.6 + 0.3]);
 const pines = Array.from({ length: 40 }, (_, i) => [i * 34 - 10, 540 + Math.random() * 60, 70 + Math.random() * 70]);
 const menuButtons = [
-  { label: 'Neuer Durchlauf', main: true, x: 80, y: 386, w: 330, h: 50, action: () => openAreas() },
-  { label: 'Talente', skills: true, x: 80, y: 440, w: 330, h: 50, action: () => openSkills('menu') },
-  { label: 'Kartenbuch', x: 80, y: 494, w: 330, h: 50, action: () => { bookSpread = 0; state = 'book'; } },
-  { label: 'Deck', x: 80, y: 548, w: 330, h: 50, action: () => { deckClass = ACTIVE_CI; deckHoverIdx = -1; deckOpen = null; state = 'deck'; } },
-  { label: 'Shop', x: 80, y: 602, w: 330, h: 50, action: () => { state = 'shop'; } },
-  { label: 'Optionen', small: true, x: 80, y: 664, w: 104, h: 34, action: () => openOptions('menu') },
-  { label: 'Feedback', small: true, x: 193, y: 664, w: 104, h: 34, action: () => openFeedback('menu') },
-  { label: 'Spielhilfe', small: true, x: 306, y: 664, w: 104, h: 34, action: () => openIntro() },
-  { label: 'Testlevel', small: true, x: 428, y: 664, w: 112, h: 34, action: () => startTest() }
+  { label: 'Neuer Durchlauf', main: true, x: 80, y: 384, w: 410, h: 52, action: () => openAreas() },
+  { label: 'Kartenbuch', x: 80, y: 446, w: 200, h: 46, action: () => { bookSpread = 0; state = 'book'; } },
+  { label: 'Deck', x: 290, y: 446, w: 200, h: 46, action: () => { deckClass = ACTIVE_CI; deckHoverIdx = -1; deckOpen = null; state = 'deck'; } },
+  { label: 'Schmiede', x: 80, y: 500, w: 200, h: 46, action: () => openForge() },
+  { label: 'Shop', x: 290, y: 500, w: 200, h: 46, action: () => { state = 'shop'; } },
+  { label: 'Talente', skills: true, x: 80, y: 554, w: 410, h: 46, action: () => openSkills('menu') },
+  { label: 'Optionen', small: true, x: 80, y: 620, w: 104, h: 34, action: () => openOptions('menu') },
+  { label: 'Feedback', small: true, x: 193, y: 620, w: 104, h: 34, action: () => openFeedback('menu') },
+  { label: 'Spielhilfe', small: true, x: 306, y: 620, w: 104, h: 34, action: () => openIntro() },
+  { label: 'Testlevel', small: true, x: 426, y: 620, w: 104, h: 34, action: () => startTest() }
 ];
 function drawMenu() {
   let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
@@ -6151,7 +6152,8 @@ function drawMenu() {
     const ig = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
     if (b.main) { ig.addColorStop(0, '#f6d37a'); ig.addColorStop(1, '#d9a636'); } else { ig.addColorStop(0, '#1e2c22'); ig.addColorStop(1, '#121b15'); }
     notched(b.x + 2, b.y + 2, b.w - 4, b.h - 4, 11); ctx.fillStyle = ig; ctx.fill();
-    text(b.label, b.x + b.w / 2, b.y + b.h / 2 + 7, 19, b.main ? '#1c140c' : (b.action ? '#e8dcbc' : '#7a8a7a'), 'center', F_TITLE);
+    const fs = b.w < 250 ? 17 : b.h < 50 ? 18 : 19;
+    text(b.label, b.x + b.w / 2, b.y + b.h / 2 + fs * 0.36, fs, b.main ? '#1c140c' : (b.action ? '#e8dcbc' : '#7a8a7a'), 'center', F_TITLE);
     if (b.skills) {   // Konto-Level und offene Punkte
       const lv = 'Stufe ' + accLevel(); ctx.font = '13px ' + F_TITLE; const tw = ctx.measureText(lv).width + 18, bx = b.x + b.w - tw - 16;
       rr(bx, b.y + b.h / 2 - 11, tw, 22, 11); ctx.fillStyle = '#f2c14e'; ctx.fill(); text(lv, bx + tw / 2, b.y + b.h / 2 + 4, 13, '#14221a', 'center', F_TITLE);
@@ -6159,9 +6161,7 @@ function drawMenu() {
     }
     if (b.note) text(b.note, b.x + b.w - 22, b.y + 34, 14, '#7a8a7a', 'right', F_TEXT, 'italic');
   });
-  text('Prototyp ' + VERSION + ' · ' + keyLabel(bind('music')) + ' Musik · ' + keyLabel(bind('sfx')) + ' Effekte', 80, 708, 16, '#b8c4d0', 'left', F_TEXT);
-  text('Klick oder Enter zum Starten', 440, 418, 17, '#f2c14e', 'left', F_TEXT, 'italic');
-  if (skillPointsFree() > 0) text(skillPointsFree() + (skillPointsFree() === 1 ? ' Punkt' : ' Punkte') + ' zu vergeben', 440, 472, 15, '#ff9a8a', 'left', F_TEXT, 'italic');
+  text('Prototyp ' + VERSION + ' · ' + keyLabel(bind('music')) + ' Musik · ' + keyLabel(bind('sfx')) + ' Effekte', 80, 704, 16, '#b8c4d0', 'left', F_TEXT);
   drawBoard();
 }
 
@@ -6214,7 +6214,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.08';
+const VERSION = 'v1.09';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
