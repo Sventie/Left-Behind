@@ -226,6 +226,63 @@ const CARDS = [
   { id: 'durch',    name: 'Durchdringender Funke', kind: 'Zauber', rarity: 'selten',     icon: 'blast',   max: 2, types: ['spell'], stat: 'Durchschlag +1',      text: 'Der Zauber explodiert und fliegt weiter.',       flavor: '„Er hört nicht auf.“',                 apply: S => { S.pierce += 1; } }
 ];
 const CARD_BY_ID = Object.fromEntries(CARDS.map(c => [c.id, c]));
+
+// ---------- Würfelwerte: jeder Stat einer Karte hat ein Tier (T1 bis T5) ----------
+const TIER_ODDS = [10, 22, 40, 23, 5];   // Wahrscheinlichkeit je Tier in Prozent
+const TIER_COL = { 1: '#8a7a60', 2: '#6f7f5a', 3: '#3f7a4a', 4: '#2a6aa0', 5: '#b9801a' };
+const tierStep = base => base <= 25 ? 1 : base <= 50 ? 2 : base <= 80 ? 4 : 6;   // Schrittgröße je Tier („Staffel B“)
+const tierValue = (st, t) => Math.round((st.base + (st.bad ? -1 : 1) * (t - 3) * tierStep(st.base)) * 10) / 10;
+function rollTier() { let r = Math.random() * 100, i = 0; for (; i < 4; i++) { r -= TIER_ODDS[i]; if (r < 0) break; } return i + 1; }
+const numText = v => String(v).replace('.', ',');
+const valueText = (st, v) => st.pre + numText(v) + st.u;
+const statLabel = (st, v) => st.lab ? st.lab(numText(v)) : valueText(st, v) + ' ' + st.n;
+function defValues(def, t) { const o = {}; for (const st of def.stats || []) o[st.k] = tierValue(st, t && t[st.k] ? t[st.k] : 3); return o; }
+// Macht aus einer Karte oder einem Trank eine mit würfelbaren Stats: p.stats (Name, Basiswert, Einheit), p.apply(S, werte)
+function setupParam(def, p) {
+  def.stats = p.stats; def.applyV = p.apply; if (p.instant) def.instantV = p.instant;
+  def.apply = S => p.apply(S, defValues(def));
+  if (p.instant) def.instant = pl => p.instant(pl, defValues(def));
+  def.stat = def.stats.map(st => statLabel(st, st.base)).join(', ');
+}
+// Eine Karte im Besitz oder im Lauf: { id, u (eindeutige Nummer), t (Tier je Stat) }. Der Prototyp ist die Kartenvorlage, so lassen sich alle Felder wie bisher lesen.
+let uidTmp = 1e9;
+function hydrate(o, def) {
+  Object.setPrototypeOf(o, def);
+  if (def.stats) {
+    Object.defineProperties(o, {
+      vals: { get() { return defValues(def, this.t); } },
+      stat: { get() { const v = this.vals; return def.stats.map(st => statLabel(st, v[st.k])).join(', '); } },
+      apply: { value(S) { def.applyV(S, this.vals); } }
+    });
+    if (def.instantV) Object.defineProperty(o, 'instant', { value(pl) { def.instantV(pl, this.vals); } });
+  }
+  return o;
+}
+function mkInst(def, t, u) {
+  const o = { id: def.id, u: u || ++uidTmp, t: Object.assign({}, t || {}) };
+  for (const st of def.stats || []) if (!(o.t[st.k] >= 1 && o.t[st.k] <= 5)) o.t[st.k] = 3;
+  return hydrate(o, def);
+}
+function rollInst(def, u) { const t = {}; for (const st of def.stats || []) t[st.k] = rollTier(); return mkInst(def, t, u); }
+const tierSum = o => Object.values(o.t || {}).reduce((a, b) => a + b, 0);
+const CARD_PARAM = {
+  stiefel:  { stats: [{ k: 'v', n: 'Lauftempo', base: 10, pre: '+', u: ' %' }], apply: (S, v) => { S.moveSpeed *= 1 + v.v / 100; } },
+  schild:   { stats: [{ k: 'v', n: 'Leben', base: 30, pre: '+', u: '' }], apply: (S, v) => { S.maxHp += v.v; } },
+  irrlicht: { stats: [{ k: 'v', n: 'Sichtweite', base: 25, pre: '+', u: ' %' }], apply: (S, v) => { S.rangeMul *= 1 + v.v / 100; } },
+  falke:    { stats: [{ k: 'v', n: 'Sichtkegel', base: 25, pre: '+', u: '°' }], apply: (S, v) => { S.fov += v.v; } },
+  hand:     { stats: [{ k: 'v', n: 'Streuung', base: 15, pre: '−', u: ' %' }], apply: (S, v) => { S.spreadMul *= 1 - v.v / 100; } },
+  spanner:  { stats: [{ k: 'v', n: 'Spannzeit', base: 25, pre: '−', u: ' %' }], apply: (S, v) => { S.reloadMul *= 1 - v.v / 100; } },
+  bolzen:   { stats: [{ k: 'v', n: 'Schaden', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
+  klinge:   { stats: [{ k: 'v', n: 'Schaden', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
+  lang:     { stats: [{ k: 'v', n: 'Reichweite', base: 20, pre: '+', u: ' %' }], apply: (S, v) => { S.reachMul *= 1 + v.v / 100; } },
+  breit:    { stats: [{ k: 'v', n: 'Schwungbogen', base: 30, pre: '+', u: '°' }], apply: (S, v) => { S.arcAdd += v.v; } },
+  wall:     { stats: [{ k: 'v', n: 'Blockwinkel', base: 30, pre: '+', u: '°' }], apply: (S, v) => { S.blockArc += v.v / 2; } },
+  macht:    { stats: [{ k: 'v', n: 'Schaden', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
+  quell:    { stats: [{ k: 'v', n: 'Manaregeneration', base: 25, pre: '+', u: ' %' }], apply: (S, v) => { S.manaRegenMul *= 1 + v.v / 100; } },
+  brunnen:  { stats: [{ k: 'v', n: 'Mana', base: 25, pre: '+', u: '' }], apply: (S, v) => { S.manaMax += v.v; } },
+  funke:    { stats: [{ k: 'v', n: 'Flächenradius', base: 30, pre: '+', u: ' %' }], apply: (S, v) => { S.splashMul *= 1 + v.v / 100; } }
+};
+for (const id in CARD_PARAM) setupParam(CARD_BY_ID[id], CARD_PARAM[id]);
 const ICONS = {
   boot:   'M8 3h6v8c0 1.2.8 1.8 2 2.2l4 1.3c.6.2 1 .8 1 1.4V19a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V3zM6 8h8M6 16.5h14',
   shield: 'M12 2.5l7.5 2.8v6.4c0 4.4-3.2 7.8-7.5 9.8-4.3-2-7.5-5.4-7.5-9.8V5.3zM12 6v12M7 10.5h10',
@@ -278,22 +335,29 @@ const compat = (card, cls) => !card.types || card.types.includes(WEAPONS[cls.wea
 const copyLimit = card => card.limit !== undefined ? card.limit : DECK_LIMIT[card.rarity];
 const cardOrder = id => CARDS.findIndex(c => c.id === id);
 
-function defaultDeck(cls, owned) {
-  // zuerst Karten, die nur zu dieser Waffe passen, dann allgemeine
-  // Startdeck: die Startkarten, soweit der Streiter sie besitzt und nutzen kann
+function defaultDeck(cls, cards) {
+  // Startdeck: die Startkarten, soweit der Streiter sie besitzt und nutzen kann (als Kartennummern)
   const deck = [];
   for (const id in STARTER) {
     const c = CARD_BY_ID[id];
-    if (c && compat(c, cls)) for (let i = 0; i < Math.min(STARTER[id], copyLimit(c), owned[id] || 0); i++) deck.push(id);
+    if (c && compat(c, cls)) cards.filter(o => o.id === id).slice(0, Math.min(STARTER[id], copyLimit(c))).forEach(o => deck.push(o));
   }
-  return deck.sort((a, b) => cardOrder(a) - cardOrder(b));
+  return deck.sort((a, b) => cardOrder(a.id) - cardOrder(b.id)).map(o => o.u);
 }
 function loadSave() {
   let sv = null;
   try { sv = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) {}
   if (!sv || typeof sv !== 'object') sv = {};
-  sv.owned = sv.owned || {};
-  for (const c of CARDS) if (sv.owned[c.id] === undefined) sv.owned[c.id] = STARTER[c.id] || 0;
+  sv.uidN = Number(sv.uidN) || 0;
+  if (!Array.isArray(sv.cards)) {   // älterer Spielstand: Karten waren nur gezählt, alle Werte bekommen Tier 3
+    sv.cards = [];
+    for (const c of CARDS) {
+      const n = sv.owned && sv.owned[c.id] !== undefined ? sv.owned[c.id] : (STARTER[c.id] || 0);
+      for (let i = 0; i < n; i++) sv.cards.push({ id: c.id, u: ++sv.uidN, t: {} });
+    }
+  }
+  delete sv.owned;
+  sv.cards = sv.cards.filter(o => o && CARD_BY_ID[o.id]).map(o => { if (!(o.u > 0)) o.u = ++sv.uidN; sv.uidN = Math.max(sv.uidN, o.u); return mkInst(CARD_BY_ID[o.id], o.t, o.u); });
   if (typeof sv.silver !== 'number') sv.silver = START_SILVER;
   sv.maxStage = sv.maxStage || 1;
   sv.bossReached = sv.bossReached || {};   // je Gebiet: in einem echten Lauf bis zum Boss gekommen (schaltet „Nur Boss“ frei)
@@ -305,37 +369,45 @@ function loadSave() {
   if (!sv.records.wald) { let b0 = 0; try { b0 = Number(localStorage.getItem('left-behind-best') || 0); } catch (e) {} if (b0 > 0) sv.records.wald = { dist: b0, points: 0 }; }
   sv.seen = sv.seen || {};   // beim Händler gesehene Karten: im Kartenbuch sichtbar, aber nicht im Besitz
   if (CHEAT) {
-    for (const c of CARDS) sv.owned[c.id] = Math.max(sv.owned[c.id], CHEAT_COUNT[c.rarity]);
+    for (const c of CARDS) { let n = sv.cards.filter(o => o.id === c.id).length; while (n++ < CHEAT_COUNT[c.rarity]) sv.cards.push(rollInst(c, ++sv.uidN)); }
     sv.silver = Math.max(sv.silver, 5000); sv.maxStage = Math.max(sv.maxStage, 5); sv.bossDown = true; for (const a of AREAS) sv.bossDownBy[a.id] = true;
   }
   sv.decks = sv.decks || {};
+  const byU = new Map(sv.cards.map(o => [o.u, o]));
   for (const cls of CLASSES) {
     let d = sv.decks[cls.id];
-    if (!Array.isArray(d)) d = defaultDeck(cls, sv.owned);
-    const seen = {};   // Limits einhalten (auch bei älteren Spielständen)
-    sv.decks[cls.id] = d.filter(id => {
-      const c = CARD_BY_ID[id];
-      if (!c || !compat(c, cls)) return false;
-      seen[id] = (seen[id] || 0) + 1;
-      return seen[id] <= Math.min(copyLimit(c), sv.owned[id] || 0);
-    }).slice(0, DECK_SIZE);
+    if (!Array.isArray(d)) d = defaultDeck(cls, sv.cards);
+    const out = [], taken = new Set(), cnt = {};   // Limits einhalten (auch bei älteren Spielständen, dort standen Kartennamen im Deck)
+    for (let x of d) {
+      if (typeof x === 'string') x = (sv.cards.find(o => o.id === x && !taken.has(o.u)) || {}).u;
+      const o = byU.get(x);
+      if (!o || taken.has(x) || !compat(o, cls)) continue;
+      cnt[o.id] = (cnt[o.id] || 0) + 1;
+      if (cnt[o.id] > copyLimit(o)) continue;
+      taken.add(x); out.push(x);
+    }
+    sv.decks[cls.id] = out.slice(0, DECK_SIZE);
   }
+  // Wie viele Karten einer Sorte du besitzt (wird aus den einzelnen Karten gezählt und nicht gespeichert)
+  Object.defineProperty(sv, 'owned', { get() { const m = {}; for (const o of this.cards) m[o.id] = (m[o.id] || 0) + 1; return m; } });
   return sv;
 }
 let SAVE = loadSave();
 function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)); } catch (e) {} }
-const deckOf = cls => SAVE.decks[cls.id];
-const inDeck = (cls, id) => deckOf(cls).filter(x => x === id).length;
+const cardByU = u => SAVE.cards.find(o => o.u === u);
+const deckOf = cls => SAVE.decks[cls.id].map(cardByU).filter(Boolean);   // die Karten im Deck als Liste
+const inDeck = (cls, id) => deckOf(cls).filter(x => x.id === id).length;
 function canAddCard(cls, card) {
-  return compat(card, cls) && deckOf(cls).length < DECK_SIZE && inDeck(cls, card.id) < Math.min(copyLimit(card), SAVE.owned[card.id] || 0);
+  return compat(card, cls) && SAVE.decks[cls.id].length < DECK_SIZE && !SAVE.decks[cls.id].includes(card.u) && inDeck(cls, card.id) < copyLimit(card);
 }
 function addToDeck(cls, card) {
   if (!canAddCard(cls, card)) return false;
-  const d = deckOf(cls); d.push(card.id); d.sort((a, b) => cardOrder(a) - cardOrder(b));
+  const d = SAVE.decks[cls.id]; d.push(card.u);
+  d.sort((a, b) => cardOrder(cardByU(a).id) - cardOrder(cardByU(b).id) || a - b);
   persist(); return true;
 }
-function removeFromDeck(cls, id) {
-  const d = deckOf(cls), i = d.lastIndexOf(id);
+function removeFromDeck(cls, card) {
+  const d = SAVE.decks[cls.id], i = d.indexOf(card.u);
   if (i >= 0) { d.splice(i, 1); persist(); }
 }
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
@@ -669,8 +741,8 @@ const isMeditating = () => state === 'play' && wtype() === 'spell' && mouse.rdow
 function recomputeStats() {
   S = Object.assign({}, BASE, G.cls.base);
   applySkills(S);
-  for (const id of G.cards) CARD_BY_ID[id].apply(S);
-  for (const id of G.buffs || []) BUFF_BY_ID[id].apply(S);
+  for (const c of G.cards) c.apply(S);
+  for (const b of G.buffs || []) b.apply(S);
 }
 function stageLength(stage) { return 30 + Math.floor((stage - 1) / 3) * STAGE_STEP; }
 
@@ -944,6 +1016,25 @@ const BUFFS = [
   { id: 'verlorene',   name: 'Elixier der Verlorenen', kind: 'Trank', rarity: 'legendaer', icon: 'flask', stat: '+25 % Schaden, +20 % Tempo, +50 Leben', text: 'Alles, was dem Reich einst gehörte, in einem Schluck.', flavor: '„Es wartete auf dich.“', apply: S => { S.dmgMul *= 1.25; S.moveSpeed *= 1.2; S.maxHp += 50; } }
 ];
 const BUFF_BY_ID = Object.fromEntries(BUFFS.map(b => [b.id, b]));
+const BUFF_PARAM = {
+  heiltrank:   { stats: [{ k: 'v', n: 'Heilung', base: 40, pre: '+', u: '', lab: v => '+' + v + ' Leben sofort' }], apply: () => {}, instant: (p, v) => { p.hp = Math.min(S.maxHp, p.hp + v.v); } },
+  kraft:       { stats: [{ k: 'v', n: 'Schaden', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
+  eilsalbe:    { stats: [{ k: 'v', n: 'Lauftempo', base: 12, pre: '+', u: ' %' }], apply: (S, v) => { S.moveSpeed *= 1 + v.v / 100; } },
+  ruhetrank:   { stats: [{ k: 'v', n: 'Streuung', base: 15, pre: '−', u: ' %' }], apply: (S, v) => { S.spreadMul *= 1 - v.v / 100; } },
+  spannoel:    { stats: [{ k: 'v', n: 'Spannzeit', base: 20, pre: '−', u: ' %' }], apply: (S, v) => { S.reloadMul *= 1 - v.v / 100; } },
+  manatrank:   { stats: [{ k: 'v', n: 'Mana', base: 30, pre: '+', u: '', lab: v => '+' + v + ' Mana · sofort voll' }], apply: (S, v) => { S.manaMax += v.v; }, instant: p => { p.mana = S.manaMax; } },
+  klingenoel:  { stats: [{ k: 'v', n: 'Reichweite', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.reachMul *= 1 + v.v / 100; } },
+  falkensalbe: { stats: [{ k: 'v', n: 'Sichtkegel', base: 20, pre: '+', u: '°' }], apply: (S, v) => { S.fov += v.v; } },
+  staerkung:   { stats: [{ k: 'v', n: 'Leben', base: 30, pre: '+', u: '' }], apply: (S, v) => { S.maxHp += v.v; } },
+  nachtsicht:  { stats: [{ k: 'v', n: 'Sichtweite', base: 25, pre: '+', u: ' %' }], apply: (S, v) => { S.rangeMul *= 1 + v.v / 100; } },
+  schildoel:   { stats: [{ k: 'v', n: 'Blockwinkel', base: 30, pre: '+', u: '°' }], apply: (S, v) => { S.blockArc += v.v / 2; } },
+  zauberoel:   { stats: [{ k: 'v', n: 'Flächenradius', base: 25, pre: '+', u: ' %' }], apply: (S, v) => { S.splashMul *= 1 + v.v / 100; } },
+  drachenblut: { stats: [{ k: 'v', n: 'Schaden', base: 35, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
+  windtrank:   { stats: [{ k: 'v', n: 'Lauftempo', base: 25, pre: '+', u: ' %' }], apply: (S, v) => { S.moveSpeed *= 1 + v.v / 100; } },
+  mondelixier: { stats: [{ k: 'r', n: 'Sichtweite', base: 40, pre: '+', u: ' %' }, { k: 'f', n: 'Sichtkegel', base: 15, pre: '+', u: '°' }], apply: (S, v) => { S.rangeMul *= 1 + v.r / 100; S.fov += v.f; } },
+  verlorene:   { stats: [{ k: 'd', n: 'Schaden', base: 25, pre: '+', u: ' %' }, { k: 't', n: 'Lauftempo', base: 20, pre: '+', u: ' %' }, { k: 'l', n: 'Leben', base: 50, pre: '+', u: '' }], apply: (S, v) => { S.dmgMul *= 1 + v.d / 100; S.moveSpeed *= 1 + v.t / 100; S.maxHp += v.l; } }
+};
+for (const id in BUFF_PARAM) setupParam(BUFF_BY_ID[id], BUFF_PARAM[id]);
 const itemOf = id => CARD_BY_ID[id] || BUFF_BY_ID[id];
 
 // Händler werden mit der Entfernung besser: Wahrscheinlichkeiten wie bei den Packs
@@ -975,7 +1066,7 @@ function makeMerchantOffers() {
       const it = pickByRarity(pool, rollRarityKey(odds), used);
       if (!it) break;
       used.push(it);
-      out.push({ kind, item: it, price: Math.round(MERCHANT_PRICE[it.rarity] * (kind === 'buff' ? 0.6 : 1) * S.priceMul), sold: false });
+      out.push({ kind, item: rollInst(it), price: Math.round(MERCHANT_PRICE[it.rarity] * (kind === 'buff' ? 0.6 : 1) * S.priceMul), sold: false });
     }
     if (out.length) { const d = out[Math.floor(Math.random() * out.length)]; d.old = d.price; d.price = Math.round(d.price * MERCHANT_DISCOUNT); }
     return out;
@@ -1008,7 +1099,7 @@ function buyOffer(o) {
   sfx('coin');
   // Karten und Tränke vom Händler gelten nur für diesen Lauf und sind sofort aktiv; in deinen Besitz kommen Karten nur über Kartenpacks
   const p = G.player, oldMag = S.magSize, oldHp = S.maxHp;
-  (o.kind === 'card' ? G.cards : G.buffs).push(o.item.id); recomputeStats();
+  (o.kind === 'card' ? G.cards : G.buffs).push(o.item); recomputeStats();
   if (S.magSize > oldMag) p.mag += S.magSize - oldMag;
   if (S.maxHp > oldHp) p.hp += S.maxHp - oldHp;
   if (o.kind === 'buff' && o.item.instant) o.item.instant(p);
@@ -1363,13 +1454,14 @@ function say(t) { G.msg = t; G.msgT = 2.2; }
 // Die Auswahl kommt aus dem Kartenbuch des Streiters: mehr Kopien = höhere Chance
 function rollOffers(exclude) {   // exclude: bisher gesehene Karten (beim Neuwurf)
   const n = 3 + S.extraChoices, ex = (exclude || []).map(c => c.id);
-  const ids = [...new Set(G.library)].filter(id => !ex.includes(id));
+  const ids = [...new Set(G.library.map(c => c.id))].filter(id => !ex.includes(id));
   const out = [];
   while (out.length < n && ids.length) {
-    const weights = ids.map(id => G.library.filter(x => x === id).length);
+    const weights = ids.map(id => G.library.filter(x => x.id === id).length);   // mehr Kopien = höhere Chance
     let r = Math.random() * weights.reduce((a, b) => a + b, 0), idx = 0;
     for (; idx < ids.length; idx++) { r -= weights[idx]; if (r <= 0) break; }
-    out.push(CARD_BY_ID[ids.splice(Math.min(idx, ids.length - 1), 1)[0]]);
+    const id = ids.splice(Math.min(idx, ids.length - 1), 1)[0], copies = G.library.filter(x => x.id === id);
+    out.push(copies[Math.floor(Math.random() * copies.length)]);   // eine der Kopien, jede mit eigenen Werten
   }
   for (const c of (exclude || [])) if (out.length < n && !out.includes(c)) out.push(c);   // zu wenig Neues: alte Karten füllen auf
   return out;
@@ -1397,8 +1489,8 @@ function choosePick(i) {
   const card = G.offers[i];
   if (!card) return;
   const p = G.player, oldMag = S.magSize, oldHp = S.maxHp;
-  G.cards.push(card.id);
-  const li = G.library.indexOf(card.id); if (li >= 0) G.library.splice(li, 1);
+  G.cards.push(card);
+  const li = G.library.indexOf(card); if (li >= 0) G.library.splice(li, 1);
   recomputeStats();
   if (S.magSize > oldMag) p.mag += S.magSize - oldMag;
   if (S.maxHp > oldHp) p.hp += S.maxHp - oldHp;
@@ -1572,7 +1664,7 @@ function startBossOnly(ci, cardIds, area) {
   generate();
   mouse.down = false; mouse.rdown = false; state = 'play'; startCountdown();
 }
-function bossDeck() { return deckOf(CLASSES[bossCls]).slice(); }
+function bossDeck() { return deckOf(CLASSES[bossCls]); }
 function drawBossCardsScreen() {
   uiBtns = [];
   screenBackdrop();
@@ -1582,8 +1674,8 @@ function drawBossCardsScreen() {
   text(cls.name + ' · Boss: ' + a.boss + '. Du startest direkt vor dem Boss, nur mit diesen Karten aus deinem Deck.', 40, 134, 18, '#c8d4de', 'left', F_TEXT, 'italic');
   const k = 0.62, cw = 220 * k, ch = 320 * k, gap = 16, per = 6, x0 = (FRAME_W - (per * cw + (per - 1) * gap)) / 2, y0 = 168;
   let hovered = null;
-  deck.forEach((id, i) => {
-    const c = CARD_BY_ID[id], x = x0 + (i % per) * (cw + gap), y = y0 + Math.floor(i / per) * (ch + 18), on = bossSel.includes(i), hov = inside(x, y, cw, ch);
+  deck.forEach((c, i) => {
+    const x = x0 + (i % per) * (cw + gap), y = y0 + Math.floor(i / per) * (ch + 18), on = bossSel.includes(i), hov = inside(x, y, cw, ch);
     if (hov) hovered = c;
     ctx.globalAlpha = on || bossSel.length < need ? 1 : 0.45;
     drawCard(c, x, y, k, hov || on);
@@ -3669,6 +3761,7 @@ function drawFogInto() {
 // ---------- Zeichnen: Karten ----------
 function drawCard(c, x, y, k, hover) {
   const R = RARITY[c.rarity];
+  let tipRow = null;   // Stat, über dem die Maus steht (zeigt die Spanne T1 bis T5)
   ctx.save(); ctx.translate(x, y); ctx.scale(k, k);
   ctx.shadowColor = hover ? R.c : 'rgba(0,0,0,.65)';
   ctx.shadowBlur = hover ? 34 : 18; ctx.shadowOffsetY = hover ? 0 : 8;
@@ -3695,16 +3788,44 @@ function drawCard(c, x, y, k, hover) {
   });
   rr(40, 156, 140, 20, 3); ctx.fillStyle = R.c; ctx.fill(); ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 1; ctx.stroke();
   text(c.kind.toUpperCase(), 110, 171, 12, '#1c140c', 'center', F_TEXT, 'bold');
-  const sl = wrap(c.stat, 190, '14px ' + F_TITLE);
-  sl.slice(0, 2).forEach((l, i) => text(l, 110, 198 + i * 15, 14, R.ink, 'center', F_TITLE));
-  const off = sl.length > 1 ? 15 : 0;
-  const lines = wrap(c.text, 186, '500 15px ' + F_TEXT);
-  lines.slice(0, 4).forEach((l, i) => text(l, 110, 220 + off + i * 16, 15, '#2a1f14', 'center', F_TEXT, '500'));
-  const fl = wrap(c.flavor, 186, 'italic 13px ' + F_TEXT);
-  fl.slice(0, 2).forEach((l, i) => text(l, 110, 282 - (Math.min(fl.length, 2) - 1) * 14 + i * 14, 13, '#5a4630', 'center', F_TEXT, 'italic'));
+  if (c.u !== undefined && c.stats) {   // eine einzelne Karte mit gewürfelten Werten: Text, darunter die Stats mit Tier
+    const lines = wrap(c.text, 186, '500 15px ' + F_TEXT).slice(0, 3);
+    lines.forEach((l, i) => text(l, 110, 196 + i * 16, 15, '#2a1f14', 'center', F_TEXT, '500'));
+    const ry0 = 196 + lines.length * 16 + 14, vals = c.vals;
+    ctx.save(); ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(18, ry0 - 15); ctx.lineTo(202, ry0 - 15); ctx.stroke(); ctx.restore();
+    const lx = (mouse.fx - x) / k, ly = (mouse.fy - y) / k;
+    c.stats.forEach((st, i) => {
+      const ry = ry0 + i * 18, t = c.t[st.k] || 3;
+      text(st.n, 20, ry, 14, '#3a2a18', 'left', F_TEXT);
+      text(valueText(st, vals[st.k]), 152, ry, 14, st.bad ? '#8a2a30' : '#17703f', 'right', F_TITLE);
+      text('(T' + t + ')', 158, ry, 13, TIER_COL[t], 'left', F_TEXT, 'bold');
+      if (hover && k >= 0.9 && lx >= 14 && lx <= 206 && ly >= ry - 14 && ly <= ry + 5) tipRow = { st, ry, t };
+    });
+    const fl = fit(c.flavor, 186, 'italic 13px ' + F_TEXT);
+    text(fl, 110, 284, 13, '#5a4630', 'center', F_TEXT, 'italic');
+  } else {
+    const sl = wrap(c.stat, 190, '14px ' + F_TITLE);
+    sl.slice(0, 2).forEach((l, i) => text(l, 110, 198 + i * 15, 14, R.ink, 'center', F_TITLE));
+    const off = sl.length > 1 ? 15 : 0;
+    const lines = wrap(c.text, 186, '500 15px ' + F_TEXT);
+    lines.slice(0, 4).forEach((l, i) => text(l, 110, 220 + off + i * 16, 15, '#2a1f14', 'center', F_TEXT, '500'));
+    const fl = wrap(c.flavor, 186, 'italic 13px ' + F_TEXT);
+    fl.slice(0, 2).forEach((l, i) => text(l, 110, 282 - (Math.min(fl.length, 2) - 1) * 14 + i * 14, 13, '#5a4630', 'center', F_TEXT, 'italic'));
+  }
   ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.beginPath(); ctx.moveTo(18, 292); ctx.lineTo(202, 292); ctx.stroke();
   ctx.fillStyle = R.c; ctx.beginPath(); ctx.arc(24, 304, 6, 0, 7); ctx.fill(); ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 2; ctx.stroke();
   text(R.label.toUpperCase(), 36, 308, 12, R.ink, 'left', F_TEXT, 'bold');
+  if (tipRow) {   // Spanne des Stats: T1 bis T5, das eigene Tier ist hervorgehoben
+    const bx = 12, by = Math.min(tipRow.ry + 8, 262), bw = 196, st = tipRow.st, bright = ['#b8a888', '#a8c888', '#7fe0a8', '#6ab0ff', '#f2c14e'];
+    ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 8;
+    rr(bx, by, bw, 48, 6); ctx.fillStyle = '#10170f'; ctx.fill(); ctx.shadowBlur = 0; ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 1.5; ctx.stroke();
+    for (let t = 1; t <= 5; t++) {
+      const cx = bx + 6 + (t - 1) * 37 + 18;
+      if (t === tipRow.t) { rr(cx - 17, by + 4, 34, 40, 4); ctx.fillStyle = 'rgba(242,193,78,.2)'; ctx.fill(); }
+      text('T' + t, cx, by + 18, 11, bright[t - 1], 'center', F_TEXT, 'bold');
+      text(numText(tierValue(st, t)) + st.u.trim(), cx, by + 37, 12, '#f0e6c8', 'center', F_TEXT, t === tipRow.t ? 'bold' : '');
+    }
+  }
   ctx.restore();
 }
 
@@ -3812,10 +3933,10 @@ function drawRails() {
   text('AKTIVE KARTEN', 1094, 76, 12, '#b8c4d0', 'left', F_TITLE);
   text(String(G.cards.length + G.buffs.length), 1270, 76, 13, '#f0e6c8', 'right', F_TITLE);
   const groups = [];
-  for (const id of G.cards.concat(G.buffs)) { const gr = groups.find(x => x.id === id); if (gr) gr.n++; else groups.push({ id, n: 1 }); }
+  for (const it of G.cards.concat(G.buffs)) { const gr = groups.find(x => x.id === it.id); if (gr) gr.n++; else groups.push({ id: it.id, n: 1, it }); }
   const chipH = 56, chipGap = 7, maxChips = 9;
   groups.slice(0, maxChips).forEach((gr, i) => {
-    const c = itemOf(gr.id), R = RARITY[c.rarity], y = 90 + i * (chipH + chipGap);
+    const c = gr.it, R = RARITY[c.rarity], y = 90 + i * (chipH + chipGap);
     rr(1092, y, 176, chipH, 6); ctx.fillStyle = '#16231b'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 2; ctx.stroke();
     rr(1100, y + 8, 40, 40, [20, 20, 4, 4]); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 1; ctx.stroke();
     drawIcon(c.icon, 1120, y + 28, 26, R.c, 1.4);
@@ -4261,10 +4382,11 @@ function drawBookScreen() {
 
 // ---------- Deck ----------
 function deckPool(cls) {
-  let list = CARDS.filter(c => compat(c, cls) && (SAVE.owned[c.id] || 0) > 0);
+  const inD = new Set(SAVE.decks[cls.id]);   // jede Karte einzeln, außer denen, die schon im Deck liegen
+  let list = SAVE.cards.filter(c => compat(c, cls) && !inD.has(c.u));
   if (deckFilter === 'mond') list = list.filter(c => rarIdx(c) >= 2);
   else if (deckFilter !== 'all') list = list.filter(c => c.kind === deckFilter);
-  return list.sort(byRarity);
+  return list.sort((a, b) => byRarity(a, b) || tierSum(b) - tierSum(a) || a.u - b.u);
 }
 function deckAdd(cls, c) {
   if (addToDeck(cls, c)) { sfx('card_pick'); return; }
@@ -4276,7 +4398,7 @@ function drawDeckScreen() {
   screenBackdrop();
   drawTopBar('deck');
   text('Streiter wählen und Deck zusammenstellen', 1240, 46, 17, '#c8d4de', 'right', F_TEXT);
-  const cls = CLASSES[deckClass], d = deckOf(cls).slice().sort((a, b) => cardOrder(a) - cardOrder(b));
+  const cls = CLASSES[deckClass], d = deckOf(cls).sort((a, b) => cardOrder(a.id) - cardOrder(b.id) || a.u - b.u);
 
   // Linke Spalte: Streiter, Kartenstapel, Regeln
   CLASSES.forEach((c, i) => {
@@ -4302,7 +4424,7 @@ function drawDeckScreen() {
   rr(scx - 42, 410, 84, 40, 20); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#8ee8ff'; ctx.lineWidth = 2; ctx.stroke();
   text(d.length + ' / ' + DECK_SIZE, scx, 437, 20, '#8ee8ff', 'center', F_TITLE);
   uiButton(40, 470, 156, 36, 'Leeren', () => { SAVE.decks[cls.id] = []; persist(); }, { size: 15 });
-  uiButton(208, 470, 162, 36, 'Startdeck', () => { SAVE.decks[cls.id] = defaultDeck(cls, SAVE.owned); persist(); }, { size: 15 });
+  uiButton(208, 470, 162, 36, 'Startdeck', () => { SAVE.decks[cls.id] = defaultDeck(cls, SAVE.cards); persist(); }, { size: 15 });
   rr(40, 522, 330, 140, 12); ctx.fillStyle = '#050a07'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
   if ('letterSpacing' in ctx) ctx.letterSpacing = '2px';
   text('WIE OFT EINE KARTE INS DECK DARF', 56, 546, 12, '#8a9aa0', 'left', F_TEXT, 'bold');
@@ -4329,7 +4451,7 @@ function drawDeckScreen() {
     const hv = i === h, dd = i - 5.5, left = 400 + fanLeft(i, h), top = fanTop + (hv ? 0 : 14 + Math.round(dd * dd * 0.5));
     ctx.save(); ctx.translate(left + 59, top + 86); ctx.rotate(dd * 1.6 * deg);
     if (i < d.length) {
-      const c = CARD_BY_ID[d[i]];
+      const c = d[i];
       drawCard(c, -59, -86, 0.5375, hv);
       if (hv) { rr(-62, -89, 124, 178, 12); ctx.strokeStyle = '#8ee8ff'; ctx.lineWidth = 3; ctx.stroke(); ctx.beginPath(); ctx.arc(53, -80, 13, 0, 7); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#ff7a8a'; ctx.lineWidth = 1.5; ctx.stroke(); text('×', 53, -73, 20, '#e8dcbc', 'center', F_TEXT); }
     } else {
@@ -4341,7 +4463,7 @@ function drawDeckScreen() {
   }
 
   // Auswahl aus dem Kartenbuch
-  text('Aus dem Kartenbuch', 400, 374, 20, '#f0e6c8', 'left', F_TITLE);
+  text('Aus deiner Sammlung', 400, 374, 20, '#f0e6c8', 'left', F_TITLE);
   const pool = deckPool(cls), per = 18, pages = Math.max(1, Math.ceil(pool.length / per));
   deckPage = clamp(deckPage, 0, pages - 1);
   text('nur Karten, die der ' + cls.name + ' nutzen kann', pages > 1 ? 1130 : 1240, 374, 14, '#8a9aa0', 'right', F_TEXT);
@@ -4350,13 +4472,11 @@ function drawDeckScreen() {
   chip(1114, 386, 126, 'Mondstein+', deckFilter === 'mond', () => { deckFilter = 'mond'; deckPage = 0; }, '#bfe3ff');
   let hovCard = null;
   pool.slice(deckPage * per, deckPage * per + per).forEach((c, i) => {
-    const x = 400 + (i % 9) * 94.5, y = 436 + Math.floor(i / 9) * 146, o = SAVE.owned[c.id] || 0, k = inDeck(cls, c.id), lim = copyLimit(c), full = k >= Math.min(lim, o);
+    const x = 400 + (i % 9) * 94.5, y = 436 + Math.floor(i / 9) * 146, k = inDeck(cls, c.id), lim = copyLimit(c), full = k >= lim;
     const hov = inside(x, y, 84, 122);
     if (hov) hovCard = c;
     ctx.globalAlpha = full ? 0.5 : 1; drawCard(c, x, y, 0.382, hov && !full); ctx.globalAlpha = 1;
-    rr(x + 84 - 20, y - 7, 26, 22, 11); ctx.fillStyle = '#f2c14e'; ctx.fill(); ctx.strokeStyle = '#0a110d'; ctx.lineWidth = 2; ctx.stroke();
-    text('×' + o, x + 84 - 7, y + 9, 12, '#1c140c', 'center', F_TITLE);
-    const lab = k >= lim ? 'voll ' + k + '/' + lim : full ? 'alle im Deck' : 'im Deck ' + k + '/' + lim, col = full ? '#6f8274' : '#8ee8ff';
+    const lab = full ? 'voll ' + k + '/' + lim : 'im Deck ' + k + '/' + lim, col = full ? '#6f8274' : '#8ee8ff';
     ctx.font = 'bold 12px ' + F_TEXT; const lw = ctx.measureText(lab).width + 18;
     rr(x + 42 - lw / 2, y + 113, lw, 18, 9); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.stroke();
     text(lab, x + 42, y + 126, 12, col, 'center', F_TEXT, 'bold');
@@ -4531,13 +4651,13 @@ function buyPack(p) {
   const seen = {};
   const cards = idxs.map(i => {
     const pool = CARDS.filter(c => c.rarity === RARITY_KEYS[i]);
-    const c = pool[Math.floor(Math.random() * pool.length)];
-    const isNew = (SAVE.owned[c.id] || 0) === 0 && !seen[c.id];
-    seen[c.id] = true;
-    return { c, isNew, t: 0 };
+    const def = pool[Math.floor(Math.random() * pool.length)];
+    const isNew = (SAVE.owned[def.id] || 0) === 0 && !seen[def.id];
+    seen[def.id] = true;
+    return { c: rollInst(def, ++SAVE.uidN), isNew, t: 0 };   // jede Karte bekommt eigene Würfelwerte
   });
   SAVE.silver -= p.price;
-  for (const it of cards) SAVE.owned[it.c.id] = (SAVE.owned[it.c.id] || 0) + 1;
+  for (const it of cards) SAVE.cards.push(it.c);
   persist();
   sfx('pack_buy');
   packOpen = { pack: p, cards, phase: 'tear', tear: 0, drag: false, dx0: 0, doneT: 0, riseT: 0 };
@@ -4639,9 +4759,15 @@ function surplusList() {
   return CARDS.filter(c => (SAVE.owned[c.id] || 0) > copyLimit(c)).map(c => ({ c, n: SAVE.owned[c.id] - copyLimit(c) }));
 }
 function recycleCard(c, n) {
-  n = Math.min(n, Math.max(0, (SAVE.owned[c.id] || 0) - copyLimit(c)));
+  const mine = SAVE.cards.filter(o => o.id === c.id);
+  n = Math.min(n, Math.max(0, mine.length - copyLimit(c)));
   if (n <= 0) return;
-  SAVE.owned[c.id] -= n; SAVE.silver += n * RECYCLE_VALUE[c.rarity]; persist(); sfx('coin');
+  const inAny = u => Object.values(SAVE.decks).some(d => d.includes(u));
+  mine.sort((a, b) => (inAny(a.u) - inAny(b.u)) || tierSum(a) - tierSum(b));   // zuerst die schwächsten Kopien, die in keinem Deck liegen
+  const gone = new Set(mine.slice(0, n).map(o => o.u));
+  SAVE.cards = SAVE.cards.filter(o => !gone.has(o.u));
+  for (const k in SAVE.decks) SAVE.decks[k] = SAVE.decks[k].filter(u => !gone.has(u));
+  SAVE.silver += n * RECYCLE_VALUE[c.rarity]; persist(); sfx('coin');
 }
 function drawRecycleScreen() {
   uiBtns = [];
@@ -4951,7 +5077,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.87';
+const VERSION = 'v0.88';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -5123,7 +5249,7 @@ function drawPauseScreen() {
   text('WERTE', sx0, Y + 192, 13, '#8a9aa0', 'left', F_TEXT);
   if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
   const groups = [];
-  for (const id of G.cards.concat(G.buffs)) { const gr = groups.find(q => q.id === id); if (gr) gr.n++; else groups.push({ id, n: 1 }); }
+  for (const it of G.cards.concat(G.buffs)) { const gr = groups.find(q => q.id === it.id); if (gr) gr.n++; else groups.push({ id: it.id, n: 1, it }); }
   const cwid = 296, areaTop = Y + 204, areaH = Y + Ht - 66 - areaTop;
   const rowsS = statRows(), sw = cx + cw - sx0;
   pauseAreas = { c: { x: cx, y: areaTop, w: cwid, h: areaH, total: groups.length * 38 - 4 }, s: { x: sx0 - 6, y: areaTop, w: sw + 6, h: areaH, total: rowsS.length * 25 } };
@@ -5137,7 +5263,7 @@ function drawPauseScreen() {
   };
   ctx.save(); ctx.beginPath(); ctx.rect(cx - 4, areaTop - 2, cwid + 8, areaH + 4); ctx.clip();
   groups.forEach((gr, i) => {
-    const c = itemOf(gr.id), R = RARITY[c.rarity], sx = cx, sy = areaTop + i * 38 - pauseScroll.c;
+    const c = gr.it, R = RARITY[c.rarity], sx = cx, sy = areaTop + i * 38 - pauseScroll.c;
     if (sy < areaTop - 38 || sy > areaTop + areaH) return;
     rr(sx, sy, cwid, 34, 6); ctx.fillStyle = '#16231b'; ctx.fill();
     ctx.strokeStyle = R.c; ctx.lineWidth = 2; if (c.kind === 'Trank') ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
@@ -5370,7 +5496,7 @@ function feedbackContext() {
   const l = ['Version: ' + VERSION];
   if (G && panelFrom === 'pause') {
     l.push('Streiter: ' + G.cls.name, 'Weg: ' + Math.floor(G.dist) + ' m · ' + runScore() + ' Punkte · ' + G.kills + ' Gefallene');
-    l.push('Karten: ' + (G.cards.map(id => itemOf(id).name).join(', ') || '–'), 'Tränke: ' + (G.buffs.map(id => itemOf(id).name).join(', ') || '–'));
+    l.push('Karten: ' + (G.cards.map(c => c.name).join(', ') || '–'), 'Tränke: ' + (G.buffs.map(c => c.name).join(', ') || '–'));
   }
   l.push('Fenster: ' + innerWidth + '×' + innerHeight, 'Browser: ' + navigator.userAgent);
   return l.map(s => '- ' + s).join('\n');
