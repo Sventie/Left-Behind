@@ -305,7 +305,7 @@ const CARDS = [
   // Nahkampf
   { id: 'klinge',   name: 'Geschärfte Klinge',    kind: 'Werte',  rarity: 'gewoehnlich', icon: 'sword',   max: 3, types: ['melee'], stat: '+15 % Schaden',       text: 'Ein Wetzstein, eine ruhige Nacht, eine bessere Schneide.', flavor: '„Scharf genug zum Rasieren.“', apply: S => { S.dmgMul *= 1.15; } },
   { id: 'lang',     name: 'Langes Eisen',         kind: 'Werte',  rarity: 'gewoehnlich', icon: 'sword',   max: 2, types: ['melee'], stat: '+20 % Reichweite',    text: 'Eine längere Klinge hält den Feind auf Abstand.', flavor: '„Ein Zoll kann ein Leben sein.“',      apply: S => { S.reachMul *= 1.2; } },
-  { id: 'breit',    name: 'Breiter Hieb',         kind: 'Effekt',  rarity: 'selten',      icon: 'arc',     max: 2, types: ['melee'], stat: '+30° Schwungbogen',   text: 'Dein Hieb erfasst mehr Gegner auf einmal.',      flavor: '„Wer zu nah steht, steht falsch.“',    apply: S => { S.arcAdd += 30; } },
+  { id: 'breithieb', name: 'Breiter Hieb',         kind: 'Effekt',  rarity: 'selten',      icon: 'arc',     max: 2, types: ['melee'], stat: '+30° Schwungbogen',   text: 'Dein Hieb erfasst mehr Gegner auf einmal.',      flavor: '„Wer zu nah steht, steht falsch.“',    apply: S => { S.arcAdd += 30; } },
   { id: 'wall',     name: 'Schildwall',           kind: 'Werte',  rarity: 'selten',      icon: 'shield',  max: 2, types: ['melee'], stat: 'Blockwinkel +30°', text: 'Dein Schild deckt dich auch seitlich.', flavor: '„Sie kommen nicht vorbei.“',           apply: S => { S.blockArc += 15; } },
   // Magie
   { id: 'macht',    name: 'Zauberkraft',          kind: 'Werte',  rarity: 'gewoehnlich', icon: 'wisp',    max: 3, types: ['spell'], stat: '+15 % Schaden',       text: 'Die Magie fließt stärker durch den Stab.',       flavor: '„Mehr Glut, weniger Zweifel.“',        apply: S => { S.dmgMul *= 1.15; } },
@@ -410,7 +410,7 @@ const CARD_PARAM = {
   bolzen:   { stats: [{ k: 'v', n: 'Schaden', base: 5, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
   klinge:   { stats: [{ k: 'v', n: 'Schaden', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
   lang:     { stats: [{ k: 'v', n: 'Reichweite', base: 20, pre: '+', u: ' %' }], apply: (S, v) => { S.reachMul *= 1 + v.v / 100; } },
-  breit:    { stats: [{ k: 'v', n: 'Schwungbogen', base: 30, pre: '+', u: '°' }], apply: (S, v) => { S.arcAdd += v.v; } },
+  breithieb: { stats: [{ k: 'v', n: 'Schwungbogen', base: 30, pre: '+', u: '°' }], apply: (S, v) => { S.arcAdd += v.v; } },
   wall:     { stats: [{ k: 'v', n: 'Blockwinkel', base: 30, pre: '+', u: '°' }], apply: (S, v) => { S.blockArc += v.v / 2; } },
   macht:    { stats: [{ k: 'v', n: 'Schaden', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
   quell:    { stats: [{ k: 'v', n: 'Manaregeneration', base: 25, pre: '+', u: ' %' }], apply: (S, v) => { S.manaRegenMul *= 1 + v.v / 100; } },
@@ -5504,6 +5504,22 @@ function uiButton(x, y, w, h, label, action, o) {
   text(label, x + w / 2, y + h / 2 + size * 0.36, size, o.disabled ? '#6f8274' : (o.primary ? '#1c140c' : o.danger ? '#ff9aa4' : '#e8dcbc'), 'center', F_TITLE);
   return hov;
 }
+// Geheim (nur zum Testen, nicht als Knopf erkennbar): fünf schnelle Klicks auf die Mondsilber-Anzeige im Hauptmenü erlauben, die Menge selbst zu setzen
+let silverClicks = [];
+function silverSecret() {
+  ctx.font = '19px ' + F_TITLE;
+  const w = ctx.measureText(Math.floor(SAVE.silver).toLocaleString('de-DE')).width + 140, x = 1240 - w;
+  if (!(mouse.fx >= x && mouse.fx <= x + w && mouse.fy >= 24 && mouse.fy <= 62)) return false;
+  const now = performance.now();
+  silverClicks = silverClicks.filter(t => now - t < 2500); silverClicks.push(now);
+  if (silverClicks.length < 5) return true;
+  silverClicks = [];
+  const v = window.prompt('Mondsilber setzen:', String(Math.floor(SAVE.silver)));
+  const n = v === null ? NaN : Number(String(v).replace(/[.\s]/g, '').replace(',', '.'));
+  if (Number.isFinite(n) && n >= 0) { SAVE.silver = Math.min(Math.floor(n), 1e9); persist(); }
+  mouse.down = false; mouse.pressed = false;
+  return true;
+}
 function drawSilver(rx, y) {
   const label = Math.floor(SAVE.silver).toLocaleString('de-DE');
   ctx.font = '19px ' + F_TITLE;
@@ -6221,7 +6237,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.12';
+const VERSION = 'v1.14';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -7384,6 +7400,7 @@ canvas.addEventListener('mousedown', e => {
   }
   if (state === 'intro' || state === 'book' || state === 'forge' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant' || state === 'victory' || state === 'areas' || state === 'bosscards' || state === 'ranking' || state === 'skills') { if (e.button === 0) { if (state === 'areas') areaDrag = { x: mouse.fx, s: areaScroll }; uiClick(); } return; }
   if (e.button !== 0) return;
+  if (state === 'menu' && silverSecret()) return;
   if (state === 'menu') { const bt = boardTabRects.find(r => mouse.fx >= r.x && mouse.fx <= r.x + r.w && mouse.fy >= r.y && mouse.fy <= r.y + r.h); if (bt) { sfx('ui_click'); if (bt.id === 'open') openRanking('menu'); else boardTab = bt.id; return; } const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
   if (state === 'select') {
     if (uiClick()) return;   // Stufe-Abzeichen → Fähigkeiten
