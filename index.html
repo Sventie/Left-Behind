@@ -5749,7 +5749,7 @@ function drawOpenScreen() {
 
 
 // ---------- Kartenschmiede: eine Karte verbrauchen, um die gemeinsamen Stats einer anderen neu zu würfeln ----------
-let forgeT = null, forgeM = null, forgeRes = null, forgePage = 0, forgeFilter = 'all';
+let forgeT = null, forgeM = null, forgeRes = null, forgePage = 0, forgeFilter = 'all', forgeGhostFor = null, forgeGhosts = [];
 const GENERIC_STATS = new Set(['Lauftempo', 'Leben', 'Schaden', 'Streuung', 'Spannzeit', 'Bolzen', 'Sichtweite', 'Sichtkegel', 'Feuerrate', 'Lifesteal', 'Maximalleben', 'Mana', 'Manaregeneration', 'Flächenradius', 'Schwungbogen', 'Blockwinkel', 'Bolzentempo']);
 // Gleicher Stat: allgemeine Werte (Schaden, Lauftempo …) zählen über alle Karten, Zahlen einer einzelnen Karte nur bei derselben Karte
 const statId = (def, st) => GENERIC_STATS.has(st.n) ? st.n : def.id + '/' + st.n;
@@ -5758,7 +5758,7 @@ function forgeShared(t, m) {
   const ids = new Set(m.stats.map(st => statId(m, st)));
   return t.stats.filter(st => ids.has(statId(t, st)));
 }
-function openForge() { forgeT = forgeM = forgeRes = null; forgePage = 0; armedAct = null; state = 'forge'; }
+function openForge() { forgeT = forgeM = forgeRes = null; forgeGhostFor = null; forgePage = 0; armedAct = null; for (const c of SAVE.cards) SAVE.seen[c.id] = true; persist(); state = 'forge'; }
 function forgeClick(c) {
   if (c === forgeT) { forgeT = forgeM = null; sfx('empty_click'); return; }
   if (c === forgeM) { forgeM = null; sfx('empty_click'); return; }
@@ -5773,7 +5773,7 @@ function doForge() {
   SAVE.cards = SAVE.cards.filter(o => o.u !== mat.u);
   for (const k in SAVE.decks) SAVE.decks[k] = SAVE.decks[k].filter(u => u !== mat.u);
   forgeRes = { before, shared, matName: mat.name };
-  forgeM = null; persist(); sfx('stage_up');
+  forgeM = null; forgeGhostFor = null; persist(); sfx('stage_up');
 }
 const ANVIL_A = new Path2D('M6 10h40c6 0 10 4 12 8-4 2-8 3-12 3H30l3 8v5h6v4H17v-4h6v-5l3-8H14C9 21 5 17 6 10z'), ANVIL_B = new Path2D('M46 21c-3 4-4 6-4 8');
 const FORGE_EMBERS = Array.from({ length: 40 }, (_, i) => [40 + ((i * 97) % 470), 200 + ((i * 53) % 330), 1 + (i % 3) * 0.7, i]);
@@ -5834,8 +5834,14 @@ function drawForgeScreen() {
   const kinds = [['Alle', 'all', 70], ['Werte', 'Werte', 86], ['Effekt', 'Effekt', 86], ['Aktiv', 'Aktiv', 86]];
   kinds.reduce((x, [l, id, w]) => { chip(x, 108, w, l, forgeFilter === id, () => { forgeFilter = id; forgePage = 0; }); return x + w + 8; }, 548);
   let list = SAVE.cards.filter(c => forgeFilter === 'all' || c.kind === forgeFilter);
-  const elig = c => forgeT && (c === forgeT || c === forgeM || forgeShared(forgeT, c).length) ? 0 : 1;   // passende Karten stehen vorn
-  list = list.slice().sort((a, b) => elig(a) - elig(b) || byRarity(a, b) || tierSum(b) - tierSum(a) || a.u - b.u);
+  if (forgeT) {   // mit Zielkarte: nur mögliche Rohstoffe. Besitzt du sie, normal; kennst du sie nur, ausgegraut. Alles andere fehlt.
+    list = list.filter(c => c !== forgeT && (c === forgeM || forgeShared(forgeT, c).length));
+    if (forgeGhostFor !== forgeT) {
+      forgeGhostFor = forgeT;
+      forgeGhosts = CARDS.filter(d => usable(d) && d.stats && SAVE.seen[d.id] && !(SAVE.owned[d.id] > 0)).map(d => mkInst(d, {})).filter(g => forgeShared(forgeT, g).length);
+    }
+    list = list.slice().sort((a, b) => byRarity(a, b) || tierSum(b) - tierSum(a) || a.u - b.u).concat(forgeGhosts.filter(g => forgeFilter === 'all' || g.kind === forgeFilter).sort(byRarity));
+  } else list = list.slice().sort((a, b) => byRarity(a, b) || tierSum(b) - tierSum(a) || a.u - b.u);
   const per = 12, pages = Math.max(1, Math.ceil(list.length / per));
   forgePage = clamp(forgePage, 0, pages - 1);
   if (pages > 1) { uiButton(1146, 108, 40, 32, '‹', () => { forgePage--; }, { size: 18, disabled: forgePage <= 0 }); uiButton(1200, 108, 40, 32, '›', () => { forgePage++; }, { size: 18, disabled: forgePage >= pages - 1 }); text((forgePage + 1) + ' / ' + pages, 1130, 130, 15, '#8a9aa0', 'right', F_TEXT); }
@@ -5844,6 +5850,7 @@ function drawForgeScreen() {
   list.slice(forgePage * per, forgePage * per + per).forEach((c, i) => {
     const x = 548 + (i % 4) * 176, y = 156 + Math.floor(i / 4) * 130;
     let mode = 'ok', hl = null;
+    if (forgeGhosts.includes(c)) { drawForgeTile(c, x, y, 'dim', tIds); text('nicht im Besitz', x + 84, y + 112, 11.5, '#1c140c', 'center', F_TEXT, 'italic'); return; }
     if (c === forgeT) { mode = 'tgt'; hl = mIds; }
     else if (c === forgeM) { mode = 'mat'; hl = tIds; }
     else if (!forgeT) mode = c.stats ? 'ok' : 'dim';
@@ -5851,7 +5858,7 @@ function drawForgeScreen() {
     drawForgeTile(c, x, y, mode, hl);
     uiHit(x, y, 168, 122, () => forgeClick(c));
   });
-  if (!list.length) text('Du besitzt noch keine Karten.', 900, 300, 18, '#7a8a7a', 'center', F_TEXT, 'italic');
+  if (!list.length) text(forgeT ? 'Keine passende Karte vorhanden.' : 'Du besitzt noch keine Karten.', 900, 300, 18, '#7a8a7a', 'center', F_TEXT, 'italic');
   // Vorschau
   rr(548, 550, 702, 92, 10); ctx.fillStyle = '#0c1510'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
   const ready = !!(forgeT && forgeM);
@@ -6214,7 +6221,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.09';
+const VERSION = 'v1.10';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
