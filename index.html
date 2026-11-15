@@ -67,6 +67,7 @@ const BASE = {                          // Basiswerte, Klasse und Karten veränd
   dashN: 0,                             // wie viele Windstoß-Karten (die zweite verkürzt die Pause)
   lifesteal: 0,                         // Anteil des Schadens, der als Leben zurückkommt
   boltSpeed: 1,                         // Tempo der Bolzen
+  core: null, lastBolt: 0, still: null, ramp: null, noReload: false, zorn: 0, charge: null, round: null,   // Muster und Auslöser der Karten (siehe shotDmgK, chargeStep)
   priceMul: 1.0,                        // Händlerpreise
   rerolls: 1                            // Neuwürfe der Kartenwahl pro Lauf
 };
@@ -252,6 +253,28 @@ const CARDS = [
   { id: 'markier', name: 'Markierlicht', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Mehr Sichtweite. Getroffene Gegner bleiben eine Weile auch im Dunkeln sichtbar.', flavor: '„Wer getroffen ist, leuchtet.“', apply: S => {} },
   { id: 'bluttrunk', name: 'Bluttrunk', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: '', text: 'Treffer gegen Elite und Bosse heilen dich.', flavor: '„Große Beute, großer Schluck.“', apply: S => {} },
   { id: 'aderlassh', name: 'Aderlass-Treffer', kind: 'Segen', rarity: 'selten', icon: 'wisp', max: 3, types: ['ranged'], stat: 'Heilt 3 Leben (fest)', text: 'Jeder zehnte Treffer heilt dich um 3 Leben.', flavor: '„Ein Schluck zwischendurch.“', apply: S => { S.hooks.hit.push(() => { G.cnt.ader = (G.cnt.ader || 0) + 1; if (G.cnt.ader % 10 === 0) G.player.hp = Math.min(S.maxHp, G.player.hp + 3); }); } },
+  { id: 'schrot', name: 'Schrotflinte', kind: 'Zauber', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Drei Bolzen im Kegel, kostet zwei Bolzen.', flavor: '„Wer nah ist, spürt es.“', apply: S => {} },
+  { id: 'breit', name: 'Breitseite', kind: 'Zauber', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Fünf Bolzen im weiten Fächer, kostet drei Bolzen.', flavor: '„Eine Wand aus Bolzen.“', apply: S => {} },
+  { id: 'feuer1', name: 'Schnellfeuer', kind: 'Zauber', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Doppelt so schnell schießen, aber jeder Schuss trifft schwächer.', flavor: '„Wer viel trifft, braucht nicht fest zu treffen.“', apply: S => {} },
+  { id: 'dauer', name: 'Dauerfeuer', kind: 'Zauber', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Jeder Schuss macht dich schneller, bis zum Spannen.', flavor: '„Der Rhythmus trägt.“', apply: S => {} },
+  { id: 'fliess', name: 'Fließband', kind: 'Zauber', rarity: 'legendaer', icon: 'quiver', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Kein Spannen mehr, dafür schwächer und langsamer.', flavor: '„Der Köcher füllt sich von selbst.“', apply: S => {} },
+  { id: 'rueckschuss', name: 'Rückwärtsschuss', kind: 'Zauber', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Jeder Schuss geht auch nach hinten, ohne zusätzlichen Bolzen.', flavor: '„Auch hinten hast du Augen.“', apply: S => {} },
+  { id: 'rundum', name: 'Rundumschuss', kind: 'Zauber', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'In festen Abständen fliegt ein Bolzen in alle acht Richtungen.', flavor: '„Von allen Seiten.“', apply: S => {} },
+  { id: 'gespannt', name: 'Gespannte Sehne', kind: 'Zauber', rarity: 'episch', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Wer kurz stillsteht, schießt den nächsten Schuss mit viel mehr Schaden.', flavor: '„Atme, ziele, lass los.“', apply: S => {} },
+  { id: 'ladeschuss', name: 'Ladeschuss', kind: 'Zauber', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Halten lädt auf, Loslassen schießt.', flavor: '„Geduld wird belohnt.“', apply: S => {} },
+  { id: 'bombe', name: 'Bombenleger', kind: 'Zauber', rarity: 'selten', icon: 'blast', max: 3, types: ['ranged'], stat: '', text: 'Auf deinem Weg fallen Bomben, die auch dich treffen.', flavor: '„Wer rennt, hinterlässt etwas.“', apply: S => {} },
+  { id: 'wegz', name: 'Wegzehrung', kind: 'Segen', rarity: 'gewoehnlich', icon: 'boot', max: 3, stat: '', text: 'Du heilst dich ein wenig, je weiter du läufst.', flavor: '„Der Weg nährt.“', apply: S => {} },
+  { id: 'rast', name: 'Rastplatz', kind: 'Segen', rarity: 'selten', icon: 'boot', max: 3, stat: '', text: 'Du heilst dich beim Laufen, wenn dich lange nichts traf.', flavor: '„Wer nicht getroffen wird, erholt sich.“', apply: S => {} },
+  { id: 'beute', name: 'Kriegsbeute', kind: 'Segen', rarity: 'selten', icon: 'boot', max: 3, stat: '', text: 'Jeder zwölfte Gefallene lässt eine Heilkugel fallen.', flavor: '„Aus der Beute wächst Leben.“', apply: S => {} },
+  { id: 'zornl', name: 'Zornladung', kind: 'Fähigkeit', rarity: 'gewoehnlich', icon: 'wind', max: 3, stat: '', text: 'Fähigkeiten laden nur durch Schaden auf, nicht durch Zeit.', flavor: '„Ohne Kampf kein Schwung.“', apply: S => {} },
+  { id: 'rueckenw', name: 'Rückenwind', kind: 'Segen', rarity: 'selten', icon: 'boot', max: 3, stat: '', text: 'Mehr Tempo, nach jedem Gefallenen kurz noch mehr.', flavor: '„Der Sieg treibt dich an.“', apply: S => {} },
+  { id: 'rinde', name: 'Eichenrinde', kind: 'Segen', rarity: 'episch', icon: 'shield', max: 3, stat: '', text: 'Mehr Leben. Alle paar Meter fängt die Rinde einen Treffer ab.', flavor: '„Der Wald schützt die Seinen.“', apply: S => {} },
+  { id: 'moos', name: 'Moosherz', kind: 'Segen', rarity: 'selten', icon: 'shield', max: 3, stat: '', text: 'Mehr Leben. Alle zehn Gefallenen heilst du dich um 2 Leben.', flavor: '„Moos wächst, wo Leben endet.“', apply: S => {} },
+  { id: 'serie', name: 'Serienschütze', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Jeder Treffer in Folge macht mehr Schaden. Ein Fehlschuss setzt zurück.', flavor: '„Treffer auf Treffer.“', apply: S => {} },
+  { id: 'kern', name: 'Kernschuss', kind: 'Segen', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Der erste Schuss nach dem Spannen trifft genau und macht mehr Schaden.', flavor: '„Eine Chance, ein Treffer.“', apply: S => {} },
+  { id: 'flink', name: 'Flinke Sehne', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Schneller spannen. Nach dem Spannen kurz schneller schießen.', flavor: '„Klick und los.“', apply: S => {} },
+  { id: 'feder', name: 'Federspanner', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: 'Schneller spannen. Der Windstoß füllt 4 Bolzen sofort nach.', flavor: '„Bewegung spannt die Sehne.“', apply: S => {} },
+  { id: 'doppel', name: 'Doppelboden', kind: 'Segen', rarity: 'selten', icon: 'quiver', max: 3, types: ['ranged'], stat: '', text: '3 Bolzen mehr. Der letzte Bolzen jedes Magazins schlägt härter ein.', flavor: '„Das Beste zum Schluss.“', apply: S => {} },
   { id: 'spitze',   name: 'Spitze Bolzen',        kind: 'Segen',  rarity: 'selten',      icon: 'quiver',  max: 2, types: ['ranged'], stat: 'Durchschlag +1',     text: 'Durchschlag +1. Jeder Durchschlag macht weniger Schaden.', flavor: '„Zwei auf einen Streich.“',     apply: S => { S.pierce += 1; } },
   // Nahkampf
   { id: 'klinge',   name: 'Geschärfte Klinge',    kind: 'Segen',  rarity: 'gewoehnlich', icon: 'sword',   max: 3, types: ['melee'], stat: '+15 % Schaden',       text: 'Ein Wetzstein, eine ruhige Nacht, eine bessere Schneide.', flavor: '„Scharf genug zum Rasieren.“', apply: S => { S.dmgMul *= 1.15; } },
@@ -271,7 +294,7 @@ const CARD_BY_ID = Object.fromEntries(CARDS.map(c => [c.id, c]));
 const TIER_ODDS = [10, 22, 40, 23, 5];   // Wahrscheinlichkeit je Tier in Prozent
 const TIER_COL = { 1: '#8a7a60', 2: '#6f7f5a', 3: '#3f7a4a', 4: '#2a6aa0', 5: '#b9801a' };
 const tierStep = base => base <= 25 ? 1 : base <= 50 ? 2 : base <= 80 ? 4 : 6;   // Schrittgröße je Tier („Staffel B“)
-const tierValue = (st, t) => Math.round((st.base + (st.bad ? -1 : 1) * (t - 3) * (st.step || tierStep(st.base))) * 100) / 100;
+const tierValue = (st, t) => Math.round((st.base + (st.bad || st.down ? -1 : 1) * (t - 3) * (st.step || tierStep(st.base))) * 100) / 100;
 function rollTier() { let r = Math.random() * 100, i = 0; for (; i < 4; i++) { r -= TIER_ODDS[i]; if (r < 0) break; } return i + 1; }
 const numText = v => String(v).replace('.', ',');
 const valueText = (st, v) => st.pre + numText(v) + st.u;
@@ -357,7 +380,29 @@ const CARD_PARAM = {
   markier: { stats: [{ k: 'a', n: 'Sichtweite', base: 10, pre: '+', u: ' %' }, { k: 'b', n: 'Dauer', base: 4, pre: '', u: ' s', step: 0.5 }], apply: (S, v) => { S.rangeMul *= 1 + v.a / 100; S.mod.mark = Math.max(S.mod.mark, v.b); } },
   bluttrunk: { stats: [{ k: 'v', n: 'Lifesteal', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.lsBig += v.v / 100; } },
   spitze:   { stats: [{ k: 'v', n: 'Je Durchschlag', base: 75, pre: '', u: ' %' }], apply: (S, v) => { S.pierce += 1; S.mod.pierceK *= v.v / 100; } },
-  blitz:    { stats: [{ k: 'v', n: 'Sprungschaden', base: 70, pre: '', u: ' %' }], apply: (S, v) => { S.mod.lightning = { every: 3, n: 3, k: v.v / 100 }; } }
+  blitz:    { stats: [{ k: 'v', n: 'Sprungschaden', base: 70, pre: '', u: ' %' }], apply: (S, v) => { S.mod.lightning = { every: 3, n: 3, k: v.v / 100 }; } },
+  schrot: { stats: [{ k: 'a', n: 'Je Bolzen', base: 70, pre: '', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 50, pre: '−', u: ' %', bad: true }, { k: 'c', n: 'Kegel', base: 12, pre: '±', u: '°' }], apply: (S, v) => { S.fans.push({ n: 3, spread: 2 * v.c, d: v.a / 100, cost: 2, red: v.b / 100, eff: 0.5 }); } },
+  breit: { stats: [{ k: 'a', n: 'Je Bolzen', base: 45, pre: '', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 60, pre: '−', u: ' %', bad: true }, { k: 'c', n: 'Fächer', base: 20, pre: '±', u: '°' }], apply: (S, v) => { S.fans.push({ n: 5, spread: 2 * v.c, d: v.a / 100, cost: 3, red: v.b / 100, eff: 0.5 }); } },
+  feuer1: { stats: [{ k: 'a', n: 'Feuerrate', base: 100, pre: '+', u: ' %' }, { k: 'b', n: 'Schaden', base: 55, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.rateMul *= 1 + v.a / 100; S.dmgMul *= 1 - v.b / 100; } },
+  dauer: { stats: [{ k: 'a', n: 'Je Schuss', base: 5, pre: '+', u: ' %' }, { k: 'b', n: 'Höchstwert', base: 100, pre: '+', u: ' %' }, { k: 'c', n: 'Schaden', base: 30, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.ramp = { per: v.a / 100, max: v.b / 100 }; S.dmgMul *= 1 - v.c / 100; } },
+  fliess: { stats: [{ k: 'a', n: 'Schaden', base: 40, pre: '−', u: ' %', bad: true }, { k: 'b', n: 'Feuerrate', base: 30, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.noReload = true; S.dmgMul *= 1 - v.a / 100; S.rateMul *= 1 - v.b / 100; } },
+  rueckschuss: { stats: [{ k: 'a', n: 'Nach hinten', base: 50, pre: '', u: ' %' }], apply: (S, v) => { S.rear = Math.max(S.rear, v.a / 100); } },
+  rundum: { stats: [{ k: 'a', n: 'Schaden', base: 50, pre: '', u: ' %' }, { k: 'b', n: 'Abstand', base: 5, pre: '', u: ' s', step: 0.5, down: true }], apply: (S, v) => { S.round = { d: v.a / 100, every: v.b }; } },
+  gespannt: { stats: [{ k: 'a', n: 'Schaden', base: 100, pre: '+', u: ' %' }, { k: 'b', n: 'Stillstand', base: 1, pre: '', u: ' s', step: 0.1, down: true }], apply: (S, v) => { S.still = { t: v.b, dmg: v.a / 100 }; } },
+  ladeschuss: { stats: [{ k: 'a', n: 'Voll geladen', base: 100, pre: '+', u: ' %' }, { k: 'b', n: 'Ladezeit', base: 1, pre: '', u: ' s', step: 0.1, down: true }, { k: 'c', n: 'Lade-Tempo', base: 70, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.charge = { dmg: v.a / 100, t: v.b, slow: v.c / 100 }; } },
+  bombe: { stats: [{ k: 'a', n: 'Schaden', base: 150, pre: '', u: ' %' }, { k: 'b', n: 'Radius', base: 2, pre: '', u: ' m', step: 0.1 }, { k: 'c', n: 'Abstand', base: 12, pre: '', u: ' m', down: true }], apply: (S, v) => { S.hooks.walk.push(c => { G.cnt.bomb = (G.cnt.bomb || 0) + c.d; if (G.cnt.bomb >= v.c * PX_PER_M) { G.cnt.bomb = 0; if (G.booms.filter(o => o.own).length < 3) G.booms.push({ x: G.player.x, y: G.player.y, t: 1.2, T: 1.2, r: v.b * PX_PER_M, dmg: W().damage * S.dmgMul * v.a / 100, e: null, own: true }); } }); } },
+  wegz: { stats: [{ k: 'a', n: 'Abstand', base: 8, pre: '', u: ' m', down: true }], apply: (S, v) => { S.hooks.walk.push(c => { G.cnt.weg = (G.cnt.weg || 0) + c.d; if (G.cnt.weg >= v.a * PX_PER_M) { G.cnt.weg = 0; G.player.hp = Math.min(S.maxHp, G.player.hp + 1); } }); } },
+  rast: { stats: [{ k: 'a', n: 'Abstand', base: 10, pre: '', u: ' m', down: true }], apply: (S, v) => { S.hooks.walk.push(c => { G.cnt.rast = (G.cnt.rast || 0) + c.d; if (G.cnt.rast >= v.a * PX_PER_M) { G.cnt.rast = 0; if (G.time - G.hurtAt >= 3) G.player.hp = Math.min(S.maxHp, G.player.hp + 2); } }); } },
+  beute: { stats: [{ k: 'a', n: 'Heilung', base: 8, pre: '', u: '' }], apply: (S, v) => { S.hooks.kill.push(c => { G.cnt.beute = (G.cnt.beute || 0) + 1; if (G.cnt.beute % 12 === 0) G.pickups.push({ x: c.e.x, y: c.e.y, heal: v.a }); }); } },
+  zornl: { stats: [{ k: 'a', n: 'Je Sek. Pause', base: 40, pre: '', u: '', step: 2, down: true }], apply: (S, v) => { S.zorn = v.a; } },
+  rueckenw: { stats: [{ k: 'a', n: 'Lauftempo', base: 8, pre: '+', u: ' %' }, { k: 'b', n: 'Nach Gefallenem', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.moveSpeed *= 1 + v.a / 100; S.hooks.kill.push(() => { G.speedT = 2; G.speedK = v.b / 100; }); } },
+  rinde: { stats: [{ k: 'a', n: 'Leben', base: 15, pre: '+', u: '' }, { k: 'b', n: 'Absorb alle', base: 45, pre: '', u: ' m', step: 2, down: true }], apply: (S, v) => { S.maxHp += v.a; S.hooks.walk.push(c => { if (G.barkReady) return; G.cnt.bark = (G.cnt.bark || 0) + c.d; if (G.cnt.bark >= v.b * PX_PER_M) G.barkReady = true; }); } },
+  moos: { stats: [{ k: 'a', n: 'Leben', base: 15, pre: '+', u: '' }], apply: (S, v) => { S.maxHp += v.a; S.hooks.kill.push(() => { G.cnt.moos = (G.cnt.moos || 0) + 1; if (G.cnt.moos % 10 === 0) G.player.hp = Math.min(S.maxHp, G.player.hp + 2); }); } },
+  serie: { stats: [{ k: 'a', n: 'Je Treffer', base: 3, pre: '+', u: ' %', step: 0.5 }, { k: 'b', n: 'Höchstwert', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.streak = { per: v.a / 100, max: v.b / 100 }; S.hooks.hit.push(c => { if (c.b.gen === 0) G.cnt.streak = (G.cnt.streak || 0) + 1; }); S.hooks.miss.push(() => { G.cnt.streak = 0; }); } },
+  kern: { stats: [{ k: 'a', n: 'Streuung', base: 15, pre: '−', u: ' %' }, { k: 'b', n: 'Schaden', base: 50, pre: '+', u: ' %' }], apply: (S, v) => { S.spreadMul *= 1 - v.a / 100; S.core = { dmg: v.b / 100 }; } },
+  flink: { stats: [{ k: 'a', n: 'Spannzeit', base: 15, pre: '−', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.reloadMul *= 1 - v.a / 100; S.hooks.reload.push(() => { G.rateT = Math.max(G.rateT, 2); G.rateK = Math.max(G.rateK, v.b / 100); }); } },
+  feder: { stats: [{ k: 'a', n: 'Spannzeit', base: 10, pre: '−', u: ' %' }], apply: (S, v) => { S.reloadMul *= 1 - v.a / 100; S.hooks.dash.push(() => { G.player.mag = Math.min(S.magSize, G.player.mag + 4); }); } },
+  doppel: { stats: [{ k: 'a', n: 'Letzter Bolzen', base: 50, pre: '+', u: ' %' }], apply: (S, v) => { S.magSize += 3; S.lastBolt = Math.max(S.lastBolt, v.a / 100); } }
 };
 for (const id in CARD_PARAM) setupParam(CARD_BY_ID[id], CARD_PARAM[id]);
 const ICONS = {
@@ -816,13 +861,13 @@ const isFocusing = () => state === 'play' && wtype() === 'ranged' && mouse.rdown
 const isMeditating = () => state === 'play' && wtype() === 'spell' && mouse.rdown;
 
 function newMod() {   // Eigenschaften der Geschosse: Karten tragen hier ein, was jedes Geschoss können soll
-  return { pierceK: 1, bounce: 0, bounceK: 1, bounceHome: 0, homeMouse: 0, homeAuto: 0, curve: 0, grow: null, lightning: null, mark: 0, dmgVs: [], lsBig: 0, booms: [], dots: [], knock: null, slow: null, split: null, ret: null, crit: [] };
+  return { pierceK: 1, bounce: 0, bounceK: 1, bounceHome: 0, homeMouse: 0, homeAuto: 0, curve: 0, grow: null, lightning: null, mark: 0, dmgVs: [], lsBig: 0, streak: null, booms: [], dots: [], knock: null, slow: null, split: null, ret: null, crit: [] };
 }
 function recomputeStats() {
   S = Object.assign({}, BASE, G.cls.base);
   S.mod = newMod();   // Geschoss-Eigenschaften
   S.fans = []; S.rear = 0;   // Schussmuster: Fächer aus mehreren Bolzen, Schuss nach hinten
-  S.hooks = { shot: [], hit: [], kill: [], reload: [], dash: [] };   // Auslöser: Karten hängen hier Funktionen an
+  S.hooks = { shot: [], hit: [], kill: [], reload: [], dash: [], walk: [], miss: [] };   // Auslöser: Karten hängen hier Funktionen an
   applySkills(S);
   for (const c of G.cards) c.apply(S);
   for (const b of G.buffs || []) b.apply(S);
@@ -839,7 +884,7 @@ function newGame(cls, area) {
     obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
     kills: 0, dist: 0,
     merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
-    cards: [], offers: [], library: shuffle(deckOf(cls).slice()), booms: [], pzones: [], shotN: 0, cnt: {}, rateT: 0, rateK: 0,
+    cards: [], offers: [], library: shuffle(deckOf(cls).slice()), booms: [], pzones: [], shotN: 0, cnt: {}, rateT: 0, rateK: 0, fresh: true, ramp: 0, stillT: 0, roundT: 0, speedT: 0, speedK: 0, hurtAt: -99, barkReady: false, chargeK: 1, walked: 0, eisN: 0,
     stage: 1, stageStart: 0, nextPick: area.len / (PICKS_PER_AREA + 0.5), atk: [], fires: [], fallen: [], ripples: [], curseT: 0, trails: [], hooks: [], pull: null, bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
     nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
@@ -1247,14 +1292,15 @@ function addBullet(x, y, angle, speed, dmg, from, range, pierce, extra) {
 }
 // Schussmuster: ein Schuss besteht aus einem oder mehreren Bolzen (Winkel in Grad, Schadensanteil). Kosten = verbrauchte Bolzen.
 function shotPattern() {
-  const bolts = []; let cost = 1, slow = 1, eff = 1;
+  const bolts = []; let cost = 1, slow = 1, eff = 1, red = 0, n = 0;
   if (!S.fans.length) bolts.push({ a: 0, d: 1 });
   else {
     cost = 0;
     for (const f of S.fans) {
       for (let i = 0; i < f.n; i++) bolts.push({ a: f.n > 1 ? -f.spread / 2 + f.spread * i / (f.n - 1) : 0, d: f.d });
-      cost += f.cost; slow = Math.max(slow, f.slow); eff = Math.min(eff, f.eff);
+      cost += f.cost; red = Math.max(red, f.red) + (n++ ? 0.1 : 0); eff = Math.min(eff, f.eff);
     }
+    slow = 1 / (1 - Math.min(0.9, red));   // mehrere Fächer: stärkster Abschlag plus 10 % je weiterem
   }
   if (S.rear > 0) bolts.push({ a: 180, d: S.rear });
   return { bolts, cost, slow, eff };
@@ -1269,10 +1315,29 @@ function fireBolt(a, dmg, booms) {
     aimStop: bm && bm.mode === 'aim' ? Math.hypot(mouse.x - p.x, mouse.y + G.camTop - p.y) : 0
   });
 }
+// Schadensfaktor des Schusses durch Karten mit Bedingung
+function shotDmgK(core, mag) {
+  let k = G.chargeK;
+  if (core) k *= 1 + S.core.dmg;   // Kernschuss
+  if (S.lastBolt && mag === 1) k *= 1 + S.lastBolt;   // Doppelboden: der letzte Bolzen des Magazins
+  if (S.still && G.stillT >= S.still.t) { k *= 1 + S.still.dmg; G.stillT = 0; }   // Gespannte Sehne
+  return k;
+}
+function roundVolley() {   // Rundumschuss: ein Bolzen in jede der 8 Richtungen
+  const w = W();
+  for (let i = 0; i < 8; i++) fireBolt(i * Math.PI / 4, w.damage * S.dmgMul * S.round.d, null);
+  sfx('shoot_crossbow', 0.5);
+}
+function chargeStep(dt) {   // Ladeschuss: Maustaste halten lädt auf, Loslassen schießt
+  const p = G.player;
+  if (mouse.down && p.mag > 0 && !isBlocking()) { p.charge = Math.min(1, (p.charge || 0) + dt / S.charge.t); return; }
+  if ((p.charge || 0) > 0.1 && p.cooldown <= 0 && p.mag > 0) { p.aim = p.angle; G.chargeK = 1 + p.charge * S.charge.dmg; playerAttack(); G.chargeK = 1; }
+  p.charge = 0;
+}
 function startReload() {
   const p = G.player;
   if (wtype() !== 'ranged' || p.reloadT > 0 || p.mag >= S.magSize) return;
-  p.reloadT = W().reloadTime * S.reloadMul;
+  p.reloadT = W().reloadTime * S.reloadMul; G.ramp = 0;
   sfx('reload_start');
 }
 function alertNear(radius) {
@@ -1284,12 +1349,15 @@ function alertNear(radius) {
 function playerAttack() {
   const p = G.player, w = W();
   if (w.type === 'ranged') {
-    const pat = shotPattern(), a = p.aim + (Math.random() + Math.random() - 1) * currentSpread() * deg;
+    const pat = shotPattern(), core = !!(S.core && G.fresh);
+    const a = p.aim + (core ? 0 : (Math.random() + Math.random() - 1) * currentSpread() * deg);   // Kernschuss: der erste Schuss nach dem Spannen trifft exakt
     G.shotN++;
-    const booms = S.mod.booms.filter(bm => G.shotN % bm.every === 0);
-    pat.bolts.forEach((q, i) => fireBolt(a + q.a * deg, w.damage * S.dmgMul * q.d, i === 0 ? booms : null));   // der Sprengsatz sitzt nur am ersten Bolzen des Schusses
-    p.mag = Math.max(0, p.mag - pat.cost);
-    p.cooldown = w.interval * pat.slow / (1 + (S.rateMul - 1 + (G.rateT > 0 ? G.rateK : 0)) * pat.eff);   // Feuerrate-Boni wirken bei Mustern nur zum Teil (pat.eff)
+    const booms = S.mod.booms.filter(bm => G.shotN % bm.every === 0), dk = shotDmgK(core, p.mag);
+    pat.bolts.forEach((q, i) => fireBolt(a + q.a * deg, w.damage * S.dmgMul * q.d * dk, i === 0 ? booms : null));   // der Sprengsatz sitzt nur am ersten Bolzen des Schusses
+    if (!S.noReload) p.mag = Math.max(0, p.mag - pat.cost);   // Fließband: Bolzen werden nie verbraucht
+    G.fresh = false;
+    const ramp = S.ramp ? Math.min(S.ramp.max, G.ramp * S.ramp.per) : 0; G.ramp++;   // Dauerfeuer: schneller mit jedem Schuss
+    p.cooldown = w.interval * pat.slow / (1 + (S.rateMul - 1 + (G.rateT > 0 ? G.rateK : 0) + ramp) * pat.eff);   // Feuerrate-Boni wirken bei Mustern nur zum Teil (pat.eff)
     p.bloom = Math.min(w.bloomMax, p.bloom + w.bloomPerShot);
     muzzle(a, '#ffe9a8');
     sfx('shoot_crossbow');
@@ -1388,11 +1456,16 @@ function update(dt) {
     const len = Math.hypot(mx, my) || 1;
     let sp = S.moveSpeed * (p.reloadT > 0 ? 0.9 : 1);
     if (G.rootT > 0) sp = 0; else { if (G.inPool) sp *= 0.7; if (G.slowT > 0) sp *= 0.6; if (G.curseT > 0) sp *= 0.7; }
+    if (G.speedT > 0) { sp *= 1 + G.speedK; G.speedT -= dt; }   // Rückenwind
+    if ((p.charge || 0) > 0.05 && S.charge) sp *= 1 - S.charge.slow;   // beim Laden fast stehen
     if (isBlocking()) sp *= 0.55; else if (isFocusing()) sp *= 0.65; else if (isMeditating()) sp *= 0.5;
     moved = moveCircle(p, mx / len * sp * dt, my / len * sp * dt);
   }
   p.speed = Math.min(moved / dt, S.moveSpeed * 1.3);
-  p.dashCd = Math.max(0, p.dashCd - dt);
+  if (moved > 0) { G.walked += moved; runHooks('walk', { d: moved }); }   // Laufstrecke: Bombenleger, Wegzehrung, Eichenrinde
+  G.stillT = p.speed < 5 ? G.stillT + dt : 0;
+  if (S.round) { G.roundT += dt; if (G.roundT >= S.round.every) { G.roundT = 0; roundVolley(); } }
+  if (!S.zorn) p.dashCd = Math.max(0, p.dashCd - dt);   // Zornladung: die Pause läuft nur über Schaden ab
   p.swingT = Math.max(0, p.swingT - dt);
   p.y = clamp(p.y, G.camTop + p.r, G.camTop + VIEW_H - p.r);   // nicht aus dem Bild zurück
 
@@ -1419,7 +1492,9 @@ function update(dt) {
   }
   if (p.reloadT > 0) {
     p.reloadT -= dt;
-    if (p.reloadT <= 0) { p.reloadT = 0; p.mag = S.magSize; sfx('reload_done'); runHooks('reload', {}); }
+    if (p.reloadT <= 0) { p.reloadT = 0; p.mag = S.magSize; G.fresh = true; G.ramp = 0; sfx('reload_done'); runHooks('reload', {}); }
+    p.charge = 0;
+  } else if (S.charge && w.type === 'ranged') { chargeStep(dt);
   } else if ((settings.autofire ? mouse.down : mouse.pressed) && p.cooldown <= 0 && !isBlocking() && !isMeditating()) {
     p.aim = p.angle;   // eigener Klick: Schüsse gehen dorthin, wohin die Maus zielt
     if (w.type === 'ranged' && p.mag <= 0) sfx('empty_click');
@@ -2141,6 +2216,8 @@ function hurtPlayer(d, srcAngle) {
     spark(p.x + Math.cos(p.angle) * 18, p.y + Math.sin(p.angle) * 18, '#fff3c8');
     if (d < 1) return;
   }
+  if (G.barkReady) { G.barkReady = false; G.cnt.bark = 0; sfx('block'); spark(p.x, p.y, '#8fbf6a'); return; }   // Eichenrinde fängt den Treffer ab
+  G.hurtAt = G.time;
   p.hp -= d;
   G.hurtT = 0.35; G.shakeT = 0.25;
   sfx('player_hurt');
@@ -2203,6 +2280,7 @@ function updateBullets(dt) {
     }
     b.life = 0;
   }
+  for (const b of G.bullets) if (b.life <= 0 && b.from === 'player' && b.M && b.gen === 0 && b.hits === 0 && !b.back) runHooks('miss', { b });   // Bolzen ohne Treffer
   G.bullets = G.bullets.filter(b => b.life > 0);
   for (const bo of G.booms) {   // Sprengsätze: zünden nach ihrer Zeit
     bo.t -= dt;
@@ -2257,9 +2335,11 @@ function bulletHitEnemy(b, e, hx, hy) {
   let dmg = b.dmg;
   if (M.grow) dmg *= clamp(M.grow.start + M.grow.perM * b.trav / PX_PER_M, M.grow.start, M.grow.max);   // Wachsende Wucht
   for (const d of M.dmgVs) if (d.test(e)) dmg *= d.k;   // Todesstoß, Eröffnungsstoß
+  if (M.streak) dmg *= 1 + Math.min(M.streak.max, (G.cnt.streak || 0) * M.streak.per);   // Serienschütze
   for (const c of M.crit) if (Math.random() < c.p) dmg *= c.k;
   damageEnemy(e, dmg);
   if (S.lifesteal > 0) G.player.hp = Math.min(S.maxHp, G.player.hp + dmg * S.lifesteal);   // Lebensraub
+  if (S.zorn) G.player.dashCd = Math.max(0, G.player.dashCd - dmg / (S.zorn * Math.pow(ENEMY_HP_STEP, enemyStage())));   // Zornladung
   if (M.lsBig > 0 && (e.elite || ENEMY_TYPES[e.type].boss)) G.player.hp = Math.min(S.maxHp, G.player.hp + dmg * M.lsBig);   // Bluttrunk
   b.hits++;
   spark(hx, hy, '#e8e8e8');
@@ -2339,6 +2419,7 @@ function boomBlast(bo) {
   G.rings.push({ x: bo.x, y: bo.y, r: bo.r, life: 0.28, max: 0.28 });
   for (let i = 0; i < 12; i++) G.parts.push({ x: bo.x, y: bo.y, vx: rand(-160, 160), vy: rand(-160, 160), life: 0.35, color: Math.random() < 0.5 ? '#ffb060' : '#ff6a30' });
   for (const e of G.enemies) if (e.hp > 0 && Math.hypot(e.x - bo.x, e.y - bo.y) <= bo.r + e.r) damageEnemy(e, bo.dmg);
+  if (bo.own) { const pl = G.player; if (Math.hypot(pl.x - bo.x, pl.y - bo.y) < bo.r + pl.r * 0.5) hurtPlayer(bo.dmg * 0.5); }   // Bombenleger: die Bombe trifft auch dich, zur Hälfte
 }
 function addZone(x, y, r, life, dmg, kind) { G.pzones.push({ x, y, r, life, dmg, tick: 0.5, kind }); }
 function explode(x, y, dmg, R, target) {
@@ -3038,6 +3119,8 @@ function drawEntities() {
   if (G.area.id === 'moor') { drawWisps(); drawFogBanks(); drawHexeHazards(); }   // Angriffe der Hexe über dem Nebel, aber nur im Sichtkegel sichtbar
   if (G.autoT && G.autoT.hp > 0) { const t = G.autoT; ctx.strokeStyle = 'rgba(255,243,200,.75)'; ctx.lineWidth = 2; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.arc(t.x, t.y, t.r + 8, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
   if (G.curseT > 0) { const t = performance.now() / 600; ctx.strokeStyle = 'rgba(176,112,255,' + (0.5 + 0.3 * Math.sin(t * 4)) + ')'; ctx.lineWidth = 2.5; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.arc(p.x, p.y, 24, t, t + 6.28); ctx.stroke(); ctx.setLineDash([]); ctx.beginPath(); for (let i = 0; i < 3; i++) { const a = t + i * 2.094; ctx.moveTo(p.x + Math.cos(a) * 24, p.y + Math.sin(a) * 24); ctx.lineTo(p.x + Math.cos(a) * 32, p.y + Math.sin(a) * 32); } ctx.stroke(); }
+  if (G.barkReady) { ctx.strokeStyle = 'rgba(143,191,106,.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 8, 0, 7); ctx.stroke(); }   // Eichenrinde bereit
+  if (p.charge > 0.05) { ctx.strokeStyle = '#f2c14e'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 12, -Math.PI / 2, -Math.PI / 2 + p.charge * Math.PI * 2); ctx.stroke(); }   // Ladeschuss lädt auf
   drawFigure(G.cls.id, p.x, p.y, isBlocking() ? p.angle : (p.aim === undefined ? p.angle : p.aim), 1, {
     dash: p.dashT > 0,
     swing: p.swingT > 0 ? 1 - p.swingT / WEAPONS.schwert.swing : -1,
@@ -4068,7 +4151,7 @@ function drawCard(c, x, y, k, hover, at) {   // at: Bildschirmposition der Karte
   text(c.kind.toUpperCase(), 110, 171, 12, '#1c140c', 'center', F_TEXT, 'bold');
   {   // Aufbau für alle Karten: Fähigkeitstext, darunter die Stats. Einzelne Karte: gewürfelter Wert mit Tier. Vorlage (Kartenbuch): Basiswert mit Spanne. Feste Karten: ein fester Wert.
     const isInst = c.u !== undefined && c.stats;
-    const lines = wrap(c.text, 186, '500 15px ' + F_TEXT).slice(0, 3);
+    const lines = wrap(c.text, 186, '500 15px ' + F_TEXT).slice(0, c.stats && c.stats.length >= 3 ? 2 : 3);   // bei drei Stats bleibt Platz für zwei Textzeilen
     lines.forEach((l, i) => text(l, 110, 196 + i * 16, 15, '#2a1f14', 'center', F_TEXT, '500'));
     const ry0 = 196 + lines.length * 16 + 14, vals = isInst ? c.vals : null;
     ctx.save(); ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(18, ry0 - 15); ctx.lineTo(202, ry0 - 15); ctx.stroke(); ctx.restore();
@@ -5370,7 +5453,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.96';
+const VERSION = 'v0.97';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -5519,8 +5602,8 @@ const TEST_MODS = [
   { id: 'frost', n: 'Frostbolzen', d: '−20 % Tempo für 2 s, stapelt bis −40 %', apply: S => { S.mod.slow = { k: 0.2, dur: 2, max: 0.4 }; } },
   { id: 'split', n: 'Spaltschuss', d: 'zwei Splitter mit 45 % (bei Durchschlag erst beim 2. Treffer)', apply: S => { S.mod.split = { n: 2, k: 0.45, ang: 12, range: 320 }; } },
   { id: 'bumerang', n: 'Bumerang', d: 'halbe Reichweite, kehrt zurück (50 %)', apply: S => { S.mod.ret = { k: 0.5, range: 0.5 }; } },
-  { id: 'schrot', n: 'Schrotflinte', d: '3 Bolzen mit 70 %, kostet 2, langsamer', apply: S => { S.fans.push({ n: 3, spread: 24, d: 0.7, cost: 2, slow: 2, eff: 0.5 }); } },
-  { id: 'breit', n: 'Breitseite', d: '5 Bolzen mit 45 %, kostet 3, viel langsamer', apply: S => { S.fans.push({ n: 5, spread: 40, d: 0.45, cost: 3, slow: 2.5, eff: 0.5 }); } },
+  { id: 'schrot', n: 'Schrotflinte', d: '3 Bolzen mit 70 %, kostet 2, langsamer', apply: S => { S.fans.push({ n: 3, spread: 24, d: 0.7, cost: 2, red: 0.5, eff: 0.5 }); } },
+  { id: 'breit', n: 'Breitseite', d: '5 Bolzen mit 45 %, kostet 3, viel langsamer', apply: S => { S.fans.push({ n: 5, spread: 40, d: 0.45, cost: 3, red: 0.6, eff: 0.5 }); } },
   { id: 'rear', n: 'Rückwärtsschuss', d: 'jeder Schuss auch nach hinten (50 %)', apply: S => { S.rear = 0.5; } },
   { id: 'kette', n: 'Kettenblitz', d: 'springt auf 2 weitere Gegner', apply: S => { S.chain += 2; } },
   { id: 'crit', n: 'Kritischer Treffer', d: '10 % Chance auf 1,5-fachen Schaden', apply: S => { S.mod.crit.push({ p: 0.1, k: 1.5 }); } }
