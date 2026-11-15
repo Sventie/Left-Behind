@@ -5156,8 +5156,9 @@ function drawBookScreen() {
     const side = bookSpread >= t ? 'L' : 'R', k = side === 'L' ? bookSpread - t : t - 1 - bookSpread;
     return { label, y, h, idx, side, k: Math.min(k, 4), on: curCat === cat, go: () => { bookSpread = t; } };
   });
+  const tabHits = [];
   const drawTab = t => {
-    const left = t.side === 'L', reach = 52 - t.idx * 6, edgeX = left ? X : X + Wd, xEnd = left ? X - reach : X + Wd + reach;
+    const left = t.side === 'L', reach = 26 - t.idx * 3, edgeX = left ? X : X + Wd, xEnd = left ? X - reach : X + Wd + reach;
     const x0 = left ? lp : rp + pw, xs = t.k === 0 ? x0 + (left ? 8 : -8) : (left ? x0 - (t.k - 1) * 7 : x0 + (t.k - 1) * 7);
     const x = Math.min(xs, xEnd), w = Math.abs(xEnd - xs), hov = inside(x, t.y, w, t.h);
     ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, t.y, w, t.h, left ? [12, 0, 0, 12] : [0, 12, 12, 0]) : ctx.rect(x, t.y, w, t.h);
@@ -5165,7 +5166,7 @@ function drawBookScreen() {
     ctx.fill(); ctx.strokeStyle = t.on ? '#7a5a1a' : '#5a4a1a'; ctx.lineWidth = 2; ctx.stroke();
     ctx.save(); ctx.translate((edgeX + xEnd) / 2, t.y + t.h / 2); ctx.rotate(left ? -Math.PI / 2 : Math.PI / 2);
     text(t.label, 0, 5, 16, t.on ? '#1c140c' : '#c8d4de', 'center', F_TITLE); ctx.restore();
-    uiHit(Math.min(edgeX, xEnd) - (left ? 0 : 10), t.y, Math.abs(xEnd - edgeX) + 10, t.h, t.go);
+    tabHits.push([x - (left ? 6 : 0), t.y, w + 6, t.h, t.go]);   // ganze Fläche des Reiters, wird zuletzt eingetragen (liegt über den Seiten)
   };
   const stack = (n, x0, dir, side) => {
     for (let k = Math.min(n, 4); k >= 1; k--) {
@@ -5263,6 +5264,7 @@ function drawBookScreen() {
   text('Sortierung in jeder Kategorie, häufig → selten:', lx, 674, 15, '#8a9aa0', 'left', F_TEXT);
   lx += 330;
   leg.forEach(([n, c], i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(lx + 6, 669, 6, 0, 7); ctx.fill(); text(n, lx + 18, 674, 15, c, 'left', F_TEXT); lx += 28 + n.length * 7.6; if (i < 3) { text('→', lx - 6, 674, 15, '#8a9aa0', 'left', F_TEXT); lx += 14; } });
+  for (const [hx0, hy0, hw0, hh0, hgo] of tabHits) uiHit(hx0, hy0, hw0, hh0, hgo);
   if (bookHoverCard) drawCard(bookHoverCard, clamp(mouse.fx + 24, 10, 1040), clamp(mouse.fy - 150, 90, 380), 1.0, true);
 }
 
@@ -6212,7 +6214,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.07';
+const VERSION = 'v1.08';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
