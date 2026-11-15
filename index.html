@@ -1209,7 +1209,7 @@ function playerAttack() {
     const pat = shotPattern(), a = p.aim + (Math.random() + Math.random() - 1) * currentSpread() * deg;
     G.shotN++;
     const booms = S.mod.booms.filter(bm => G.shotN % bm.every === 0);
-    for (const q of pat.bolts) fireBolt(a + q.a * deg, w.damage * S.dmgMul * q.d, booms);
+    pat.bolts.forEach((q, i) => fireBolt(a + q.a * deg, w.damage * S.dmgMul * q.d, i === 0 ? booms : null));   // der Sprengsatz sitzt nur am ersten Bolzen des Schusses
     p.mag = Math.max(0, p.mag - pat.cost);
     p.cooldown = w.interval * pat.slow / (1 + (S.rateMul - 1) * pat.eff);   // Feuerrate-Boni wirken bei Mustern nur zum Teil (pat.eff)
     p.bloom = Math.min(w.bloomMax, p.bloom + w.bloomPerShot);
@@ -5271,7 +5271,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.93';
+const VERSION = 'v0.94';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -5410,7 +5410,7 @@ const TEST_MODS = [
   { id: 'homeMouse', n: 'Lenkgeschoss', d: 'folgt der Maus im Flug', apply: S => { S.mod.homeMouse = 3; } },
   { id: 'homeAuto', n: 'Zielsuchend', d: 'biegt zum nächsten Gegner vor ihm', apply: S => { S.mod.homeAuto = 2.5; } },
   { id: 'sprengbolzen', n: 'Sprengbolzen', d: 'jeder 5. Schuss: bleibt stecken, explodiert nach 1 s (60 %)', apply: S => { S.mod.booms.push({ every: 5, r: 80, k: 0.6, delay: 1, mode: 'stick' }); } },
-  { id: 'zielbombe', n: 'Zielbombe', d: 'bleibt an der Maus stehen und explodiert', apply: S => { S.mod.booms.push({ every: 1, r: 80, k: 0.6, delay: 0, mode: 'aim' }); } },
+  { id: 'zielbombe', n: 'Bolzen bleibt an der Maus (nur Test)', d: 'jeder Schuss explodiert an der Maus, keine Karte', apply: S => { S.mod.booms.push({ every: 1, r: 80, k: 0.6, delay: 0, mode: 'aim' }); } },
   { id: 'gift', n: 'Gift', d: '15 % des Treffers über 4 s, stapelt', apply: S => { S.mod.dots.push({ type: 'gift', rps: 0.15 / 4, dur: 4, stack: true }); } },
   { id: 'feuer', n: 'Feuer', d: '50 % eines Schusses je s, 3 s, stapelt nicht', apply: S => { S.mod.dots.push({ type: 'feuer', rps: 0.5, dur: 3, stack: false }); } },
   { id: 'blut', n: 'Blutung', d: '5 % über 4 s, doppelt bei Bewegung', apply: S => { S.mod.dots.push({ type: 'blut', rps: 0.05 / 4, dur: 4, stack: true }); } },
