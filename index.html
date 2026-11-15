@@ -3797,14 +3797,19 @@ function drawCard(c, x, y, k, hover) {
     const ry0 = 196 + lines.length * 16 + 14, vals = isInst ? c.vals : null;
     ctx.save(); ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(18, ry0 - 15); ctx.lineTo(202, ry0 - 15); ctx.stroke(); ctx.restore();
     const lx = (mouse.fx - x) / k, ly = (mouse.fy - y) / k;
+    const tipMode = isInst && hover && k >= 0.95 && (lx < 0 || lx > 220 || ly < 0 || ly > 320);   // Tooltip neben der Maus: Spanne gleich unter jedem Stat
     if (c.stats) c.stats.forEach((st, i) => {
-      const ry = ry0 + i * 18;
+      const ry = ry0 + i * (tipMode ? 32 : 18);
       text(fit(st.n, 104, '14px ' + F_TEXT), 20, ry, 14, '#3a2a18', 'left', F_TEXT);
       if (isInst) {
         const t = c.t[st.k] || 3;
         text(valueText(st, vals[st.k]), 152, ry, 14, st.bad ? '#8a2a30' : '#17703f', 'right', F_TITLE);
         text('(T' + t + ')', 158, ry, 13, TIER_COL[t], 'left', F_TEXT, 'bold');
-        if (hover && k >= 0.9 && lx >= 14 && lx <= 206 && ly >= ry - 14 && ly <= ry + 5) tipRow = { st, ry, t };
+        if (hover && k >= 0.9 && !tipMode && lx >= 14 && lx <= 206 && ly >= ry - 14 && ly <= ry + 5) tipRow = { st, ry, t };
+        if (tipMode) {
+          text('T1–T5', 20, ry + 14, 11, '#6a5a40', 'left', F_TEXT, 'italic');
+          for (let tt = 1; tt <= 5; tt++) text(numText(tierValue(st, tt)), 74 + (tt - 1) * 32, ry + 14, 11, tt === t ? TIER_COL[tt] : '#6a5a40', 'center', F_TEXT, tt === t ? 'bold' : '');
+        }
       } else {
         text(valueText(st, st.base), 152, ry, 14, st.bad ? '#8a2a30' : '#17703f', 'right', F_TITLE);
         text('(' + numText(tierValue(st, 1)) + '–' + numText(tierValue(st, 5)) + ')', 158, ry, 12, '#6a5a40', 'left', F_TEXT);
@@ -3814,8 +3819,7 @@ function drawCard(c, x, y, k, hover) {
       text(fit(c.stat, 128, '14px ' + F_TEXT), 20, ry0, 14, '#3a2a18', 'left', F_TEXT);
       text('(fest)', 158, ry0, 13, '#6a5a40', 'left', F_TEXT, 'italic');
     }
-    const fl = fit(c.flavor, 186, 'italic 13px ' + F_TEXT);
-    text(fl, 110, 284, 13, '#5a4630', 'center', F_TEXT, 'italic');
+    if (!(tipMode && c.stats.length > 2)) text(fit(c.flavor, 186, 'italic 13px ' + F_TEXT), 110, 284, 13, '#5a4630', 'center', F_TEXT, 'italic');
   }
   ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.beginPath(); ctx.moveTo(18, 292); ctx.lineTo(202, 292); ctx.stroke();
   ctx.fillStyle = R.c; ctx.beginPath(); ctx.arc(24, 304, 6, 0, 7); ctx.fill(); ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 2; ctx.stroke();
@@ -5089,7 +5093,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.90';
+const VERSION = 'v0.91';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
