@@ -64,6 +64,9 @@ const BASE = {                          // Basiswerte, Klasse und Karten veränd
   extraChoices: 0,                      // zusätzliche Karte in der Wahl
   rateMul: 1.0,                         // Feuerrate (Fähigkeiten)
   dashMul: 1.0,                         // Abklingzeit des Windstoßes
+  dashN: 0,                             // wie viele Windstoß-Karten (die zweite verkürzt die Pause)
+  lifesteal: 0,                         // Anteil des Schadens, der als Leben zurückkommt
+  boltSpeed: 1,                         // Tempo der Bolzen
   priceMul: 1.0,                        // Händlerpreise
   rerolls: 1                            // Neuwürfe der Kartenwahl pro Lauf
 };
@@ -201,18 +204,25 @@ const RARITY = {
 // types: für welche Waffenarten die Karte angeboten wird (leer = alle)
 const CARDS = [
   // für alle
-  { id: 'stiefel',  name: 'Wanderstiefel',        kind: 'Segen',  rarity: 'gewoehnlich', icon: 'boot',    max: 3, stat: '+10 % Lauftempo',      text: 'Leder und Moos tragen dich schneller.',            flavor: '„Die Straße kennt keine Müdigkeit.“', apply: S => { S.moveSpeed *= 1.10; } },
+  { id: 'stiefel',  name: 'Wanderstiefel',        kind: 'Segen',  rarity: 'gewoehnlich', icon: 'boot',    max: 3, stat: '+8 % Lauftempo',      text: 'Leder und Moos tragen dich schneller.',            flavor: '„Die Straße kennt keine Müdigkeit.“', apply: S => { S.moveSpeed *= 1.10; } },
   { id: 'schild',   name: 'Eichenschild',         kind: 'Segen',  rarity: 'gewoehnlich', icon: 'shield',  max: 3, stat: '+30 Leben',            text: 'Altes Eichenholz schützt deine Brust.',            flavor: '„Es hat Schlimmeres gesehen.“',        apply: S => { S.maxHp += 30; } },
-  { id: 'irrlicht', name: 'Irrlicht',             kind: 'Segen', rarity: 'selten',      icon: 'wisp',    max: 2, stat: 'Sichtweite +25 %',     text: 'Ein Irrlicht leuchtet den Weg weiter aus.',        flavor: '„Folge dem Licht. Nicht dem anderen.“', apply: S => { S.rangeMul *= 1.25; } },
-  { id: 'wind',     name: 'Windstoß',             kind: 'Fähigkeit', rarity: 'selten',      icon: 'wind',    max: 1, stat: 'Sprint (Leertaste)',   text: 'Ein Stoß treibt dich 4 m nach vorn. 12 s Abklingzeit.', flavor: '„Der Wald hält den Atem an.“',    apply: S => { S.dash = true; } },
-  { id: 'falke',    name: 'Falkenauge',           kind: 'Segen', rarity: 'episch',      icon: 'eye',     max: 2, stat: 'Sichtkegel +25°',      text: 'Du siehst weiter zur Seite, ohne den Kopf zu drehen.', flavor: '„Nichts entgeht dem Jäger.“',    apply: S => { S.fov += 25; } },
+  { id: 'irrlicht', name: 'Irrlicht',             kind: 'Segen', rarity: 'gewoehnlich',      icon: 'wisp',    max: 2, stat: 'Sichtweite +25 %',     text: 'Ein Irrlicht leuchtet den Weg weiter aus.',        flavor: '„Folge dem Licht. Nicht dem anderen.“', apply: S => { S.rangeMul *= 1.25; } },
+  { id: 'wind',     name: 'Windstoß',             kind: 'Fähigkeit', rarity: 'selten',      icon: 'wind',    max: 2, limit: 2, stat: 'Sprint (Leertaste)',   text: 'Ein Stoß treibt dich 4 m nach vorn. 12 s Abklingzeit, mit einer zweiten Karte nur 8 s.', flavor: '„Der Wald hält den Atem an.“',    apply: S => { S.dash = true; S.dashN += 1; } },
+  { id: 'leichtfuss', name: 'Leichtfuß',         kind: 'Segen', rarity: 'selten',      icon: 'boot',    max: 3, stat: '', text: 'Leichte Schritte, dünne Haut: schnell, aber leichter zu verletzen.', flavor: '„Wer rennt, braucht keine Rüstung.“', apply: S => {} },
+  { id: 'falkenblick', name: 'Falkenblick',      kind: 'Segen', rarity: 'selten',      icon: 'eye',     max: 3, stat: '', text: 'Du siehst weiter und breiter.',                    flavor: '„Der Falke sieht alles.“',               apply: S => {} },
+  { id: 'weitwinkel', name: 'Weitwinkel',        kind: 'Segen', rarity: 'episch',      icon: 'eye',     max: 2, stat: '', text: 'Ein riesiger Blickwinkel, aber nichts reicht ganz so weit.', flavor: '„Viel Himmel, wenig Tiefe.“',      apply: S => {} },
+  { id: 'lebensraub', name: 'Lebensraub',        kind: 'Segen', rarity: 'gewoehnlich', icon: 'wisp',    max: 3, stat: '', text: 'Ein Teil jedes Treffers fließt als Leben zu dir zurück.', flavor: '„Was du nimmst, hält dich am Leben.“', apply: S => {} },
+  { id: 'falke',    name: 'Falkenauge',           kind: 'Segen', rarity: 'gewoehnlich',      icon: 'eye',     max: 2, stat: 'Sichtkegel +25°',      text: 'Du siehst weiter zur Seite, ohne den Kopf zu drehen.', flavor: '„Nichts entgeht dem Jäger.“',    apply: S => { S.fov += 25; } },
   { id: 'blitz',    name: 'Kettenblitz',          kind: 'Zauber', rarity: 'episch',      icon: 'bolt',    max: 2, stat: 'Kettenblitz-Treffer',  text: 'Treffer springen auf 2 weitere Gegner über.',      flavor: '„Der Himmel schuldet dir etwas.“',     apply: S => { S.chain += 2; } },
   { id: 'krone',    name: 'Krone der Verlorenen', kind: 'Zauber', rarity: 'legendaer',   icon: 'crown',   max: 1, stat: '4 statt 3 Karten',     text: 'Wähle nach jeder Stufe aus vier Karten.',          flavor: '„Wer sie trägt, wird nicht vergessen.“', apply: S => { S.extraChoices += 1; } },
   // Fernkampf
   { id: 'hand',     name: 'Ruhige Hand',          kind: 'Segen',  rarity: 'gewoehnlich', icon: 'target',  max: 3, types: ['ranged', 'spell'], stat: '−15 % Streuung', text: 'Ein tiefer Atemzug, ein sicherer Schuss.',        flavor: '„Erst atmen, dann schießen.“',         apply: S => { S.spreadMul *= 0.85; } },
-  { id: 'spanner',  name: 'Schnellspanner',       kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 2, types: ['ranged'], stat: '−25 % Spannzeit',    text: 'Die Sehne spannt sich wie von selbst.',           flavor: '„Klick, und weiter.“',                 apply: S => { S.reloadMul *= 0.75; } },
-  { id: 'koecher',  name: 'Tiefer Köcher',        kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 3, types: ['ranged'], stat: '+4 Bolzen im Magazin', text: 'Mehr Platz, mehr Schüsse bis zum Spannen.',      flavor: '„Man kann nie zu viele haben.“',       apply: S => { S.magSize += 4; } },
+  { id: 'spanner',  name: 'Meisterspanner',       kind: 'Segen',  rarity: 'selten', icon: 'quiver',  max: 2, types: ['ranged'], stat: '−25 % Spannzeit',    text: 'Die Sehne spannt sich wie von selbst.',           flavor: '„Klick, und weiter.“',                 apply: S => { S.reloadMul *= 0.75; } },
+  { id: 'koecher',  name: 'Tiefer Köcher',        kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 3, types: ['ranged'], stat: '+2 Bolzen im Magazin', text: 'Mehr Platz, mehr Schüsse bis zum Spannen.',      flavor: '„Man kann nie zu viele haben.“',       apply: S => { S.magSize += 2; } },
   { id: 'bolzen',   name: 'Scharfe Bolzen',       kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 3, types: ['ranged'], stat: '+15 % Schaden',      text: 'Frisch geschliffene Spitzen schlagen tiefer ein.', flavor: '„Der Schmied sparte nicht.“',          apply: S => { S.dmgMul *= 1.15; } },
+  { id: 'spann15',   name: 'Schnellspanner',       kind: 'Segen',  rarity: 'gewoehnlich', icon: 'quiver',  max: 2, types: ['ranged'], stat: '', text: 'Die Sehne spannt sich wie von selbst.',           flavor: '„Klick, und weiter.“',                 apply: S => {} },
+  { id: 'riesen',    name: 'Riesenköcher',         kind: 'Segen',  rarity: 'selten',      icon: 'quiver',  max: 1, limit: 1, types: ['ranged'], stat: '', text: 'Ein riesiger Köcher voller Bolzen. Das Spannen dauert länger.', flavor: '„Wer viel mitnimmt, braucht Zeit.“', apply: S => {} },
+  { id: 'schwer',    name: 'Schwere Spitzen',      kind: 'Segen',  rarity: 'selten',      icon: 'quiver',  max: 3, types: ['ranged'], stat: '', text: 'Schwerere Bolzen schlagen härter, fliegen aber langsamer.', flavor: '„Schwer wie ein Versprechen.“',   apply: S => {} },
   { id: 'spitze',   name: 'Spitze Bolzen',        kind: 'Segen',  rarity: 'selten',      icon: 'quiver',  max: 2, types: ['ranged'], stat: 'Durchschlag +1',     text: 'Der Bolzen durchbohrt einen Gegner und fliegt weiter.', flavor: '„Zwei auf einen Streich.“',     apply: S => { S.pierce += 1; } },
   // Nahkampf
   { id: 'klinge',   name: 'Geschärfte Klinge',    kind: 'Segen',  rarity: 'gewoehnlich', icon: 'sword',   max: 3, types: ['melee'], stat: '+15 % Schaden',       text: 'Ein Wetzstein, eine ruhige Nacht, eine bessere Schneide.', flavor: '„Scharf genug zum Rasieren.“', apply: S => { S.dmgMul *= 1.15; } },
@@ -267,13 +277,13 @@ function mkInst(def, t, u) {
 function rollInst(def, u) { const t = {}; for (const st of def.stats || []) t[st.k] = rollTier(); return mkInst(def, t, u); }
 const tierSum = o => Object.values(o.t || {}).reduce((a, b) => a + b, 0);
 const CARD_PARAM = {
-  stiefel:  { stats: [{ k: 'v', n: 'Lauftempo', base: 10, pre: '+', u: ' %' }], apply: (S, v) => { S.moveSpeed *= 1 + v.v / 100; } },
-  schild:   { stats: [{ k: 'v', n: 'Leben', base: 30, pre: '+', u: '' }], apply: (S, v) => { S.maxHp += v.v; } },
-  irrlicht: { stats: [{ k: 'v', n: 'Sichtweite', base: 25, pre: '+', u: ' %' }], apply: (S, v) => { S.rangeMul *= 1 + v.v / 100; } },
-  falke:    { stats: [{ k: 'v', n: 'Sichtkegel', base: 25, pre: '+', u: '°' }], apply: (S, v) => { S.fov += v.v; } },
-  hand:     { stats: [{ k: 'v', n: 'Streuung', base: 15, pre: '−', u: ' %' }], apply: (S, v) => { S.spreadMul *= 1 - v.v / 100; } },
+  stiefel:  { stats: [{ k: 'v', n: 'Lauftempo', base: 8, pre: '+', u: ' %' }], apply: (S, v) => { S.moveSpeed *= 1 + v.v / 100; } },
+  schild:   { stats: [{ k: 'v', n: 'Leben', base: 12, pre: '+', u: '' }], apply: (S, v) => { S.maxHp += v.v; } },
+  irrlicht: { stats: [{ k: 'v', n: 'Sichtweite', base: 20, pre: '+', u: ' %' }], apply: (S, v) => { S.rangeMul *= 1 + v.v / 100; } },
+  falke:    { stats: [{ k: 'v', n: 'Sichtkegel', base: 20, pre: '+', u: '°' }], apply: (S, v) => { S.fov += v.v; } },
+  hand:     { stats: [{ k: 'v', n: 'Streuung', base: 30, pre: '−', u: ' %' }], apply: (S, v) => { S.spreadMul *= 1 - v.v / 100; } },
   spanner:  { stats: [{ k: 'v', n: 'Spannzeit', base: 25, pre: '−', u: ' %' }], apply: (S, v) => { S.reloadMul *= 1 - v.v / 100; } },
-  bolzen:   { stats: [{ k: 'v', n: 'Schaden', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
+  bolzen:   { stats: [{ k: 'v', n: 'Schaden', base: 5, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
   klinge:   { stats: [{ k: 'v', n: 'Schaden', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
   lang:     { stats: [{ k: 'v', n: 'Reichweite', base: 20, pre: '+', u: ' %' }], apply: (S, v) => { S.reachMul *= 1 + v.v / 100; } },
   breit:    { stats: [{ k: 'v', n: 'Schwungbogen', base: 30, pre: '+', u: '°' }], apply: (S, v) => { S.arcAdd += v.v; } },
@@ -281,7 +291,14 @@ const CARD_PARAM = {
   macht:    { stats: [{ k: 'v', n: 'Schaden', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.dmgMul *= 1 + v.v / 100; } },
   quell:    { stats: [{ k: 'v', n: 'Manaregeneration', base: 25, pre: '+', u: ' %' }], apply: (S, v) => { S.manaRegenMul *= 1 + v.v / 100; } },
   brunnen:  { stats: [{ k: 'v', n: 'Mana', base: 25, pre: '+', u: '' }], apply: (S, v) => { S.manaMax += v.v; } },
-  funke:    { stats: [{ k: 'v', n: 'Flächenradius', base: 30, pre: '+', u: ' %' }], apply: (S, v) => { S.splashMul *= 1 + v.v / 100; } }
+  funke:    { stats: [{ k: 'v', n: 'Flächenradius', base: 30, pre: '+', u: ' %' }], apply: (S, v) => { S.splashMul *= 1 + v.v / 100; } },
+  spann15:  { stats: [{ k: 'v', n: 'Spannzeit', base: 15, pre: '−', u: ' %' }], apply: (S, v) => { S.reloadMul *= 1 - v.v / 100; } },
+  leichtfuss: { stats: [{ k: 'a', n: 'Lauftempo', base: 20, pre: '+', u: ' %' }, { k: 'b', n: 'Leben', base: 12, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.moveSpeed *= 1 + v.a / 100; S.maxHp = Math.round(S.maxHp * (1 - v.b / 100)); } },
+  riesen:   { stats: [{ k: 'a', n: 'Bolzen', base: 8, pre: '+', u: '' }, { k: 'b', n: 'Spannzeit', base: 20, pre: '+', u: ' %', bad: true }], apply: (S, v) => { S.magSize += v.a; S.reloadMul *= 1 + v.b / 100; } },
+  schwer:   { stats: [{ k: 'a', n: 'Schaden', base: 10, pre: '+', u: ' %' }, { k: 'b', n: 'Bolzentempo', base: 15, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.dmgMul *= 1 + v.a / 100; S.boltSpeed *= 1 - v.b / 100; } },
+  falkenblick: { stats: [{ k: 'a', n: 'Sichtkegel', base: 15, pre: '+', u: '°' }, { k: 'b', n: 'Sichtweite', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.fov += v.a; S.rangeMul *= 1 + v.b / 100; } },
+  weitwinkel: { stats: [{ k: 'a', n: 'Sichtkegel', base: 70, pre: '+', u: '°' }, { k: 'b', n: 'Sichtweite', base: 15, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.fov += v.a; S.rangeMul *= 1 - v.b / 100; } },
+  lebensraub: { stats: [{ k: 'v', n: 'Lifesteal', base: 5, pre: '+', u: ' %' }], apply: (S, v) => { S.lifesteal += v.v / 100; } }
 };
 for (const id in CARD_PARAM) setupParam(CARD_BY_ID[id], CARD_PARAM[id]);
 const ICONS = {
@@ -1186,7 +1203,7 @@ function shotPattern() {
 // Ein Bolzen des Spielers: trägt die Geschoss-Eigenschaften (M) mit sich, sie gelten für jeden Bolzen eines Musters
 function fireBolt(a, dmg, booms) {
   const p = G.player, w = W(), M = S.mod, bm = booms && booms.length ? booms[0] : null;
-  addBullet(p.x, p.y, a, w.speed, dmg, 'player', w.range * (M.ret ? M.ret.range : 1), S.pierce, {
+  addBullet(p.x, p.y, a, w.speed * S.boltSpeed, dmg, 'player', w.range * (M.ret ? M.ret.range : 1), S.pierce, {
     M, gen: 0, hits: 0, bounces: 0, dmg0: dmg, boom: bm, sx: p.x, sy: p.y, pierce0: S.pierce,
     aimStop: bm && bm.mode === 'aim' ? Math.hypot(mouse.x - p.x, mouse.y + G.camTop - p.y) : 0
   });
@@ -1265,6 +1282,7 @@ function meleeSwing() {
 function alertEnemy(e) {
   e.state = 'alert'; e.reaction = 0.6; e.lastX = G.player.x; e.lastY = G.player.y; e.lostT = 0;
 }
+const dashCooldown = () => DASH.cooldown * (S.dashN >= 2 ? 2 / 3 : 1) * S.dashMul;   // zweite Windstoß-Karte: 8 s statt 12 s
 function tryDash() {
   const p = G.player;
   if (!S.dash || p.dashCd > 0 || p.dashT > 0 || G.rootT > 0) return;
@@ -1272,7 +1290,7 @@ function tryDash() {
   if (!mx && !my) { mx = Math.cos(p.angle); my = Math.sin(p.angle); }
   const l = Math.hypot(mx, my);
   p.dashX = mx / l; p.dashY = my / l;
-  p.dashT = DASH.time; p.dashCd = DASH.cooldown * S.dashMul;
+  p.dashT = DASH.time; p.dashCd = dashCooldown();
   sfx('dash'); runHooks('dash', {});
   for (let i = 0; i < 10; i++) G.parts.push({ x: p.x, y: p.y, vx: rand(-60, 60) - p.dashX * 100, vy: rand(-60, 60) - p.dashY * 100, life: 0.35, color: '#9af0c0' });
 }
@@ -2173,6 +2191,7 @@ function bulletHitEnemy(b, e, hx, hy) {
   let dmg = b.dmg;
   for (const c of M.crit) if (Math.random() < c.p) dmg *= c.k;
   damageEnemy(e, dmg);
+  if (S.lifesteal > 0) G.player.hp = Math.min(S.maxHp, G.player.hp + dmg * S.lifesteal);   // Lebensraub
   b.hits++;
   spark(hx, hy, '#e8e8e8');
   if (S.chain > 0) chainLightning(e, dmg * 0.5);
@@ -3997,7 +4016,8 @@ function drawCard(c, x, y, k, hover, at) {   // at: Bildschirmposition der Karte
       text(fit(c.stat, 128, '14px ' + F_TEXT), 20, ry0, 14, '#3a2a18', 'left', F_TEXT);
       text('(fest)', 158, ry0, 13, '#6a5a40', 'left', F_TEXT, 'italic');
     }
-    if (!(tipMode && c.stats.length > 2)) text(fit(c.flavor, 186, 'italic 13px ' + F_TEXT), 110, 284, 13, '#5a4630', 'center', F_TEXT, 'italic');
+    const lastRow = ry0 + ((c.stats ? c.stats.length : 1) - 1) * (tipMode ? 32 : 18) + (tipMode ? 16 : 0);
+    if (lastRow <= 266) text(fit(c.flavor, 186, 'italic 13px ' + F_TEXT), 110, 284, 13, '#5a4630', 'center', F_TEXT, 'italic');   // der Spruch entfällt, wenn Text und Stats den Platz brauchen
   }
   ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.beginPath(); ctx.moveTo(18, 292); ctx.lineTo(202, 292); ctx.stroke();
   ctx.fillStyle = R.c; ctx.beginPath(); ctx.arc(24, 304, 6, 0, 7); ctx.fill(); ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 2; ctx.stroke();
@@ -4085,7 +4105,7 @@ function drawRails() {
     rr(ax + 14, 669, 72, 22, 5); ctx.fillStyle = '#e8dcbc'; ctx.fill();
     text(keyLabel(bind('dash')), ax + 50, 685, 14, '#1c140c', 'center', F_TEXT, 'bold');
     text('Windstoß', ax + 96, 685, 14, '#f0e6c8', 'left', F_TITLE);
-    const cd = 1 - p.dashCd / DASH.cooldown;
+    const cd = 1 - p.dashCd / dashCooldown();
     rr(ax + 172, 676, 54, 8, 4); ctx.fillStyle = '#1e2c22'; ctx.fill();
     rr(ax + 172, 676, 54 * cd, 8, 4); ctx.fillStyle = cd >= 1 ? '#4fd08a' : '#2e8a5a'; ctx.fill();
   } else {
@@ -5271,7 +5291,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.94';
+const VERSION = 'v0.95';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -5391,7 +5411,9 @@ function statRows() {
   row('Sichtkegel', fmt(S.fov, 0) + '°', ...add(S.fov, S0.fov, '°'));
   if (S.pierce > 0) row('Durchschlag', fmt(S.pierce, 0), '+' + S.pierce, 1);
   if (S.chain > 0) row('Kettenblitz', fmt(S.chain, 0) + ' Ziele', '+' + S.chain, 1);
-  if (S.dash) row('Windstoß-Pause', fmt(DASH.cooldown * S.dashMul, 1) + ' s', ...pct(S.dashMul, S0.dashMul, true));
+  if (S.dash) row('Windstoß-Pause', fmt(dashCooldown(), 1) + ' s', ...pct(dashCooldown(), DASH.cooldown, true));
+  if (S.lifesteal > 0) row('Lifesteal', fmt(S.lifesteal * 100, 0) + ' %', '+' + fmt(S.lifesteal * 100, 0) + ' %', 1);
+  if (Math.abs(S.boltSpeed - 1) > 0.005) row('Bolzentempo', fmt(W().speed * S.boltSpeed / PX_PER_M, 1) + ' m/s', ...pct(S.boltSpeed, 1));
   if (S.extraChoices > 0) row('Kartenwahl', fmt(3 + S.extraChoices, 0) + ' Karten', '+' + S.extraChoices, 1);
   if (Math.abs(S.priceMul - 1) > 0.005) row('Händlerpreise', fmt(S.priceMul * 100, 0) + ' %', ...pct(S.priceMul, 1, true));
   return rows;
