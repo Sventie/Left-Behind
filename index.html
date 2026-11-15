@@ -729,7 +729,7 @@ const MUSIC_DEFS = {
 function musicFor(st) {
   if (!gestureDone) return;
   if (['options', 'controls', 'feedback'].includes(st)) return;
-  const want = ['menu', 'select', 'areas', 'bosscards', 'ranking', 'skills', 'intro', 'book', 'deck', 'shop', 'open', 'recycle'].includes(st) ? 'menu' : ['play', 'pick', 'pause', 'victory'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
+  const want = ['menu', 'select', 'areas', 'bosscards', 'ranking', 'skills', 'intro', 'book', 'deck', 'shop', 'open', 'recycle', 'forge'].includes(st) ? 'menu' : ['play', 'pick', 'pause', 'victory'].includes(st) ? 'run' : st === 'merchant' ? 'merchant' : null;
   if (MUSIC.name === want) return;
   stopMusic(); MUSIC.name = want;
   if (!want) return;
@@ -4853,7 +4853,7 @@ function bookPages() {
 }
 function drawTopBar(active) {
   uiButton(40, 18, 120, 42, '‹ Menü', () => { state = 'menu'; });
-  [['book', 'Kartenbuch', 176, 150, () => { bookSpread = 0; state = 'book'; }], ['deck', 'Deck', 342, 100, () => { deckClass = lastClass; deckHoverIdx = -1; state = 'deck'; }], ['shop', 'Bibliothek', 458, 150, () => { state = 'shop'; }]].forEach(([id, label, x, w, go]) => {
+  [['forge', 'Schmiede', 624, 150, () => openForge()], ['book', 'Kartenbuch', 176, 150, () => { bookSpread = 0; state = 'book'; }], ['deck', 'Deck', 342, 100, () => { deckClass = lastClass; deckHoverIdx = -1; state = 'deck'; }], ['shop', 'Bibliothek', 458, 150, () => { state = 'shop'; }]].forEach(([id, label, x, w, go]) => {
     uiButton(x, 18, w, 42, label, id === active ? null : go, { primary: id === active });
   });
 }
@@ -5402,6 +5402,152 @@ function drawOpenScreen() {
   drawSilver(1240, 20);
 }
 
+
+// ---------- Kartenschmiede: eine Karte verbrauchen, um die gemeinsamen Stats einer anderen neu zu würfeln ----------
+let forgeT = null, forgeM = null, forgeRes = null, forgePage = 0, forgeFilter = 'all';
+const GENERIC_STATS = new Set(['Lauftempo', 'Leben', 'Schaden', 'Streuung', 'Spannzeit', 'Bolzen', 'Sichtweite', 'Sichtkegel', 'Feuerrate', 'Lifesteal', 'Maximalleben', 'Mana', 'Manaregeneration', 'Flächenradius', 'Schwungbogen', 'Blockwinkel', 'Bolzentempo']);
+// Gleicher Stat: allgemeine Werte (Schaden, Lauftempo …) zählen über alle Karten, Zahlen einer einzelnen Karte nur bei derselben Karte
+const statId = (def, st) => GENERIC_STATS.has(st.n) ? st.n : def.id + '/' + st.n;
+function forgeShared(t, m) {
+  if (!t.stats || !m.stats || t === m) return [];
+  const ids = new Set(m.stats.map(st => statId(m, st)));
+  return t.stats.filter(st => ids.has(statId(t, st)));
+}
+function openForge() { forgeT = forgeM = forgeRes = null; forgePage = 0; armedAct = null; state = 'forge'; }
+function forgeClick(c) {
+  if (c === forgeT) { forgeT = forgeM = null; sfx('empty_click'); return; }
+  if (c === forgeM) { forgeM = null; sfx('empty_click'); return; }
+  if (!forgeT) { if (c.stats) { forgeT = c; sfx('card_pick', 0.6); } else sfx('empty_click'); return; }
+  if (forgeShared(forgeT, c).length) { forgeM = c; armedAct = null; sfx('card_pick', 0.6); } else sfx('empty_click');
+}
+function doForge() {
+  const shared = forgeShared(forgeT, forgeM);
+  if (!shared.length) return;
+  const before = Object.assign({}, forgeT.t), mat = forgeM;
+  for (const st of shared) forgeT.t[st.k] = rollTier();
+  SAVE.cards = SAVE.cards.filter(o => o.u !== mat.u);
+  for (const k in SAVE.decks) SAVE.decks[k] = SAVE.decks[k].filter(u => u !== mat.u);
+  forgeRes = { before, shared, matName: mat.name };
+  forgeM = null; persist(); sfx('stage_up');
+}
+const ANVIL_A = new Path2D('M6 10h40c6 0 10 4 12 8-4 2-8 3-12 3H30l3 8v5h6v4H17v-4h6v-5l3-8H14C9 21 5 17 6 10z'), ANVIL_B = new Path2D('M46 21c-3 4-4 6-4 8');
+const FORGE_EMBERS = Array.from({ length: 40 }, (_, i) => [40 + ((i * 97) % 470), 200 + ((i * 53) % 330), 1 + (i % 3) * 0.7, i]);
+function drawForgeBg() {
+  const t = performance.now() / 1000;
+  const g = ctx.createRadialGradient(270, 470, 10, 270, 470, 340); g.addColorStop(0, 'rgba(255,140,50,.30)'); g.addColorStop(0.55, 'rgba(255,120,40,.09)'); g.addColorStop(1, 'rgba(255,120,40,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 78, FRAME_W, FRAME_H - 78);
+  for (const [x, y, r, i] of FORGE_EMBERS) { ctx.globalAlpha = 0.2 + 0.5 * Math.abs(Math.sin(t * 1.6 + i)); ctx.fillStyle = '#ffb060'; ctx.fillRect(x, y - ((t * 14 + i * 9) % 60), r, r); }
+  ctx.globalAlpha = 1;
+  ctx.save(); ctx.translate(50, 372); ctx.scale(440 / 64, 440 / 64);
+  ctx.fillStyle = 'rgba(255,154,74,.14)'; ctx.fill(ANVIL_A);
+  ctx.strokeStyle = '#ffb060'; ctx.lineWidth = 0.55; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke(ANVIL_A); ctx.stroke(ANVIL_B);
+  ctx.restore();
+}
+function drawForgeTile(c, x, y, mode, hl) {
+  const R = RARITY[c.rarity];
+  ctx.save(); ctx.globalAlpha = mode === 'dim' ? 0.32 : 1;
+  const g = ctx.createLinearGradient(x, y, x + 168, y + 122); g.addColorStop(0, R.c); g.addColorStop(0.5, R.c2); g.addColorStop(1, R.c);
+  if (mode === 'tgt' || mode === 'mat') { ctx.shadowColor = mode === 'tgt' ? '#f2c14e' : '#8ee8ff'; ctx.shadowBlur = 16; }
+  rr(x, y, 168, 122, 9); ctx.fillStyle = g; ctx.fill(); ctx.shadowBlur = 0;
+  if (mode === 'tgt' || mode === 'mat') { rr(x - 3, y - 3, 174, 128, 11); ctx.strokeStyle = mode === 'tgt' ? '#f2c14e' : '#8ee8ff'; ctx.lineWidth = 3; ctx.stroke(); }
+  const pg = ctx.createLinearGradient(x, y, x, y + 122); pg.addColorStop(0, '#ece1c2'); pg.addColorStop(1, '#d8c89b');
+  rr(x + 4, y + 4, 160, 114, 6); ctx.fillStyle = pg; ctx.fill(); ctx.strokeStyle = '#3a2a18'; ctx.lineWidth = 2; ctx.stroke();
+  drawIcon(c.icon, x + 19, y + 19, 16, R.ink, 1.6);
+  text(fit(c.name, 126, '12.5px ' + F_TITLE), x + 32, y + 23, 12.5, '#2a1f14', 'left', F_TITLE);
+  ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + 10, y + 30); ctx.lineTo(x + 158, y + 30); ctx.stroke();
+  if (c.stats) {
+    const vals = c.vals;
+    c.stats.forEach((st, i) => {
+      const ry = y + 48 + i * 18, on = hl && hl.has(statId(c, st)), t = c.t[st.k] || 3;
+      if (on) { rr(x + 7, ry - 13, 154, 17, 3); ctx.fillStyle = 'rgba(242,193,78,.32)'; ctx.fill(); ctx.strokeStyle = '#b9801a'; ctx.lineWidth = 1; ctx.stroke(); }
+      text(fit(st.n, 70, '12.5px ' + F_TEXT), x + 11, ry, 12.5, '#3a2a18', 'left', F_TEXT);
+      text(valueText(st, vals[st.k]), x + 126, ry, 12.5, (st.bad || st.neg) ? '#8a2a30' : '#17703f', 'right', F_TITLE);
+      text('(T' + t + ')', x + 130, ry, 12, TIER_COL[t], 'left', F_TEXT, 'bold');
+    });
+  } else text('feste Karte', x + 84, y + 70, 13, '#6a5a40', 'center', F_TEXT, 'italic');
+  ctx.restore();
+}
+function drawForgeScreen() {
+  uiBtns = [];
+  screenBackdrop();
+  drawForgeBg();
+  drawTopBar('forge');
+  drawSilver(1240, 20);
+  titleText('Kartenschmiede', 40, 126, 38);
+  text('Verbrauche eine Karte, um die Stats einer anderen neu zu würfeln.', 40, 152, 15, '#8a9aa0', 'left', F_TEXT, 'italic');
+  // Plätze links
+  const k = 190 / 220, SW = 190, SH = Math.round(320 * k);
+  const slot = (x, label, c, hint, col) => {
+    text(label, x, 178, 13, col, 'left', F_TEXT, 'bold');
+    if (c) { drawCard(c, x, 190, k, false); uiHit(x, 190, SW, SH, () => forgeClick(c)); }
+    else { ctx.setLineDash([6, 5]); rr(x, 190, SW, SH, 12); ctx.fillStyle = 'rgba(255,255,255,.02)'; ctx.fill(); ctx.strokeStyle = '#3a4a3e'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]); text('+', x + SW / 2, 190 + SH / 2 - 6, 40, '#6a7a70', 'center', F_TEXT); wrap(hint, SW - 40, '15px ' + F_TEXT).forEach((l, i) => text(l, x + SW / 2, 190 + SH / 2 + 24 + i * 18, 15, '#6a7a70', 'center', F_TEXT)); }
+  };
+  slot(60, '1 · ZIELKARTE', forgeT, 'Karte aus der Sammlung wählen', '#f2c14e');
+  slot(290, '2 · ROHSTOFF', forgeM, 'Danach eine Karte mit gleichem Stat', '#8ee8ff');
+  // Sammlung rechts
+  const kinds = [['Alle', 'all', 70], ['Segen', 'Segen', 86], ['Zauber', 'Zauber', 86], ['Fähigkeiten', 'Fähigkeit', 122]];
+  kinds.reduce((x, [l, id, w]) => { chip(x, 108, w, l, forgeFilter === id, () => { forgeFilter = id; forgePage = 0; }); return x + w + 8; }, 548);
+  let list = SAVE.cards.filter(c => forgeFilter === 'all' || c.kind === forgeFilter);
+  const elig = c => forgeT && (c === forgeT || c === forgeM || forgeShared(forgeT, c).length) ? 0 : 1;   // passende Karten stehen vorn
+  list = list.slice().sort((a, b) => elig(a) - elig(b) || byRarity(a, b) || tierSum(b) - tierSum(a) || a.u - b.u);
+  const per = 12, pages = Math.max(1, Math.ceil(list.length / per));
+  forgePage = clamp(forgePage, 0, pages - 1);
+  if (pages > 1) { uiButton(1146, 108, 40, 32, '‹', () => { forgePage--; }, { size: 18, disabled: forgePage <= 0 }); uiButton(1200, 108, 40, 32, '›', () => { forgePage++; }, { size: 18, disabled: forgePage >= pages - 1 }); text((forgePage + 1) + ' / ' + pages, 1130, 130, 15, '#8a9aa0', 'right', F_TEXT); }
+  const tIds = forgeT && forgeT.stats ? new Set(forgeT.stats.map(st => statId(forgeT, st))) : null;
+  const mIds = forgeM && forgeM.stats ? new Set(forgeM.stats.map(st => statId(forgeM, st))) : null;
+  list.slice(forgePage * per, forgePage * per + per).forEach((c, i) => {
+    const x = 548 + (i % 4) * 176, y = 156 + Math.floor(i / 4) * 130;
+    let mode = 'ok', hl = null;
+    if (c === forgeT) { mode = 'tgt'; hl = mIds; }
+    else if (c === forgeM) { mode = 'mat'; hl = tIds; }
+    else if (!forgeT) mode = c.stats ? 'ok' : 'dim';
+    else if (forgeShared(forgeT, c).length) hl = tIds; else mode = 'dim';
+    drawForgeTile(c, x, y, mode, hl);
+    uiHit(x, y, 168, 122, () => forgeClick(c));
+  });
+  if (!list.length) text('Du besitzt noch keine Karten.', 900, 300, 18, '#7a8a7a', 'center', F_TEXT, 'italic');
+  // Vorschau
+  rr(548, 550, 702, 92, 10); ctx.fillStyle = '#0c1510'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
+  const ready = !!(forgeT && forgeM);
+  if (ready) {
+    const sh = forgeShared(forgeT, forgeM), rest = forgeT.stats.filter(st => !sh.includes(st));
+    text('NEU GEWÜRFELT', 566, 574, 12, '#f2c14e', 'left', F_TITLE);
+    text(sh.map(st => st.n + ' (jetzt T' + forgeT.t[st.k] + ')').join(', '), 566, 596, 14, '#c8d4de', 'left', F_TEXT);
+    text('BLEIBT', 566, 616, 12, '#8a9aa0', 'left', F_TITLE);
+    text(rest.length ? rest.map(st => st.n).join(', ') : '–', 650, 616, 14, '#c8d4de', 'left', F_TEXT);
+    const inDeck = Object.values(SAVE.decks).some(d => d.includes(forgeM.u));
+    wrap(forgeM.name + ' wird verbraucht' + (inDeck ? ' und aus dem Deck genommen' : '') + '. Der Wurf kann auch schlechter ausfallen.', 330, '13px ' + F_TEXT).forEach((l, i) => text(l, 900, 574 + i * 17, 13, '#ff9a8a', 'left', F_TEXT));
+  } else if (forgeT) {
+    text('Wähle jetzt eine hell dargestellte Karte als Rohstoff.', 566, 588, 15, '#c8d4de', 'left', F_TEXT);
+    text('Alle Stats, die beide Karten gemeinsam haben, werden neu gewürfelt.', 566, 612, 14, '#8a9aa0', 'left', F_TEXT, 'italic');
+  } else {
+    text('SO GEHT ES', 566, 572, 12, '#f2c14e', 'left', F_TITLE);
+    text('1. Zielkarte wählen: Ihre Stats werden neu gewürfelt.', 566, 592, 13.5, '#c8d4de', 'left', F_TEXT);
+    text('2. Rohstoff wählen: Er braucht einen gleichen Stat und wird verbraucht.', 566, 610, 13.5, '#c8d4de', 'left', F_TEXT);
+    text('3. Alle gemeinsamen Stats werden neu gewürfelt, auch zum Schlechteren.', 566, 628, 13.5, '#c8d4de', 'left', F_TEXT);
+  }
+  uiButton(548, 654, 260, 48, armed('forge') ? 'Sicher? Nochmal klicken' : 'Schmieden', () => confirmed('forge', doForge), { primary: true, disabled: !ready, size: armed('forge') ? 16 : 18 });
+  text('Zweimal klicken zur Bestätigung. Gelb unterlegt sind Stats, die neu gewürfelt werden.', 824, 674, 13.5, '#8a9aa0', 'left', F_TEXT);
+  // Ergebnis
+  if (forgeRes) {
+    ctx.fillStyle = 'rgba(2,5,4,.82)'; ctx.fillRect(0, 78, FRAME_W, FRAME_H - 78);
+    const t = forgeT, old = mkInst(CARD_BY_ID[t.id], forgeRes.before, 0), K = 0.95;
+    text('VORHER', 280, 146, 13, '#8a9aa0', 'left', F_TEXT, 'bold'); text('NACHHER', 590, 126, 13, '#f2c14e', 'left', F_TEXT, 'bold');
+    ctx.globalAlpha = 0.85; drawCard(old, 280, 160, 0.78, false); ctx.globalAlpha = 1;
+    text('→', 520, 340, 46, '#f2c14e', 'center', F_TITLE);
+    drawCard(t, 590, 140, K, false);
+    rr(870, 150, 370, 190, 12); ctx.fillStyle = '#101a14'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 1.5; ctx.stroke();
+    text('Geschmiedet', 888, 182, 17, '#f2c14e', 'left', F_TITLE);
+    forgeRes.shared.forEach((st, i) => {
+      const b = forgeRes.before[st.k] || 3, a = t.t[st.k], vb = tierValue(st, b), va = tierValue(st, a), better = (va - vb) * (st.bad || st.down ? -1 : 1);
+      text(st.n + ': ' + valueText(st, vb) + ' (T' + b + ') → ' + valueText(st, va) + ' (T' + a + ')', 888, 214 + i * 24, 14.5, '#c8d4de', 'left', F_TEXT);
+      text(better > 0 ? 'besser' : better < 0 ? 'schlechter' : 'gleich', 1228, 214 + i * 24, 14, better > 0 ? '#7fe0a8' : better < 0 ? '#ff9a8a' : '#8a9aa0', 'right', F_TEXT, 'bold');
+    });
+    text(forgeRes.matName + ' wurde verbraucht.', 888, 322, 13.5, '#8a9aa0', 'left', F_TEXT);
+    uiButton(870, 370, 300, 48, 'Weiter schmieden', () => { forgeRes = null; forgeM = null; }, { primary: true });
+    uiButton(870, 430, 300, 48, 'Fertig', () => { forgeRes = null; forgeT = forgeM = null; });
+  }
+}
 function surplusList() {
   return CARDS.filter(c => (SAVE.owned[c.id] || 0) > copyLimit(c)).map(c => ({ c, n: SAVE.owned[c.id] - copyLimit(c) }));
 }
@@ -5685,6 +5831,7 @@ function draw() {
   if (state === 'deck') { drawDeckScreen(); drawCursor(); return; }
   if (state === 'shop') { drawShopScreen(); drawCursor(); return; }
   if (state === 'open') { drawOpenScreen(); drawCursor(); return; }
+  if (state === 'forge') { drawForgeScreen(); drawCursor(); return; }
   if (state === 'recycle') { drawRecycleScreen(); drawCursor(); return; }
   if (state === 'skills') { drawSkillScreen(); drawCursor(); return; }
   if (state === 'intro') { drawIntroScreen(); drawCursor(); return; }
@@ -5725,7 +5872,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.00';
+const VERSION = 'v1.01';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -6792,6 +6939,7 @@ addEventListener('keydown', e => {
     else if (e.code === 'ArrowLeft' && introPage > 0) introPage--;
     return;
   }
+  if (state === 'forge') { if (e.code === 'Escape') { if (forgeRes) forgeRes = null; else state = 'menu'; } return; }
   if (state === 'recycle') { if (e.code === 'Escape') state = 'book'; if (e.code === 'ArrowRight') recyclePage++; if (e.code === 'ArrowLeft') recyclePage--; return; }
   if (state === 'open' && packOpen && packOpen.phase === 'tear' && (e.code === 'Space' || e.code === 'Enter' || e.code === 'Escape')) { packOpen.tear = 1; return; }
   if (state === 'open') { if (e.code === 'Escape' && packOpen && packOpen.cards.every(it => it.t)) { state = 'shop'; packOpen = null; } return; }
@@ -6875,7 +7023,7 @@ canvas.addEventListener('mousedown', e => {
     if (mouse.fx >= bx - 20 && mouse.fx <= bx + PACK_W * OPEN_SC + 40 && mouse.fy >= 90 && mouse.fy <= 600) { packOpen.drag = true; packOpen.dx0 = mouse.fx - packOpen.tear * PACK_W * OPEN_SC; mouse.down = true; }
     return;
   }
-  if (state === 'intro' || state === 'book' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant' || state === 'victory' || state === 'areas' || state === 'bosscards' || state === 'ranking' || state === 'skills') { if (e.button === 0) { if (state === 'areas') areaDrag = { x: mouse.fx, s: areaScroll }; uiClick(); } return; }
+  if (state === 'intro' || state === 'book' || state === 'forge' || state === 'deck' || state === 'shop' || state === 'open' || state === 'recycle' || state === 'merchant' || state === 'victory' || state === 'areas' || state === 'bosscards' || state === 'ranking' || state === 'skills') { if (e.button === 0) { if (state === 'areas') areaDrag = { x: mouse.fx, s: areaScroll }; uiClick(); } return; }
   if (e.button !== 0) return;
   if (state === 'menu') { const bt = boardTabRects.find(r => mouse.fx >= r.x && mouse.fx <= r.x + r.w && mouse.fy >= r.y && mouse.fy <= r.y + r.h); if (bt) { sfx('ui_click'); if (bt.id === 'open') openRanking('menu'); else boardTab = bt.id; return; } const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
   if (state === 'select') {
@@ -6896,6 +7044,7 @@ canvas.addEventListener('wheel', e => {
   if (state === 'victory' && G.victory) { G.victory.scroll += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'deck') { deckPage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'recycle') { recyclePage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
+  if (state === 'forge') { forgePage += e.deltaY > 0 ? 1 : -1; e.preventDefault(); }
   if (state === 'test' && testAreas) { for (const k of ['l', 'm']) { const a = testAreas[k]; if (inside(a.x, a.y, a.w + 8, a.h)) { testScroll[k] += e.deltaY * 0.6; e.preventDefault(); } } }
   if (state === 'pause' && pauseAreas) { for (const k of ['c', 's']) { const a = pauseAreas[k]; if (inside(a.x, a.y, a.w + 8, a.h)) { pauseScroll[k] += e.deltaY * 0.6; e.preventDefault(); } } }
 }, { passive: false });
