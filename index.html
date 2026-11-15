@@ -29,7 +29,7 @@
 // =====================================================================
 //  Left Behind – Topdown-Prototyp (Reine Fantasy)
 //  WASD bewegen · Maus zielen · Linksklick angreifen · Rechtsklick Spezial
-//  R spannen (Waldläufer) · Leertaste Fähigkeit · Esc/P Pause
+//  R spannen (Waldläufer) · Q und E Fähigkeiten · Esc/P Pause
 //  Alle Werte zum Ausprobieren stehen im Block "Balancing".
 // =====================================================================
 
@@ -209,7 +209,7 @@ const CARDS = [
   { id: 'stiefel',  name: 'Wanderstiefel',        kind: 'Segen',  rarity: 'gewoehnlich', icon: 'boot',    max: 3, stat: '+8 % Lauftempo',      text: 'Leder und Moos tragen dich schneller.',            flavor: '„Die Straße kennt keine Müdigkeit.“', apply: S => { S.moveSpeed *= 1.10; } },
   { id: 'schild',   name: 'Eichenschild',         kind: 'Segen',  rarity: 'gewoehnlich', icon: 'shield',  max: 3, stat: '+30 Leben',            text: 'Altes Eichenholz schützt deine Brust.',            flavor: '„Es hat Schlimmeres gesehen.“',        apply: S => { S.maxHp += 30; } },
   { id: 'irrlicht', name: 'Irrlicht',             kind: 'Segen', rarity: 'gewoehnlich',      icon: 'wisp',    max: 2, stat: 'Sichtweite +25 %',     text: 'Ein Irrlicht leuchtet den Weg weiter aus.',        flavor: '„Folge dem Licht. Nicht dem anderen.“', apply: S => { S.rangeMul *= 1.25; } },
-  { id: 'wind',     name: 'Windstoß',             kind: 'Fähigkeit', rarity: 'selten',      icon: 'wind',    max: 2, limit: 2, stat: 'Sprint (Leertaste)',   text: 'Ein Stoß treibt dich 4 m nach vorn. 12 s Pause, mit zweiter Karte 8 s.', flavor: '„Der Wald hält den Atem an.“',    apply: S => { S.dash = true; S.dashN += 1; } },
+  { id: 'wind',     name: 'Windstoß',             kind: 'Fähigkeit', rarity: 'selten',      icon: 'wind',    max: 2, limit: 2, ability: 'dash', stat: 'Sprint (Fähigkeit)',   text: 'Ein Stoß treibt dich 4 m nach vorn. 12 s Pause, mit zweiter Karte 8 s.', flavor: '„Der Wald hält den Atem an.“',    apply: S => { S.dash = true; S.dashN += 1; } },
   { id: 'leichtfuss', name: 'Leichtfuß',         kind: 'Segen', rarity: 'selten',      icon: 'boot',    max: 3, stat: '', text: 'Leichte Schritte, dünne Haut: schnell, aber leichter zu verletzen.', flavor: '„Wer rennt, braucht keine Rüstung.“', apply: S => {} },
   { id: 'falkenblick', name: 'Falkenblick',      kind: 'Segen', rarity: 'selten',      icon: 'eye',     max: 3, stat: '', text: 'Du siehst weiter und breiter.',                    flavor: '„Der Falke sieht alles.“',               apply: S => {} },
   { id: 'weitwinkel', name: 'Weitwinkel',        kind: 'Segen', rarity: 'episch',      icon: 'eye',     max: 2, stat: '', text: 'Ein riesiger Blickwinkel, aber nichts reicht ganz so weit.', flavor: '„Viel Himmel, wenig Tiefe.“',      apply: S => {} },
@@ -269,10 +269,10 @@ const CARDS = [
   { id: 'blutzoll', name: 'Blutzoll', kind: 'Zauber', rarity: 'selten', icon: 'flask', max: 3, stat: '', text: 'Weniger Leben, dafür heilen dich deine Treffer.', flavor: '„Der Preis ist Blut.“', apply: S => {} },
   { id: 'tribut', name: 'Laufender Tribut', kind: 'Zauber', rarity: 'episch', icon: 'flask', max: 3, stat: '', text: 'Du verlierst beim Laufen Leben, dafür heilen dich Treffer stark.', flavor: '„Jeder Schritt kostet.“', apply: S => {} },
   { id: 'bluttausch', name: 'Bluttausch', kind: 'Zauber', rarity: 'episch', icon: 'flask', max: 3, stat: '', text: 'Weniger Leben. Jeder Treffer heilt einen Teil deines Lebens.', flavor: '„Ein Tausch, der sich lohnt.“', apply: S => {} },
-  { id: 'raserei', name: 'Raserei', kind: 'Fähigkeit', rarity: 'episch', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: '10 s Raserei, 25 s Pause. Du erleidest +50 % Schaden.', flavor: '„Nichts hält dich auf. Nichts schützt dich.“', apply: S => {} },
+  { id: 'raserei', name: 'Raserei', kind: 'Fähigkeit', ability: 'rage', rarity: 'episch', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: '10 s Raserei, 25 s Pause. Du erleidest +50 % Schaden.', flavor: '„Nichts hält dich auf. Nichts schützt dich.“', apply: S => {} },
   { id: 'siegesrausch', name: 'Siegesrausch', kind: 'Zauber', rarity: 'selten', icon: 'bolt', max: 3, types: ['ranged'], stat: '', text: 'Fünf Gefallene in 8 s machen dich 5 s lang stärker.', flavor: '„Wer siegt, will mehr.“', apply: S => {} },
-  { id: 'blitzschritt', name: 'Blitzschritt', kind: 'Fähigkeit', rarity: 'episch', icon: 'wind', max: 3, stat: '', text: 'Teleport zur Maus, Feuerspur hinter dir.', flavor: '„Er war hier. Er ist dort.“', apply: S => {} },
-  { id: 'schattenschritt', name: 'Schattenschritt', kind: 'Fähigkeit', rarity: 'episch', icon: 'wind', max: 3, stat: '', text: 'Teleport zur Maus, Gegner in der Nähe verlieren dich.', flavor: '„Wo er war, ist nur Schatten.“', apply: S => {} },
+  { id: 'blitzschritt', name: 'Blitzschritt', kind: 'Fähigkeit', ability: 'blink', rarity: 'episch', icon: 'wind', max: 3, stat: '', text: 'Teleport zur Maus, Feuerspur hinter dir.', flavor: '„Er war hier. Er ist dort.“', apply: S => {} },
+  { id: 'schattenschritt', name: 'Schattenschritt', kind: 'Fähigkeit', ability: 'blink', rarity: 'episch', icon: 'wind', max: 3, stat: '', text: 'Teleport zur Maus, Gegner in der Nähe verlieren dich.', flavor: '„Wo er war, ist nur Schatten.“', apply: S => {} },
   { id: 'gezeichnet', name: 'Gezeichnet', kind: 'Zauber', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Ein zufälliger Gegner nimmt mehr Schaden, trifft aber härter.', flavor: '„Wer markiert ist, ist doppelt gefährlich.“', apply: S => {} },
   { id: 'jagdbeute', name: 'Jagdbeute', kind: 'Zauber', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Der stärkste Gegner ist gezeichnet. Fällt er, trifft es den nächsten.', flavor: '„Der Größte zuerst.“', apply: S => {} },
   { id: 'todeszeichen', name: 'Todeszeichen', kind: 'Zauber', rarity: 'selten', icon: 'target', max: 3, types: ['ranged'], stat: '', text: 'Bis zu 3 Gegner sind 4 s gezeichnet, dann 6 s Pause.', flavor: '„Drei Namen auf der Liste.“', apply: S => {} },
@@ -588,11 +588,15 @@ function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.fl
 const SFX_IDS = ['ui_click', 'card_pick', 'card_flip', 'rare_reveal', 'pack_buy', 'coin', 'buff_drink', 'merchant_open', 'stage_up',
   'shoot_crossbow', 'reload_start', 'reload_done', 'empty_click', 'shoot_spell', 'spell_explode', 'sword_swing', 'sword_hit', 'block',
   'hit_enemy', 'enemy_die', 'enemy_shoot', 'player_hurt', 'player_die', 'dash', 'pickup_heal', 'horde_horn'];
-const DEFAULT_BINDS = { up: 'KeyW', left: 'KeyA', down: 'KeyS', right: 'KeyD', dash: 'Space', reload: 'KeyR', interact: 'KeyE', music: 'KeyM', sfx: 'KeyN', rage: 'KeyQ', blink: 'KeyF' };
+const DEFAULT_BINDS = { up: 'KeyW', left: 'KeyA', down: 'KeyS', right: 'KeyD', abil1: 'KeyQ', abil2: 'KeyE', reload: 'KeyR', interact: 'KeyF', music: 'KeyM', sfx: 'KeyN' };
 const DEFAULT_SETTINGS = { autoaim: false, master: 0.8, music: 0.5, sfx: 0.7, bgMute: true, bright: 100, hitfx: 2, hpbars: true, dmgnums: false, fps30: false, showfps: false, xhair: 0, xcol: '#fff3c8', autoPause: true, hints: true, autofire: true };
 const settings = (() => {
   let s = {}; try { s = JSON.parse(localStorage.getItem('left-behind-settings')) || {}; } catch (e) {}
-  return Object.assign({}, DEFAULT_SETTINGS, s, { binds: Object.assign({}, DEFAULT_BINDS, s.binds) });
+  const old = s.binds || {};   // ältere Belegung: eine Taste je Fähigkeit, Handeln auf E
+  const binds = Object.assign({}, DEFAULT_BINDS, old);
+  delete binds.dash; delete binds.rage; delete binds.blink;
+  if (!old.abil1 && !old.abil2 && old.interact === 'KeyE') binds.interact = 'KeyF';   // E gehört jetzt der zweiten Fähigkeit
+  return Object.assign({}, DEFAULT_SETTINGS, s, { binds });
 })();
 const audioPrefs = (() => {
   try { return Object.assign({ music: true, sfx: true }, JSON.parse(localStorage.getItem('left-behind-audio'))); } catch (e) { return { music: true, sfx: true }; }
@@ -1236,7 +1240,7 @@ function pickByRarity(list, key, used) {
 }
 function makeMerchantOffers() {
   const t = wtype(), odds = merchantOdds();
-  const cardPool = CARDS.filter(c => !c.types || c.types.includes(t));
+  const have = abilitySlots(), cardPool = CARDS.filter(c => (!c.types || c.types.includes(t)) && !(have.length >= 2 && c.ability && !have.includes(c.ability)));
   const buffPool = BUFFS.filter(b => !b.types || b.types.includes(t));
   const mk = (pool, kind) => {
     const used = [], out = [];
@@ -1474,15 +1478,26 @@ function meleeSwing() {
 function alertEnemy(e) {
   e.state = 'alert'; e.reaction = 0.6; e.lastX = G.player.x; e.lastY = G.player.y; e.lostT = 0;
 }
+// Zwei Fähigkeitsplätze (Q und E): die Fähigkeiten in der Reihenfolge, in der die Karten gewählt wurden
+function abilitySlots() {
+  const out = [];
+  for (const c of G.cards) if (c.ability && !out.includes(c.ability)) out.push(c.ability);
+  return out.slice(0, 2);
+}
+const slotted = id => abilitySlots().includes(id);
+function useAbility(i) {
+  const id = abilitySlots()[i];
+  if (id === 'dash') tryDash(); else if (id === 'rage') tryRage(); else if (id === 'blink') tryBlink();
+}
 function tryRage() {
   const a = G.abil.rage;
-  if (!S.rage || a.t > 0 || a.cd > 0) return;
+  if (!S.rage || !slotted('rage') || a.t > 0 || a.cd > 0) return;
   a.t = S.rage.dur; sfx('stage_up');
   for (let i = 0; i < 12; i++) G.parts.push({ x: G.player.x, y: G.player.y, vx: rand(-120, 120), vy: rand(-120, 120), life: 0.4, color: '#ff6a5a' });
 }
 function tryBlink() {   // Blitzschritt (Feuerspur) oder Schattenschritt (Gegner in der Nähe verlieren dich kurz)
   const a = G.abil.blink, b = S.blink, p = G.player;
-  if (!b || a.cd > 0 || G.rootT > 0) return;
+  if (!b || !slotted('blink') || a.cd > 0 || G.rootT > 0) return;
   const tx = mouse.x, ty = mouse.y + G.camTop, d = Math.hypot(tx - p.x, ty - p.y) || 1, len = Math.min(b.range * PX_PER_M, d), dx = (tx - p.x) / d, dy = (ty - p.y) / d;
   const x0 = p.x, y0 = p.y; let done = 0;
   while (done < len) { const st = Math.min(8, len - done); if (moveCircle(p, dx * st, dy * st) < st * 0.5) break; done += st; if (b.mode === 'fire' && Math.floor(done / 24) !== Math.floor((done - st) / 24)) addZone(p.x, p.y, 26, 3, W().damage * S.dmgMul * b.dmg * 0.5, 'feuer'); }
@@ -1493,7 +1508,7 @@ function tryBlink() {   // Blitzschritt (Feuerspur) oder Schattenschritt (Gegner
 const dashCooldown = () => DASH.cooldown * (S.dashN >= 2 ? 2 / 3 : 1) * S.dashMul;   // zweite Windstoß-Karte: 8 s statt 12 s
 function tryDash() {
   const p = G.player;
-  if (!S.dash || p.dashCd > 0 || p.dashT > 0 || G.rootT > 0) return;
+  if (!S.dash || !slotted('dash') || p.dashCd > 0 || p.dashT > 0 || G.rootT > 0) return;
   let mx = (held('right') ? 1 : 0) - (held('left') ? 1 : 0), my = (held('down') ? 1 : 0) - (held('up') ? 1 : 0);
   if (!mx && !my) { mx = Math.cos(p.angle); my = Math.sin(p.angle); }
   const l = Math.hypot(mx, my);
@@ -1730,7 +1745,8 @@ function say(t) { G.msg = t; G.msgT = 2.2; }
 function rollOffers(exclude) {   // exclude: bisher gesehene Karten (beim Neuwurf)
   const crown = S.crown && G.stage % 3 === 0;   // Kronenwahl: jede dritte Wahl zeigt fünf Karten
   const n = 3 + S.extraChoices + (crown ? 2 : 0), ex = (exclude || []).map(c => c.id);
-  const ids = [...new Set(G.library.map(c => c.id))].filter(id => !ex.includes(id));
+  const full = abilitySlots().length >= 2, have = abilitySlots();   // sind beide Fähigkeitsplätze belegt, kommen keine neuen Fähigkeiten mehr
+  const ids = [...new Set(G.library.map(c => c.id))].filter(id => !ex.includes(id) && !(full && CARD_BY_ID[id].ability && !have.includes(CARD_BY_ID[id].ability)));
   const out = [];
   while (out.length < n && ids.length) {
     const weights = ids.map(id => G.library.filter(x => x.id === id).length);   // mehr Kopien = höhere Chance
@@ -4471,9 +4487,12 @@ function drawRails() {
   const ax = FIELD_X + 340;
   rr(ax, 653, 240, 54, 27); ctx.fillStyle = '#0a110d'; ctx.fill();
   const abs = [];
-  if (S.dash) abs.push({ n: 'Windstoß', key: bind('dash'), f: 1 - p.dashCd / dashCooldown(), on: false });
-  if (S.rage) abs.push({ n: 'Raserei', key: bind('rage'), f: G.abil.rage.t > 0 ? G.abil.rage.t / S.rage.dur : 1 - G.abil.rage.cd / S.rage.cd, on: G.abil.rage.t > 0 });
-  if (S.blink) abs.push({ n: S.blink.mode === 'fire' ? 'Blitzschritt' : 'Schattenschritt', key: bind('blink'), f: 1 - G.abil.blink.cd / S.blink.cd, on: false });
+  abilitySlots().forEach((id, i) => {
+    const key = bind('abil' + (i + 1));
+    if (id === 'dash') abs.push({ n: 'Windstoß', key, f: 1 - p.dashCd / dashCooldown(), on: false });
+    else if (id === 'rage') abs.push({ n: 'Raserei', key, f: G.abil.rage.t > 0 ? G.abil.rage.t / S.rage.dur : 1 - G.abil.rage.cd / S.rage.cd, on: G.abil.rage.t > 0 });
+    else if (id === 'blink') abs.push({ n: S.blink.mode === 'fire' ? 'Blitzschritt' : 'Schattenschritt', key, f: 1 - G.abil.blink.cd / S.blink.cd, on: false });
+  });
   ctx.strokeStyle = abs.length ? '#4fd08a' : '#2e3e32'; ctx.lineWidth = 2; ctx.stroke();
   if (abs.length === 1) {
     const q = abs[0];
@@ -5706,7 +5725,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v0.99';
+const VERSION = 'v1.00';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -5714,7 +5733,7 @@ const FEEDBACK_ENDPOINT = 'https://left-behind-feedback.s-tietgen1.workers.dev';
 const NAME_KEY = 'left-behind-name';
 let panelFrom = 'pause', armedAct = null, armedAt = 0, listenAct = null, controlsMsg = '', dragSlider = null, uiSliders = [];
 const isPanel = st => st === 'options' || st === 'controls' || st === 'feedback';
-const BIND_NAMES = { up: 'Nach vorn', left: 'Nach links', down: 'Zurück', right: 'Nach rechts', dash: 'Fähigkeit', reload: 'Spannen', interact: 'Handeln', music: 'Musik', sfx: 'Effekte', rage: 'Raserei', blink: 'Blitzschritt' };
+const BIND_NAMES = { up: 'Nach vorn', left: 'Nach links', down: 'Zurück', right: 'Nach rechts', abil1: 'Fähigkeit 1', abil2: 'Fähigkeit 2', reload: 'Spannen', interact: 'Handeln', music: 'Musik', sfx: 'Effekte' };
 const KEY_NAMES = { Space: 'Leertaste', ShiftLeft: 'Shift', ShiftRight: 'Shift', ControlLeft: 'Strg', ControlRight: 'Strg', AltLeft: 'Alt', AltRight: 'Alt', Tab: 'Tab', Enter: 'Enter', Backspace: '⌫',
   ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Escape: 'Esc', CapsLock: 'Caps', Comma: ',', Period: '.', Minus: 'ß', Slash: '-', Semicolon: 'ö', Quote: 'ä', BracketLeft: 'ü' };
 function bind(a) { return settings.binds[a]; }
@@ -6258,9 +6277,8 @@ function drawControlsScreen() {
   actRow(lx, 260, w, 'Nach links', '', 'left');
   actRow(lx, 314, w, 'Zurück', 'nur innerhalb des Bildes', 'down');
   actRow(lx, 368, w, 'Nach rechts', '', 'right');
-  actRow(lx, 422, w, 'Fähigkeit', 'zum Beispiel Windstoß', 'dash');
-  actRow(lx, 476, w, 'Raserei', 'Fähigkeitskarte', 'rage');
-  actRow(lx, 530, w, 'Blitzschritt', 'Fähigkeitskarte', 'blink');
+  actRow(lx, 422, w, 'Fähigkeit 1', 'erste Fähigkeitskarte', 'abil1');
+  actRow(lx, 476, w, 'Fähigkeit 2', 'zweite Fähigkeitskarte', 'abil2');
   secHead('Kampf und Welt', rx, 190, w);
   actRow(rx, 206, w, 'Angreifen', '', null, { mouse: 'l', fixed: true });
   actRow(rx, 260, w, 'Spezial', 'Schild, Fokus oder Meditieren', null, { mouse: 'r', fixed: true });
@@ -6807,9 +6825,8 @@ addEventListener('keydown', e => {
   if (state === 'play') {
     if (e.code === bind('interact')) { const nm = nearMerchant(); if (nm) { openMerchant(nm); return; } }
     if (e.code === bind('reload')) startReload();
-    if (e.code === bind('dash')) tryDash();
-    if (e.code === bind('rage')) tryRage();
-    if (e.code === bind('blink')) tryBlink();
+    if (e.code === bind('abil1')) useAbility(0);
+    if (e.code === bind('abil2')) useAbility(1);
   }
   if (state === 'pick' && /^Digit[1-4]$/.test(e.code)) choosePick(Number(e.code.slice(5)) - 1);
   if (state === 'pick' && e.code === bind('reload')) rerollOffers();
