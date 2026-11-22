@@ -2204,7 +2204,7 @@ const NO_CONV = ['boss', 'hexe', 'herr', 'trug', 'kessel', 'irrlicht', 'schwarm'
 const allyStage = () => Math.max(0, enemyStage() - 2);   // Begleiter wachsen mit den Gegnern: Gegnerstufe minus 2
 function spawnAlly(kind, from, life) {
   const p = G.player, T = ALLY_TYPES[kind] || ALLY_TYPES.ghul, st = allyStage(), hpK = Math.pow(ENEMY_HP_STEP, st), dK = Math.pow(ENEMY_DMG_STEP, st);
-  const a = { ally: true, kind, type: kind === 'wolf' ? 'wolf' : 'rusher', x: from ? from.x : p.x + rand(-50, 50), y: from ? from.y : p.y + rand(30, 60), r: T.r, hp: T.hp * hpK, maxHp: T.hp * hpK, dmg: T.dmg * dK, chase: T.chase, angle: -Math.PI / 2, hit: 0, cd: 0.4, life: life || 0, dashT: 0, dashCd: 0, melee: 0 };
+  const a = { ally: true, kind, type: kind === 'wolf' ? 'wolf' : 'rusher', x: from ? from.x : p.x + rand(-50, 50), y: from ? from.y : p.y + rand(30, 60), r: T.r, hp: T.hp * hpK, maxHp: T.hp * hpK, dmg: T.dmg * dK, chase: T.chase, angle: -Math.PI / 2, hit: 0, cd: 0.4, life: life || 0, lifeMax: life || 0, dashT: 0, dashCd: 0, melee: 0 };
   if (from && kind === 'conv') {   // übergelaufener Gegner: behält Aussehen und Werte, halb so viel Leben
     const E = ENEMY_TYPES[from.type];
     Object.assign(a, { type: from.type, r: from.r, hp: from.maxHp * 0.5, maxHp: from.maxHp * 0.5, dmg: (E.mdmg || (from.type === 'wolf' ? 9 : 10)) * from.dmgMul, chase: E.chase, angle: from.angle, el: from.el, kh: from.kh });
@@ -2341,6 +2341,7 @@ function drawAllies() {
     ctx.strokeStyle = 'rgba(106,214,200,.85)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a.x, a.y, a.r + 5, 0, 7); ctx.stroke();
     if (a.hit > 0) { ctx.globalAlpha = 0.6; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(a.x, a.y, a.r, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
     ctx.fillStyle = '#000'; ctx.fillRect(a.x - 14, a.y - a.r - 12, 28, 4); ctx.fillStyle = '#6ad6c8'; ctx.fillRect(a.x - 14, a.y - a.r - 12, 28 * Math.max(0, a.hp / a.maxHp), 4);
+    if (a.lifeMax > 0) { ctx.fillStyle = '#000'; ctx.fillRect(a.x - 14, a.y - a.r - 7, 28, 3); ctx.fillStyle = '#f2c14e'; ctx.fillRect(a.x - 14, a.y - a.r - 7, 28 * clamp(a.life / a.lifeMax, 0, 1), 3); }   // zweiter Balken: Restzeit
   }
 }
 function updateEnemies(dt) {
@@ -6316,7 +6317,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.18';
+const VERSION = 'v1.19';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
