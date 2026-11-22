@@ -453,8 +453,8 @@ const CARD_PARAM = {
   bluttrunk: { stats: [{ k: 'v', n: 'Lifesteal', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.lsBig += v.v / 100; } },
   spitze:   { stats: [{ k: 'v', n: 'Je Durchschlag', base: 75, pre: '', u: ' %' }], apply: (S, v) => { S.pierce += 1; S.mod.pierceK *= v.v / 100; } },
   blitz:    { stats: [{ k: 'v', n: 'Sprungschaden', base: 70, pre: '', u: ' %' }], apply: (S, v) => { S.mod.lightning = { every: 3, n: 3, k: v.v / 100 }; } },
-  schrot: { stats: [{ k: 'a', n: 'Je Bolzen', base: 70, pre: '', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 50, pre: '−', u: ' %', bad: true }, { k: 'c', n: 'Kegel', base: 12, pre: '±', u: '°' }], apply: (S, v) => { S.fans.push({ n: 3, spread: 2 * v.c, d: v.a / 100, cost: 2, red: v.b / 100, eff: 0.5 }); } },
-  breit: { stats: [{ k: 'a', n: 'Je Bolzen', base: 45, pre: '', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 60, pre: '−', u: ' %', bad: true }, { k: 'c', n: 'Fächer', base: 20, pre: '±', u: '°' }], apply: (S, v) => { S.fans.push({ n: 5, spread: 2 * v.c, d: v.a / 100, cost: 3, red: v.b / 100, eff: 0.5 }); } },
+  schrot: { stats: [{ k: 'a', n: 'Je Bolzen', base: 100, pre: '', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 35, pre: '−', u: ' %', bad: true }, { k: 'c', n: 'Kegel', base: 8, pre: '±', u: '°' }], apply: (S, v) => { S.fans.push({ n: 3, spread: 2 * v.c, d: v.a / 100, cost: 2, red: v.b / 100, eff: 0.5 }); } },
+  breit: { stats: [{ k: 'a', n: 'Je Bolzen', base: 80, pre: '', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 55, pre: '−', u: ' %', bad: true }, { k: 'c', n: 'Fächer', base: 15, pre: '±', u: '°' }], apply: (S, v) => { S.fans.push({ n: 5, spread: 2 * v.c, d: v.a / 100, cost: 3, red: v.b / 100, eff: 0.5 }); } },
   feuer1: { stats: [{ k: 'a', n: 'Feuerrate', base: 100, pre: '+', u: ' %' }, { k: 'b', n: 'Schaden', base: 55, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.rateMul *= 1 + v.a / 100; S.dmgMul *= 1 - v.b / 100; } },
   dauer: { stats: [{ k: 'a', n: 'Je Schuss', base: 5, pre: '+', u: ' %' }, { k: 'b', n: 'Höchstwert', base: 100, pre: '+', u: ' %' }, { k: 'c', n: 'Schaden', base: 30, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.ramp = { per: v.a / 100, max: v.b / 100 }; S.dmgMul *= 1 - v.c / 100; } },
   fliess: { stats: [{ k: 'a', n: 'Schaden', base: 40, pre: '−', u: ' %', bad: true }, { k: 'b', n: 'Feuerrate', base: 30, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.noReload = true; S.dmgMul *= 1 - v.a / 100; S.rateMul *= 1 - v.b / 100; } },
@@ -6317,7 +6317,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.20';
+const VERSION = 'v1.22';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -6675,11 +6675,14 @@ function drawPauseScreen() {
     rr(a.x + a.w + 2, a.y, 4, a.h, 2); ctx.fillStyle = '#0a110d'; ctx.fill();
     rr(a.x + a.w + 2, ty, 4, th, 2); ctx.fillStyle = '#9a7a3a'; ctx.fill();
   };
+  let pauseHover = null;   // Karte oder Trank unter der Maus: wird als Vorschau gezeigt
   ctx.save(); ctx.beginPath(); ctx.rect(cx - 4, areaTop - 2, cwid + 8, areaH + 4); ctx.clip();
   groups.forEach((gr, i) => {
     const c = gr.it, R = RARITY[c.rarity], sx = cx, sy = areaTop + i * 38 - pauseScroll.c;
     if (sy < areaTop - 38 || sy > areaTop + areaH) return;
-    rr(sx, sy, cwid, 34, 6); ctx.fillStyle = '#16231b'; ctx.fill();
+    const hov = inside(sx, sy, cwid, 34) && mouse.fy >= areaTop && mouse.fy <= areaTop + areaH;
+    if (hov) pauseHover = c;
+    rr(sx, sy, cwid, 34, 6); ctx.fillStyle = hov ? '#1e2c22' : '#16231b'; ctx.fill();
     ctx.strokeStyle = R.c; ctx.lineWidth = 2; if (c.kind === 'Trank') ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
     rr(sx + 6, sy + 5, 24, 24, [12, 12, 4, 4]); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 1; ctx.stroke();
     drawIcon(c.icon, sx + 18, sy + 17, 16, R.c, 1.4);
@@ -6705,6 +6708,7 @@ function drawPauseScreen() {
   text('Effekte', kn - 8, Y + Ht - 30, 15, '#8a9aa0', 'right', F_TEXT);
   const km = keycap(kn - 78, Y + Ht - 36, keyLabel(bind('music')));
   text('Musik', km - 8, Y + Ht - 30, 15, '#8a9aa0', 'right', F_TEXT);
+  if (pauseHover) drawCard(pauseHover, clamp(mouse.fx + 24, 10, 1040), clamp(mouse.fy - 150, 90, 380), 1.0, true);
 }
 
 // Bausteine für Optionen
