@@ -2227,7 +2227,11 @@ function allyHurtByEnemies(a) {   // Gegner im Nahkampf greifen den Begleiter an
     const E = ENEMY_TYPES[e.type], md = E.mdmg || (e.type === 'wolf' ? 9 : 0);
     if (!md || e.type === 'schwarm') continue;
     const da = Math.hypot(e.x - a.x, e.y - a.y), dp = Math.hypot(e.x - p.x, e.y - p.y);
-    if (da < e.r + a.r + 4 && da < dp) { a.hp -= md * e.dmgMul; a.hit = 0.15; e.melee = 0.9; spark(a.x, a.y, '#d33'); }
+    if (da < e.r + a.r + 4 && da < dp) {
+      let k = 1;
+      if (a.type === 'schild' && Math.abs(normAngle(Math.atan2(e.y - a.y, e.x - a.x) - a.angle)) < 62 * deg) { k = 0.15; sfx('block', 0.4); }   // Schild von vorn
+      a.hp -= md * e.dmgMul * k; a.hit = 0.15; e.melee = 0.9; spark(a.x, a.y, k < 1 ? '#f2c14e' : '#d33');
+    }
   }
 }
 // Übergelaufene Fernkämpfer (Bogenschütze, Armbrustschütze, Magier) und Heiler: halten Abstand und schießen auf Gegner, wie vorher als Feind. Ihre Geschosse treffen nur Gegner.
@@ -2283,20 +2287,36 @@ function updateAllies(dt) {
       if (d < bd && Math.hypot(e.x - p.x, e.y - p.y) < 560) { bd = d; tgt = e; }
     }
     if (a.rk) { allyShooter(a, tgt, dt); allyHurtByEnemies(a); continue; }
+    if (a.type === 'folter' && tgt && a.dashCd <= 0) {   // Folterknecht: Kette zieht den Gegner heran und betäubt ihn kurz
+      const dx = a.x - tgt.x, dy = a.y - tgt.y, dd = Math.hypot(dx, dy) || 1;
+      if (dd > 110 && dd < 340 && KB_WEIGHT[tgt.type] !== 0) {
+        const step = Math.max(0, dd - a.r - tgt.r - 8); moveCircle(tgt, dx / dd * step, dy / dd * step); stunEnemy(tgt, 0.6);
+        G.beams.push({ a, b: tgt, t: 0.4 }); sfx('hit_enemy', 0.5); a.dashCd = 4; a.cd = 0;
+      }
+    }
     let mx, my, sp = a.chase;
     if (tgt) { mx = tgt.x - a.x; my = tgt.y - a.y; }
     else { mx = p.x - a.x; my = p.y - a.y; if (Math.hypot(mx, my) < 90) sp = 0; }
     const d = Math.hypot(mx, my) || 1;
-    if (a.dashT > 0) { a.dashT -= dt; moveCircle(a, a.dx * 560 * dt, a.dy * 560 * dt); }
+    if (a.dashT > 0) {
+      a.dashT -= dt; moveCircle(a, a.dx * 560 * dt, a.dy * 560 * dt);
+      if (a.dashT <= 0 && a.slam) {   // Wächter: Sprung endet mit einem Hieb auf alle in der Nähe
+        a.slam = false; sfx('spell_explode', 0.5); G.rings.push({ x: a.x, y: a.y, r: a.r + 70, life: 0.25, max: 0.25 });
+        for (const e of G.enemies) if (e.hp > 0 && !e.hidden && Math.hypot(e.x - a.x, e.y - a.y) < a.r + 70 + e.r) { damageEnemy(e, a.dmg * 1.5); allyFx(e, a.dmg * 1.5); }
+      }
+    }
     else if (tgt && d < a.r + tgt.r + 6) { if (a.cd <= 0) { damageEnemy(tgt, a.dmg); allyFx(tgt, a.dmg); a.cd = a.type === 'wolf' ? 0.6 : 0.9; spark(tgt.x, tgt.y, '#6ad6c8'); } }
     else if (sp > 0) {
       if (a.type === 'wolf' && tgt && d < 230 && d > 80 && a.dashCd <= 0) { a.dashT = 0.25; a.dashCd = 1.6; a.dx = mx / d; a.dy = my / d; }   // Sprung wie beim Gegner-Wolf
+      else if (a.type === 'waechter' && tgt && d < 260 && d > 90 && a.dashCd <= 0) { a.dashT = 0.3; a.dashCd = 3; a.slam = true; a.dx = mx / d; a.dy = my / d; }   // Wächter: Sprung nach vorn und Hieb
       else moveCircle(a, mx / d * sp * dt, my / d * sp * dt);
     }
     if (tgt || sp > 0) a.angle = Math.atan2(my, mx);
     allyHurtByEnemies(a);
   }
-  for (const a of G.allies) if (a.hp <= 0 && !a.gone) { a.gone = true; for (let i = 0; i < 12; i++) G.parts.push({ x: a.x, y: a.y, vx: rand(-100, 100), vy: rand(-100, 100), life: 0.4, color: '#6ad6c8' }); }
+  for (const a of G.allies) if (a.hp <= 0 && !a.gone) {
+    if (a.type === 'kriecher') { sfx('spell_explode', 0.6); addZone(a.x, a.y, 62, 10, 5 * (a.dm || 1), 'gift'); for (const e of G.enemies) if (e.hp > 0 && Math.hypot(e.x - a.x, e.y - a.y) < 80 + e.r) damageEnemy(e, 6 * (a.dm || 1)); }   // platzt und hinterlässt eine Giftwolke für Gegner
+    a.gone = true; for (let i = 0; i < 12; i++) G.parts.push({ x: a.x, y: a.y, vx: rand(-100, 100), vy: rand(-100, 100), life: 0.4, color: '#6ad6c8' }); }
   G.allies = G.allies.filter(a => a.hp > 0);
   // Irrlicht-Begleiter: schwebt unregelmäßig um dich herum
   if (S.orb) {
@@ -2732,12 +2752,18 @@ function updateBullets(dt) {
     } else {
       const t = b.ignoreP ? Infinity : segCircle(b.px, b.py, b.x, b.y, p.x, p.y, p.r + (b.rad || 0));
       if (t < tHit) { tHit = t; target = p; }
+      for (const al of G.allies) {   // Schildträger-Begleiter fangen Geschosse von vorn ab
+        if (al.type !== 'schild' || al.hp <= 0) continue;
+        const ts = segCircle(b.px, b.py, b.x, b.y, al.x, al.y, al.r + 8);
+        if (ts < tHit && Math.abs(normAngle(Math.atan2(-b.vy, -b.vx) - al.angle)) < 62 * deg) { tHit = ts; target = al; }
+      }
     }
     if (b.through || b.over || b.back) tObs = Infinity;   // durchschlagender Pfeil (Scharfschuss) und Rückflug: gehen durch Hindernisse
     if (tObs === Infinity && tHit === Infinity) continue;
     if (tHit < tObs) {
       const hx = b.px + (b.x - b.px) * tHit, hy = b.py + (b.y - b.py) * tHit;
       if (target === p) { hurtPlayer(b.dmg, Math.atan2(-b.vy, -b.vx), b.owner); spark(hx, hy, '#d33'); if (b.through) { b.ignoreP = true; continue; } }
+      else if (target.ally) { spark(hx, hy, '#f2c14e'); sfx('block', 0.4); }
       else if (b.from === 'ally') { damageEnemy(target, b.dmg); spark(hx, hy, '#6ad6c8'); }
       else if (b.spell) {
         explode(hx, hy, b.dmg, b.splash, target);
@@ -6290,7 +6316,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.17';
+const VERSION = 'v1.18';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
