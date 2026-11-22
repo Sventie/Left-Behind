@@ -261,7 +261,7 @@ const CARDS = [
   { id: 'seelenfaenger', name: 'Seelenfänger', kind: 'Effekt', rarity: 'episch', icon: 'wisp', max: 2, stat: '', text: 'Jeder 15. Gefallene kämpft für dich, bis er fällt. Höchstens zwei.', flavor: '„Er sammelt, was übrig bleibt.“', apply: S => {} },
   { id: 'irrlichtb', name: 'Irrlicht-Begleiter', kind: 'Effekt', rarity: 'selten', icon: 'wisp', max: 2, stat: '', text: 'Ein Irrlicht schwebt um dich herum und leuchtet einen Kreis aus.', flavor: '„Folge dem Licht. Es folgt dir.“', apply: S => {} },
   { id: 'kronenwahl', name: 'Kronenwahl', kind: 'Effekt', rarity: 'episch', icon: 'crown', max: 1, limit: 1, stat: 'Jede 3. Wahl: 5 Karten (fest)', text: 'Jede dritte Wahl zeigt fünf Karten, mindestens eine davon selten oder besser.', flavor: '„Die Krone gibt, wem sie will.“', apply: S => { S.crown = true; } },
-  { id: 'opfer', name: 'Blutopfer', kind: 'Effekt', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Jeder Bolzen kostet dich Leben, ein Treffer gibt es zurück.', flavor: '„Wer trifft, gewinnt. Wer fehlt, blutet.“', apply: S => {} },
+  { id: 'opfer', name: 'Blutopfer', kind: 'Effekt', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Jeder Bolzen kostet dich Leben, ein Treffer heilt das Doppelte.', flavor: '„Wer trifft, gewinnt. Wer fehlt, blutet.“', apply: S => {} },
   { id: 'durst', name: 'Blutdurst', kind: 'Effekt', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Wenig Leben macht stärker, viel Leben schwächer.', flavor: '„Nur am Rand des Todes bist du stark.“', apply: S => {} },
   { id: 'aderlass', name: 'Aderlass', kind: 'Effekt', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Alle 10 s Leben weg, jeder Gefallene heilt und stärkt.', flavor: '„Wer nicht blutet, kämpft nicht.“', apply: S => {} },
   { id: 'spiegel', name: 'Spiegelblut', kind: 'Effekt', rarity: 'legendaer', icon: 'flask', max: 3, limit: 1, types: ['ranged'], stat: '', text: 'Deine Schüsse heilen nur. Gegner nehmen den Schaden, den sie dir zufügen.', flavor: '„Sie töten sich selbst.“', apply: S => {} },
@@ -475,7 +475,7 @@ const CARD_PARAM = {
   flink: { stats: [{ k: 'a', n: 'Spannzeit', base: 15, pre: '−', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.reloadMul *= 1 - v.a / 100; S.hooks.reload.push(() => { G.rateT = Math.max(G.rateT, 2); G.rateK = Math.max(G.rateK, v.b / 100); }); } },
   feder: { stats: [{ k: 'a', n: 'Spannzeit', base: 10, pre: '−', u: ' %' }], apply: (S, v) => { S.reloadMul *= 1 - v.a / 100; S.hooks.dash.push(() => { G.player.mag = Math.min(S.magSize, G.player.mag + 4); }); } },
   doppel: { stats: [{ k: 'a', n: 'Letzter Bolzen', base: 50, pre: '+', u: ' %' }], apply: (S, v) => { S.magSize += 3; S.lastBolt = Math.max(S.lastBolt, v.a / 100); } },
-  opfer: { stats: [{ k: 'a', n: 'Schaden', base: 40, pre: '+', u: ' %' }, { k: 'b', n: 'Kosten je Bolzen', base: 100, pre: '', u: ' %', down: true, neg: true }], apply: (S, v) => { S.dmgMul *= 1 + v.a / 100; S.sac = { cost: v.b / 100 }; } },
+  opfer: { stats: [{ k: 'a', n: 'Schaden', base: 40, pre: '+', u: ' %' }, { k: 'b', n: 'Leben je Bolzen', base: 2, pre: '', u: '', step: 0.5, down: true, neg: true }], apply: (S, v) => { S.dmgMul *= 1 + v.a / 100; S.sac = { cost: v.b }; } },
   durst: { stats: [{ k: 'a', n: 'Schaden bei wenig Leben', base: 40, pre: '+', u: ' %' }, { k: 'b', n: 'Feuerrate bei wenig Leben', base: 20, pre: '+', u: ' %' }, { k: 'c', n: 'Schaden bei viel Leben', base: 10, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.thirst = { low: 0.5, dmg: v.a / 100, rate: v.b / 100, high: -v.c / 100 }; } },
   aderlass: { stats: [{ k: 'a', n: 'Verlust alle 10 s', base: 5, pre: '−', u: ' %', bad: true }, { k: 'b', n: 'Heilung je Gefallenem', base: 3, pre: '+', u: ' %', step: 0.5 }, { k: 'c', n: 'Schaden für 2 s', base: 25, pre: '+', u: ' %' }], apply: (S, v) => { S.bleed = { cost: v.a / 100 }; S.hooks.kill.push(() => { G.player.hp = Math.min(S.maxHp, G.player.hp + S.maxHp * v.b / 100); G.dmgT = 2; G.dmgK = v.c / 100; }); } },
   spiegel: { stats: [{ k: 'a', n: 'Lifesteal', base: 100, pre: '+', u: ' %' }, { k: 'b', n: 'Rückschaden', base: 100, pre: '+', u: ' %' }], apply: (S, v) => { S.lifesteal += v.a / 100; S.mirror = { refl: v.b / 100 }; } },
@@ -1036,7 +1036,7 @@ function newGame(cls, area) {
     merchants: [], buffs: [], spent: 0, merchantDone: false, lastMerchantK: -99, firstMerchantK: MERCHANT_FIRST[0] + Math.floor(Math.random() * (MERCHANT_FIRST[1] - MERCHANT_FIRST[0] + 1)), countT: 0, goT: 0,
     cards: [], offers: [], library: shuffle(deckOf(cls).slice()), booms: [], pzones: [], allies: [], orb: null, shotN: 0, cnt: {}, rateT: 0, rateK: 0, abil: { rage: { t: 0, cd: 0 }, blink: { cd: 0 }, volley: { cd: 0 }, net: { cd: 0 }, rain: { cd: 0 }, field: { cd: 0 }, shield: { t: 0, cd: 0 }, heal: { t: 0, cdm: 0 } }, nets: [], fields: [], springs: [], strikes: [], fk: null, waveAt: -99, cloudT: 0, inBoom: false, srT: 0, dmgT: 0, dmgK: 0, bleedT: 0, mk: { rand: null, strong: null, cy: [], cyT: 0, cyOn: false }, fresh: true, ramp: 0, stillT: 0, roundT: 0, speedT: 0, speedK: 0, hurtAt: -99, barkReady: false, chargeK: 1, walked: 0, eisN: 0,
     stage: 1, stageStart: 0, nextPick: area.len / (PICKS_PER_AREA + 0.5), atk: [], fires: [], fallen: [], ripples: [], curseT: 0, trails: [], hooks: [], pull: null, bossOnly: false, rooms: [], cwalls: [], castleTop: 40, castleN: 0, hall: null, hallGate: null, castlePlan: null, zones: [], beams: [], patches: [], wisps: [], fogs: [], clouds: [], hands: [], slowT: 0, rootT: 0, poisonT: 0, killSilver: 0, limitCount: 0, limitLock: 0,
-    nextWave: 25, nextSingle: 12, msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
+    nextWave: rand(60, 80), nextSingle: rand(25, 40), msg: '', msgT: 0, hurtT: 0, shakeT: 0, floats: [], finished: false, gaveUp: false, won: false, points: 0, delta: 0, deltaT: 0, pops: [], cheated: false, endless: false, banner: null, pickDelay: 0, bossSpawned: false, camLock: false, boss: null,
     player: {
       x: WORLD_W / 2, y: -60, r: 14, hp: 1, angle: -Math.PI / 2,
       mag: 0, mana: 0, manaDelay: 0, cooldown: 0, reloadT: 0, bloom: 0, speed: 0,
@@ -1517,7 +1517,7 @@ function playerAttack() {
     pat.bolts.forEach((q, i) => {
       const bd = w.damage * S.dmgMul * q.d * dk;
       fireBolt(a + q.a * deg, bd, i === 0 && !S.mirror ? booms : null);
-      if (S.sac) { const cost = bd * S.sac.cost, bb = G.bullets[G.bullets.length - 1]; p.hp = Math.max(1, p.hp - cost); bb.sacHeal = cost; }   // Blutopfer: jeder Bolzen kostet Leben, kann dich aber nicht töten
+      if (S.sac) { const cost = S.sac.cost, bb = G.bullets[G.bullets.length - 1]; p.hp = Math.max(1, p.hp - cost); bb.sacHeal = cost * 2; }   // Blutopfer: jeder Bolzen kostet Leben, kann dich aber nicht töten
     });   // der Sprengsatz sitzt nur am ersten Bolzen des Schusses
     if (!S.noReload) p.mag = Math.max(0, p.mag - pat.cost);   // Fließband: Bolzen werden nie verbraucht
     G.fresh = false;
@@ -2210,6 +2210,7 @@ function spawnAlly(kind, from, life) {
     Object.assign(a, { type: from.type, r: from.r, hp: from.maxHp * 0.5, maxHp: from.maxHp * 0.5, dmg: (E.mdmg || (from.type === 'wolf' ? 9 : 10)) * from.dmgMul, chase: E.chase, angle: from.angle, el: from.el, kh: from.kh });
   }
   if (S.pack > 0) { a.hp *= 1 + S.pack; a.maxHp *= 1 + S.pack; a.dmg *= 1 + S.pack; }   // Rudelherr
+  if (from && kind === 'conv') { a.dm = from.dmgMul; a.el = from.el; a.rk = { grunt: 'bow', armbrust: 'xbow', magier: 'mage', heiler: 'heal' }[from.type]; a.sc = rand(0.5, 1.2); a.strafe = 1; a.strT = 0; a.burst = 0; }   // übergelaufene Fernkämpfer und Heiler behalten ihre Fähigkeit
   G.allies.push(a); sfx('card_pick', 0.5);
   for (let i = 0; i < 10; i++) G.parts.push({ x: a.x, y: a.y, vx: rand(-90, 90), vy: rand(-90, 90), life: 0.4, color: '#6ad6c8' });
   return a;
@@ -2219,36 +2220,81 @@ function allyFx(tgt, dmg) {   // Rudelführer: Begleiter geben Lifesteal und Tre
   G.player.hp = Math.min(S.maxHp, G.player.hp + dmg * S.lifesteal * S.packFx);
   if (tgt.hp > 0) for (const d of S.mod.dots) addDot(tgt, d, dmg * S.packFx);
 }
+function allyHurtByEnemies(a) {   // Gegner im Nahkampf greifen den Begleiter an, wenn er näher ist als du
+  const p = G.player;
+  for (const e of G.enemies) {
+    if (e.hp <= 0 || e.state === 'idle' || e.melee > 0) continue;
+    const E = ENEMY_TYPES[e.type], md = E.mdmg || (e.type === 'wolf' ? 9 : 0);
+    if (!md || e.type === 'schwarm') continue;
+    const da = Math.hypot(e.x - a.x, e.y - a.y), dp = Math.hypot(e.x - p.x, e.y - p.y);
+    if (da < e.r + a.r + 4 && da < dp) { a.hp -= md * e.dmgMul; a.hit = 0.15; e.melee = 0.9; spark(a.x, a.y, '#d33'); }
+  }
+}
+// Übergelaufene Fernkämpfer (Bogenschütze, Armbrustschütze, Magier) und Heiler: halten Abstand und schießen auf Gegner, wie vorher als Feind. Ihre Geschosse treffen nur Gegner.
+function allyShooter(a, tgt, dt) {
+  const p = G.player;
+  a.sc -= dt;
+  let mx, my, sp = a.chase, keep = true;
+  if (a.rk === 'heal') {   // bleibt beim Spieler und heilt ihn und verletzte Begleiter
+    mx = p.x - a.x; my = p.y - a.y; const dd = Math.hypot(mx, my) || 1; if (dd < 100) sp = 0;
+    if (a.sc <= 0) {
+      const hurt = [p].concat(G.allies.filter(o => o !== a)).filter(o => o.hp < (o === p ? S.maxHp : o.maxHp) && Math.hypot(o.x - a.x, o.y - a.y) < 300).sort((u, v) => u.hp / (u === p ? S.maxHp : u.maxHp) - v.hp / (v === p ? S.maxHp : v.maxHp)).slice(0, 2);
+      for (const o of hurt) { const mxh = o === p ? S.maxHp : o.maxHp; o.hp = Math.min(mxh, o.hp + mxh * 0.15); G.beams.push({ a, b: o, t: 0.4 }); }
+      a.sc = hurt.length ? 3 : 0.5;
+    }
+    if (sp > 0) moveCircle(a, mx / dd * sp * dt, my / dd * sp * dt);
+    if (dd > 1) a.angle = Math.atan2(my, mx);
+    return;
+  }
+  if (tgt) {
+    const dx = tgt.x - a.x, dy = tgt.y - a.y, d = Math.hypot(dx, dy) || 1;
+    a.angle = Math.atan2(dy, dx);
+    a.strT -= dt; if (a.strT <= 0) { a.strafe *= -1; a.strT = rand(1.2, 2.8); }
+    if (d > 360) { mx = dx; my = dy; } else if (d < 220) { mx = -dx; my = -dy; } else { mx = -dy * a.strafe; my = dx * a.strafe; sp *= 0.8; }
+    const l = Math.hypot(mx, my) || 1; moveCircle(a, mx / l * sp * dt, my / l * sp * dt);
+    if (a.sc <= 0 && d < 520) {
+      const ang = a.angle, dm = a.dm || 1;
+      if (a.rk === 'bow') {
+        addBullet(a.x, a.y, ang + (Math.random() + Math.random() - 1) * 6 * deg, 430, 8 * dm, 'ally', 760, 0, { owner: a });
+        a.burst++; if (a.burst >= 3) { a.burst = 0; a.sc = rand(1.3, 2.2); } else a.sc = 0.17;
+      } else if (a.rk === 'xbow') {
+        for (let i = 0; i < 5; i++) addBullet(a.x, a.y, ang + (i - 2) * 0.17, 400, 9 * dm, 'ally', 900, 0, { rad: 5, owner: a });
+        a.sc = 2.6;
+      } else if (a.rk === 'mage') {
+        G.booms.push({ x: tgt.x, y: tgt.y, t: 1.05, T: 1.05, r: 60, dmg: (a.el === 'frost' ? 14 : a.el === 'gift' ? 10 : 20) * dm, e: null });
+        a.sc = rand(3, 4.2);
+      }
+      sfx('enemy_shoot', 0.5);
+    }
+  } else {
+    mx = p.x - a.x; my = p.y - a.y; const dd = Math.hypot(mx, my) || 1;
+    if (dd > 100) { moveCircle(a, mx / dd * sp * dt, my / dd * sp * dt); a.angle = Math.atan2(my, mx); }
+  }
+}
 function updateAllies(dt) {
   const p = G.player;
   for (const a of G.allies) {
     a.hit = Math.max(0, a.hit - dt); a.cd -= dt; a.dashCd -= dt;
     if (a.life > 0) { a.life -= dt; if (a.life <= 0) { a.hp = 0; continue; } }
-    let tgt = null, bd = 400;
+    let tgt = null, bd = a.rk ? 520 : 400;
     for (const e of G.enemies) {
       if (!markable(e)) continue;
       const d = Math.hypot(e.x - a.x, e.y - a.y);
       if (d < bd && Math.hypot(e.x - p.x, e.y - p.y) < 560) { bd = d; tgt = e; }
     }
+    if (a.rk) { allyShooter(a, tgt, dt); allyHurtByEnemies(a); continue; }
     let mx, my, sp = a.chase;
     if (tgt) { mx = tgt.x - a.x; my = tgt.y - a.y; }
     else { mx = p.x - a.x; my = p.y - a.y; if (Math.hypot(mx, my) < 90) sp = 0; }
     const d = Math.hypot(mx, my) || 1;
     if (a.dashT > 0) { a.dashT -= dt; moveCircle(a, a.dx * 560 * dt, a.dy * 560 * dt); }
-    else if (tgt && d < a.r + tgt.r + 6) { if (a.cd <= 0) { damageEnemy(tgt, a.dmg); allyFx(tgt, a.dmg); a.cd = a.kind === 'wolf' ? 0.6 : 0.9; spark(tgt.x, tgt.y, '#6ad6c8'); } }
+    else if (tgt && d < a.r + tgt.r + 6) { if (a.cd <= 0) { damageEnemy(tgt, a.dmg); allyFx(tgt, a.dmg); a.cd = a.type === 'wolf' ? 0.6 : 0.9; spark(tgt.x, tgt.y, '#6ad6c8'); } }
     else if (sp > 0) {
-      if (a.kind === 'wolf' && tgt && d < 230 && d > 80 && a.dashCd <= 0) { a.dashT = 0.25; a.dashCd = 1.6; a.dx = mx / d; a.dy = my / d; }   // Sprung wie beim Gegner-Wolf
+      if (a.type === 'wolf' && tgt && d < 230 && d > 80 && a.dashCd <= 0) { a.dashT = 0.25; a.dashCd = 1.6; a.dx = mx / d; a.dy = my / d; }   // Sprung wie beim Gegner-Wolf
       else moveCircle(a, mx / d * sp * dt, my / d * sp * dt);
     }
     if (tgt || sp > 0) a.angle = Math.atan2(my, mx);
-    // Gegner im Nahkampf greifen den Begleiter an, wenn er näher ist als du
-    for (const e of G.enemies) {
-      if (e.hp <= 0 || e.state === 'idle' || e.melee > 0) continue;
-      const E = ENEMY_TYPES[e.type], md = E.mdmg || (e.type === 'wolf' ? 9 : 0);
-      if (!md || e.type === 'schwarm') continue;
-      const da = Math.hypot(e.x - a.x, e.y - a.y), dp = Math.hypot(e.x - p.x, e.y - p.y);
-      if (da < e.r + a.r + 4 && da < dp) { a.hp -= md * e.dmgMul; a.hit = 0.15; e.melee = 0.9; spark(a.x, a.y, '#d33'); }
-    }
+    allyHurtByEnemies(a);
   }
   for (const a of G.allies) if (a.hp <= 0 && !a.gone) { a.gone = true; for (let i = 0; i < 12; i++) G.parts.push({ x: a.x, y: a.y, vx: rand(-100, 100), vy: rand(-100, 100), life: 0.4, color: '#6ad6c8' }); }
   G.allies = G.allies.filter(a => a.hp > 0);
@@ -2521,7 +2567,7 @@ function updateEnemies(dt) {
 
 // Feuerball: Warnkreis auf dem Boden, nach 1,1 s schlägt er ein
 function castFireball(e) {   // 2 oder 3 Feuerbälle: einer auf den Spieler, die anderen daneben, ohne dass sich die Flächen überschneiden
-  const p = G.player, R = 60, T = 0.7, n = 2 + Math.floor(Math.random() * 2), pts = [{ x: p.x, y: p.y }];
+  const p = G.player, R = 60, T = 1.05, n = 2 + Math.floor(Math.random() * 2), pts = [{ x: p.x, y: p.y }];
   const th = Math.random() * 6.283;
   for (let i = 1; i < n; i++) {
     for (let tries = 0; tries < 12; tries++) {
@@ -2571,18 +2617,18 @@ function spawnEnemy(type) {
 }
 function spawnReinforcements() {
   const over = endlessLevel(), speedUp = 1 + over * 0.25, rushP = Math.min(0.35 + over * 0.04, 0.7);
-  if (G.time >= G.nextWave) {
+  if (G.dist >= G.nextWave) {   // Wellen und Einzelgegner kommen nach Metern, nicht nach Zeit (links, rechts und zurück laufen zählt nicht)
     const n = G.endless ? Math.min(5 + Math.floor(over * 1.5), 40) : Math.min(2 + Math.floor(G.dist / 120), 5);
     for (let i = 0; i < n && G.enemies.length < 70; i++) spawnEnemy(rollType(rushP));
     say(({ wald: 'Eine Horde bricht aus dem Wald!', moor: 'Eine Horde steigt aus dem Moor!', schloss: 'Eine Horde stürmt durch die Hallen!', kerker: 'Eine Horde bricht aus den Zellen!' })[G.area.id] || 'Eine Horde kommt!'); sfx('horde_horn');
-    G.nextWave = G.time + Math.max(4, rand(22, 40) / speedUp);
+    G.nextWave = G.dist + Math.max(15, rand(60, 80) / speedUp);
   }
-  if (G.time >= G.nextSingle) {
+  if (G.dist >= G.nextSingle) {
     if (Math.random() < Math.min(1, 0.6 + over * 0.1)) {
       const c = 1 + Math.floor(over / 3);
       for (let i = 0; i < c && G.enemies.length < 70; i++) spawnEnemy(rollType(Math.min(0.4 + over * 0.04, 0.7)));
     }
-    G.nextSingle = G.time + Math.max(2, rand(9, 18) / speedUp);
+    G.nextSingle = G.dist + Math.max(8, rand(30, 45) / speedUp);
   }
 }
 
@@ -2677,6 +2723,12 @@ function updateBullets(dt) {
         const t = segCircle(b.px, b.py, b.x, b.y, e.x, e.y, e.r);
         if (t < tHit) { tHit = t; target = e; }
       }
+    } else if (b.from === 'ally') {   // Geschosse der Begleiter: nur Gegner
+      for (const e of G.enemies) {
+        if (e.hp <= 0 || e.hidden) continue;
+        const t = segCircle(b.px, b.py, b.x, b.y, e.x, e.y, e.r);
+        if (t < tHit) { tHit = t; target = e; }
+      }
     } else {
       const t = b.ignoreP ? Infinity : segCircle(b.px, b.py, b.x, b.y, p.x, p.y, p.r + (b.rad || 0));
       if (t < tHit) { tHit = t; target = p; }
@@ -2686,6 +2738,7 @@ function updateBullets(dt) {
     if (tHit < tObs) {
       const hx = b.px + (b.x - b.px) * tHit, hy = b.py + (b.y - b.py) * tHit;
       if (target === p) { hurtPlayer(b.dmg, Math.atan2(-b.vy, -b.vx), b.owner); spark(hx, hy, '#d33'); if (b.through) { b.ignoreP = true; continue; } }
+      else if (b.from === 'ally') { damageEnemy(target, b.dmg); spark(hx, hy, '#6ad6c8'); }
       else if (b.spell) {
         explode(hx, hy, b.dmg, b.splash, target);
         if (b.pierce > 0) { b.pierce--; b.ignore.push(target); continue; }
@@ -3517,7 +3570,7 @@ function drawEntities() {
       ctx.beginPath(); ctx.moveTo(b.x - b.vx * 0.04, b.y - b.vy * 0.04); ctx.lineTo(b.x, b.y); ctx.stroke();
       continue;
     }
-    ctx.strokeStyle = b.from === 'player' ? '#fff3c8' : b.through ? '#f2c14e' : '#ff7a7a';
+    ctx.strokeStyle = b.from === 'player' ? '#fff3c8' : b.from === 'ally' ? '#7fe8d0' : b.through ? '#f2c14e' : '#ff7a7a';
     ctx.lineWidth = b.through ? 9 : b.big ? 6 : 2.5; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(b.x - b.vx * (b.big ? 0.05 : 0.016), b.y - b.vy * (b.big ? 0.05 : 0.016)); ctx.lineTo(b.x, b.y); ctx.stroke();
   }
@@ -6237,7 +6290,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.16';
+const VERSION = 'v1.17';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
