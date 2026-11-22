@@ -589,10 +589,10 @@ const CHEAT_COUNT = { gewoehnlich: 4, selten: 3, episch: 2, legendaer: 1 };
 const RARITY_KEYS = ['gewoehnlich', 'selten', 'episch', 'legendaer'];
 const RECYCLE_VALUE = { gewoehnlich: 10, selten: 30, episch: 90, legendaer: 300 };
 const PACKS = [
-  { id: 'eisen',   name: 'Eisen-Booster',      price: 120,  odds: [70, 24, 5, 1],  min: null,        cover: ['#7a8288', '#3a4248'], ink: '#e8eef2', seal: '#aeb6c0', content: '5 Karten · meist Eisen' },
-  { id: 'smaragd', name: 'Smaragd-Booster',    price: 300,  odds: [45, 38, 14, 3], min: 'selten',    cover: ['#2e8a58', '#154a2e'], ink: '#d8f6e4', seal: '#4fd08a', content: '5 Karten · 1 Smaragd sicher' },
-  { id: 'mond',    name: 'Mondstein-Booster',  price: 750,  odds: [25, 35, 32, 8], min: 'episch',    cover: ['#6a9acb', '#2a4a78'], ink: '#eaf6ff', seal: '#bfe3ff', content: '5 Karten · 1 Mondstein sicher' },
-  { id: 'drache',  name: 'Drachen-Booster', price: 2000, odds: [10, 30, 40, 20], min: 'legendaer', cover: ['#a8323c', '#4a0f18'], ink: '#ffe9a8', seal: '#f2c14e', unlockBoss: true, content: '5 Karten · 1 Drachengold sicher' }
+  { id: 'eisen',   name: 'Eisen-Booster',      price: 100,  odds: [70, 24, 5, 1],  min: null,        cover: ['#7a8288', '#3a4248'], ink: '#e8eef2', seal: '#aeb6c0', content: '5 Karten · meist Eisen' },
+  { id: 'smaragd', name: 'Smaragd-Booster',    price: 240,  odds: [45, 38, 14, 3], min: 'selten',    cover: ['#2e8a58', '#154a2e'], ink: '#d8f6e4', seal: '#4fd08a', content: '5 Karten · 1 Smaragd sicher' },
+  { id: 'mond',    name: 'Mondstein-Booster',  price: 600,  odds: [25, 35, 32, 8], min: 'episch',    cover: ['#6a9acb', '#2a4a78'], ink: '#eaf6ff', seal: '#bfe3ff', content: '5 Karten · 1 Mondstein sicher' },
+  { id: 'drache',  name: 'Drachen-Booster', price: 1600, odds: [10, 30, 40, 20], min: 'legendaer', cover: ['#a8323c', '#4a0f18'], ink: '#ffe9a8', seal: '#f2c14e', unlockBoss: true, content: '5 Karten · 1 Drachengold sicher' }
 ];
 const compat = (card, cls) => !card.types || card.types.includes(WEAPONS[cls.weapon].type);
 // DEPRECATED: Vorerst ist nur der Waldläufer spielbar. Karten, die er nicht nutzen kann (types ohne 'ranged'), bleiben im Code,
@@ -6317,7 +6317,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.19';
+const VERSION = 'v1.20';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
