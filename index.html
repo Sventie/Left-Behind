@@ -453,8 +453,8 @@ const CARD_PARAM = {
   bluttrunk: { stats: [{ k: 'v', n: 'Lifesteal', base: 15, pre: '+', u: ' %' }], apply: (S, v) => { S.mod.lsBig += v.v / 100; } },
   spitze:   { stats: [{ k: 'v', n: 'Je Durchschlag', base: 75, pre: '', u: ' %' }], apply: (S, v) => { S.pierce += 1; S.mod.pierceK *= v.v / 100; } },
   blitz:    { stats: [{ k: 'v', n: 'Sprungschaden', base: 70, pre: '', u: ' %' }], apply: (S, v) => { S.mod.lightning = { every: 3, n: 3, k: v.v / 100 }; } },
-  schrot: { stats: [{ k: 'a', n: 'Je Bolzen', base: 70, pre: '', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 50, pre: '−', u: ' %', bad: true }, { k: 'c', n: 'Kegel', base: 12, pre: '±', u: '°' }], apply: (S, v) => { S.fans.push({ n: 3, spread: 2 * v.c, d: v.a / 100, cost: 2, red: v.b / 100, eff: 0.5 }); } },
-  breit: { stats: [{ k: 'a', n: 'Je Bolzen', base: 45, pre: '', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 60, pre: '−', u: ' %', bad: true }, { k: 'c', n: 'Fächer', base: 20, pre: '±', u: '°' }], apply: (S, v) => { S.fans.push({ n: 5, spread: 2 * v.c, d: v.a / 100, cost: 3, red: v.b / 100, eff: 0.5 }); } },
+  schrot: { stats: [{ k: 'a', n: 'Je Bolzen', base: 100, pre: '', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 35, pre: '−', u: ' %', bad: true }, { k: 'c', n: 'Kegel', base: 8, pre: '±', u: '°' }], apply: (S, v) => { S.fans.push({ n: 3, spread: 2 * v.c, d: v.a / 100, cost: 2, red: v.b / 100, eff: 0.5 }); } },
+  breit: { stats: [{ k: 'a', n: 'Je Bolzen', base: 80, pre: '', u: ' %' }, { k: 'b', n: 'Feuerrate', base: 55, pre: '−', u: ' %', bad: true }, { k: 'c', n: 'Fächer', base: 15, pre: '±', u: '°' }], apply: (S, v) => { S.fans.push({ n: 5, spread: 2 * v.c, d: v.a / 100, cost: 3, red: v.b / 100, eff: 0.5 }); } },
   feuer1: { stats: [{ k: 'a', n: 'Feuerrate', base: 100, pre: '+', u: ' %' }, { k: 'b', n: 'Schaden', base: 55, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.rateMul *= 1 + v.a / 100; S.dmgMul *= 1 - v.b / 100; } },
   dauer: { stats: [{ k: 'a', n: 'Je Schuss', base: 5, pre: '+', u: ' %' }, { k: 'b', n: 'Höchstwert', base: 100, pre: '+', u: ' %' }, { k: 'c', n: 'Schaden', base: 30, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.ramp = { per: v.a / 100, max: v.b / 100 }; S.dmgMul *= 1 - v.c / 100; } },
   fliess: { stats: [{ k: 'a', n: 'Schaden', base: 40, pre: '−', u: ' %', bad: true }, { k: 'b', n: 'Feuerrate', base: 30, pre: '−', u: ' %', bad: true }], apply: (S, v) => { S.noReload = true; S.dmgMul *= 1 - v.a / 100; S.rateMul *= 1 - v.b / 100; } },
@@ -6317,7 +6317,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.21';
+const VERSION = 'v1.22';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
