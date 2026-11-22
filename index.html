@@ -6317,7 +6317,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.20';
+const VERSION = 'v1.21';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -6675,11 +6675,14 @@ function drawPauseScreen() {
     rr(a.x + a.w + 2, a.y, 4, a.h, 2); ctx.fillStyle = '#0a110d'; ctx.fill();
     rr(a.x + a.w + 2, ty, 4, th, 2); ctx.fillStyle = '#9a7a3a'; ctx.fill();
   };
+  let pauseHover = null;   // Karte oder Trank unter der Maus: wird als Vorschau gezeigt
   ctx.save(); ctx.beginPath(); ctx.rect(cx - 4, areaTop - 2, cwid + 8, areaH + 4); ctx.clip();
   groups.forEach((gr, i) => {
     const c = gr.it, R = RARITY[c.rarity], sx = cx, sy = areaTop + i * 38 - pauseScroll.c;
     if (sy < areaTop - 38 || sy > areaTop + areaH) return;
-    rr(sx, sy, cwid, 34, 6); ctx.fillStyle = '#16231b'; ctx.fill();
+    const hov = inside(sx, sy, cwid, 34) && mouse.fy >= areaTop && mouse.fy <= areaTop + areaH;
+    if (hov) pauseHover = c;
+    rr(sx, sy, cwid, 34, 6); ctx.fillStyle = hov ? '#1e2c22' : '#16231b'; ctx.fill();
     ctx.strokeStyle = R.c; ctx.lineWidth = 2; if (c.kind === 'Trank') ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
     rr(sx + 6, sy + 5, 24, 24, [12, 12, 4, 4]); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = R.c; ctx.lineWidth = 1; ctx.stroke();
     drawIcon(c.icon, sx + 18, sy + 17, 16, R.c, 1.4);
@@ -6705,6 +6708,7 @@ function drawPauseScreen() {
   text('Effekte', kn - 8, Y + Ht - 30, 15, '#8a9aa0', 'right', F_TEXT);
   const km = keycap(kn - 78, Y + Ht - 36, keyLabel(bind('music')));
   text('Musik', km - 8, Y + Ht - 30, 15, '#8a9aa0', 'right', F_TEXT);
+  if (pauseHover) drawCard(pauseHover, clamp(mouse.fx + 24, 10, 1040), clamp(mouse.fy - 150, 90, 380), 1.0, true);
 }
 
 // Bausteine für Optionen
