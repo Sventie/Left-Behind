@@ -1029,7 +1029,8 @@ function stageLength(stage) { return 30 + Math.floor((stage - 1) / 3) * STAGE_ST
 function newGame(cls, area) {
   area = area || AREAS[0]; floorPattern = null;
   G = {
-    cls, area, bossDist: area.len, pickStep: area.len / (PICKS_PER_AREA + 0.5), stageBlink: 0, arenaTop: -area.len * PX_PER_M - VIEW_H / 3, arenaBuilt: false,
+    cls, area, bossDist: area.len, pickStep: area.len / (PICKS_PER_AREA + 0.5), stageBlink: 0, arenaTop: -area.len * PX_PER_M - VIEW_H * 0.78,   // der Spieler steht am Marke im unteren Drittel, die Arena liegt darüber
+    arenaBuilt: false,
     time: 0, camTop: 0, genTop: 0,
     obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
     kills: 0, dist: 0,
@@ -1720,6 +1721,7 @@ function update(dt) {
     return;
   }
   if (G.goT > 0) G.goT -= dt;
+  if (G.intro) { updateIntro(dt); return; }   // Boss-Intro: Spieler und Welt stehen still
   G.time += dt; if (G.stageBlink > 0) G.stageBlink -= dt; G.slowT = Math.max(0, G.slowT - dt); updateVenom(dt); updateDotFx(dt);
 
   // Bewegung (WASD) oder Windstoß
@@ -1852,17 +1854,55 @@ function update(dt) {
 function spawnBoss() {
   G.bossSpawned = true; G.camLock = true;
   if (!G.bossOnly && !SAVE.bossReached[G.area.id]) { SAVE.bossReached[G.area.id] = true; persist(); }
-  const moorBoss = G.area.id === 'moor';
-  if (G.hall) G.camTop = G.hall.y0 + 20;   // Thronhalle: die Kamera zeigt den ganzen Raum
-  const herrBoss = G.area.id === 'schloss';
-  if (G.area.id === 'wald') G.camTop = G.arenaTop;   // die Arena steht schon (bogenArena beim Erzeugen der Welt)
-  const b = makeEnemy(moorBoss ? 'hexe' : herrBoss ? 'herr' : 'boss', WORLD_W / 2, G.camTop + (herrBoss ? 250 : 90), true);
+  const moorBoss = G.area.id === 'moor', herrBoss = G.area.id === 'schloss', p = G.player;
+  if (G.area.id === 'wald' && !G.arenaBuilt) bogenArena();
+  // Ziel der Kamera: Wald = Arena, Schloss = ganzer Thronsaal, sonst so, dass der Spieler im unteren Drittel steht
+  const cam1 = G.hall ? G.hall.y0 + 20 : G.area.id === 'wald' ? G.arenaTop : p.y - VIEW_H * 0.78;
+  const by = cam1 + (herrBoss ? 250 : 90);
+  const b = makeEnemy(moorBoss ? 'hexe' : herrBoss ? 'herr' : 'boss', WORLD_W / 2, by, true);
   if (G.area.id === 'kerker') { b.hp = b.maxHp = 1500 * b.bossK; }   // Platzhalter, bis der Boss entworfen ist
   if (herrBoss) { b.boss = true; b.phase = 1; b.cyc = 'stoss'; b.cool = 1.2; b.act = null; b.rainT = 0; b.form = 'a'; }
-  b.in = true; b.reaction = 1.2;
   if (moorBoss) { b.boss = true; b.phase = 1; b.form = 'a'; b.cast = 2.5; b.last = ''; b.strafe = 1; b.strafeT = 2; }
-  G.enemies.push(b); G.boss = b;
-  G.banner = { t: 4, head: G.area.boss.toUpperCase(), sub: (moorBoss ? 'Besiege sie' : 'Besiege ihn') + ', dann beginnt der Endlosmodus' }; sfx('horde_horn');
+  // Intro (ca. 5 s): Spieler gesperrt und unverwundbar, Kamera fährt hoch, der Boss springt in die Arena, steht kurz, dann beginnt der Kampf
+  G.intro = { t: 0, cam0: G.camTop, cam1, by, boss: b, jumped: false, landed: false, skippable: !!G.bossOnly, prev: !!(mouse.down || keys['Space']) };
+  G.player.charge = 0;
+}
+function introEnd() {
+  const I = G.intro; if (!I) return;
+  G.intro = null; const b = I.boss; b.in = true; b.reaction = 1.2; b.y = I.by; b.lift = 0;
+  G.goT = 0.7; sfx('reload_done'); mouse.pressed = false;
+}
+function introLand(I) {
+  const b = I.boss; I.landed = true; b.y = I.by; b.lift = 0;
+  G.shakeT = 0.45; sfx('spell_explode', 1);
+  G.rings.push({ x: b.x, y: b.y + b.r, r: 140, life: 0.5, max: 0.5 });
+  for (let i = 0; i < 22; i++) G.parts.push({ x: b.x + rand(-30, 30), y: b.y + b.r, vx: rand(-220, 220), vy: rand(-90, 40), life: rand(0.4, 0.8), color: '#b8a888' });
+  const moorBoss = G.area.id === 'moor';
+  G.banner = { t: 2.4, head: G.area.boss.toUpperCase(), sub: (moorBoss ? 'Besiege sie' : 'Besiege ihn') + ', dann beginnt der Endlosmodus' };
+}
+function updateIntro(dt) {
+  const I = G.intro, b = I.boss;
+  const down = !!(mouse.down || keys['Space']);
+  if (I.skippable && down && !I.prev) {   // Boss-Training: per Klick oder Leertaste überspringen
+    G.camTop = I.cam1; if (!I.jumped) { I.jumped = true; G.enemies.push(b); G.boss = b; }
+    G.shakeT = 0; introLand(I); G.banner = null; generate(); introEnd(); return;
+  }
+  I.prev = down;
+  I.t += dt;
+  G.shakeT = Math.max(0, G.shakeT - dt);
+  for (const q of G.parts) { q.x += q.vx * dt; q.y += q.vy * dt; q.life -= dt; }
+  for (const r of G.rings) r.life -= dt;
+  if (G.banner) { G.banner.t -= dt; if (G.banner.t <= 0) G.banner = null; }
+  if (I.t - dt <= 0) sfx('horde_horn');   // Horn an der Marke
+  const ease = u => u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+  if (I.t >= 1) G.camTop = I.cam0 + (I.cam1 - I.cam0) * ease(clamp((I.t - 1) / 1.5, 0, 1));   // 1,5 s weiche Kamerafahrt
+  if (I.t >= 2.5 && !I.jumped) { I.jumped = true; b.y = I.cam1 - 160; G.enemies.push(b); G.boss = b; sfx('dash'); }
+  if (I.jumped && !I.landed) {   // Sprung in die Arena (0,5 s)
+    const u = clamp((I.t - 2.5) / 0.5, 0, 1); b.y = (I.cam1 - 160) + (I.by - (I.cam1 - 160)) * u * u; b.lift = Math.sin(u * Math.PI) * 30;
+    if (u >= 1) introLand(I);
+  }
+  generate();
+  if (I.t >= 5) introEnd();
 }
 // Boss besiegt: der Lauf geht im Endlosmodus weiter, bis man fällt
 function winRun() {
@@ -3067,7 +3107,7 @@ function visPoly(cx, cy, center, half, range, segs, step) {
   return pts;
 }
 function visible(e) {
-  if (e.markT > 0) return true;
+  if (G.intro || e.markT > 0) return true;   // im Boss-Intro sieht man alles
   if (G.orb && S.orb && Math.hypot(e.x - G.orb.x, e.y - G.orb.y) < S.orb.r + e.r) return true;   // Licht des Irrlicht-Begleiters
   const p = G.player, V = visionParams();
   const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy);
@@ -4676,6 +4716,7 @@ function drawFogInto() {
   fctx.setTransform(1, 0, 0, 1, 0, 0);
   fctx.globalCompositeOperation = 'source-over';
   fctx.clearRect(0, 0, fog.width, fog.height);
+  if (G.intro) return;   // Boss-Intro: keine Dunkelheit, die Arena soll zu sehen sein
   fctx.fillStyle = 'rgba(3,8,10,0.70)';
   fctx.fillRect(FIELD_X * scale, 0, VIEW_W * scale, VIEW_H * scale);
   fctx.globalCompositeOperation = 'destination-out';
@@ -5027,6 +5068,7 @@ function drawFieldHUD() {
   }
   if (godMode) text('UNVERWUNDBAR', VIEW_W - 16, 24, 14, '#f2c14e', 'right', F_TITLE);
   if (G.test) text('TESTLEVEL · ' + keyLabel('KeyT') + ' öffnet das Testmenü', 16, 24, 14, '#8ee8ff', 'left', F_TITLE);
+  if (G.intro && G.intro.skippable) text('Klick oder Leertaste: Intro überspringen', VIEW_W / 2, VIEW_H - 24, 17, 'rgba(232,220,188,.75)', 'center', F_TEXT, 'italic');
   if (G.banner) {
     ctx.globalAlpha = Math.min(1, G.banner.t * 2);
     ctx.fillStyle = 'rgba(2,5,4,.6)'; ctx.fillRect(0, 210, VIEW_W, 110);
@@ -6350,7 +6392,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.10.12';
+const VERSION = 'v1.11.0';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
