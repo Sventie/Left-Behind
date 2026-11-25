@@ -3281,10 +3281,13 @@ function castlePlan() {
   return types.map((t, i) => ({ type: t, h: Math.round(D * w[i] / sum) }));
 }
 function addCastleWall(y, th, o) {   // Quermauer mit Tür (gx, gw); y = Mitte der Mauer
-  const gw = o.gw || Math.round(rand(140, 170)), gx = o.gx !== undefined ? o.gx : Math.round(rand(110, WORLD_W - 110 - gw));
+  const gw = o.gw || Math.round(rand(140, 170));
+  // Fassade mit zwei Türmen (x = 230 und 730, Radius 62): die Tür liegt immer dazwischen, mit mindestens 30 px Abstand zu beiden Türmen
+  let gx = o.gx !== undefined ? o.gx : o.kind === 'facade' ? Math.round(rand(230 + 62 + 30, 730 - 62 - 30 - gw)) : Math.round(rand(110, WORLD_W - 110 - gw));
   const w = { y, th, gx, gw, kind: o.kind || 'plain', closed: false };
   G.cwalls.push(w);
   G.obstacles.push({ kind: 'wall', hidden: true, x: 0, y: y - th / 2, w: gx, h: th }, { kind: 'wall', hidden: true, x: gx + gw, y: y - th / 2, w: WORLD_W - gx - gw, h: th });
+  if (w.kind === 'facade') for (const tx of [230, 730]) G.obstacles.push({ kind: 'tree', hidden: true, r: 62, cx: tx, cy: y, x: tx - 62, y: y - 62, w: 124, h: 124 });   // die Fassadentürme sind fest, die Tür liegt zwischen ihnen
   return w;
 }
 function ensureCastle(topY) {
@@ -6431,7 +6434,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.11.1';
+const VERSION = 'v1.11.2';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
