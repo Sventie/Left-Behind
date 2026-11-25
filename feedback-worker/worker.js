@@ -2,7 +2,7 @@
 //   POST /          Feedback als GitHub-Issue anlegen (Secret GITHUB_TOKEN)
 //   (Rangliste zurückgesetzt: Schlüssel scores-2 statt scores)
 //   GET  /scores    Rangliste lesen: entries (alle Einträge, je Name, Streiter und Gebiet das beste Ergebnis), dazu lists/scores für ältere Spielstände  (KV-Namespace SCORES)
-//   POST /scores    Ergebnis eintragen         (KV-Namespace SCORES)
+//   POST /scores    Ergebnis eintragen (mit Schwierigkeit und Deck)         (KV-Namespace SCORES)
 // Der GitHub-Token liegt nur hier als Secret, nie im Spiel.
 const REPO = 'sventie/left-behind';
 const ALLOWED_ORIGINS = ['https://sventie.github.io'];   // Adresse des Spiels (GitHub Pages)
@@ -10,6 +10,8 @@ const WINDOW_MS = 60000, MAX_PER_WINDOW = 3;
 const hits = new Map();
 const CLASSES = ['ritter', 'waldlaeufer', 'magier'];
 const AREAS = ['wald', 'moor', 'schloss', 'kerker'];
+const DIFFS = ['half', 'full', 'blood'];   // Halbmond, Vollmond, Blutmond (fehlt bei alten Einträgen = half)
+const MAX_DECK = 20;
 const MAX_DIST = 5000, MAX_KILLS = 5000, KEEP = 600, SHOW = 10, NAME_MAX = 25;
 
 export default {
@@ -51,7 +53,7 @@ function boards(list) {
   const lists = { all: top(() => true) };
   for (const c of CLASSES) lists[c] = top(e => e.cls === c);
   // entries: alle Einträge (Gebiet fehlt bei alten Einträgen = Wald); das Spiel filtert nach Gebiet und Streiter
-  const entries = list.slice().sort((a, b) => b.score - a.score || a.at - b.at).map(e => ({ ...e, area: e.area || 'wald' }));
+  const entries = list.slice().sort((a, b) => b.score - a.score || a.at - b.at).map(e => ({ ...e, area: e.area || 'wald', diff: e.diff || 'half' }));
   return { scores: lists.all, lists, entries };
 }
 async function load(env) {
@@ -71,11 +73,20 @@ async function addScore(request, env, reply) {
   const points = Number.isFinite(Number(d.points)) ? Math.floor(Number(d.points)) : kills * 3 + (won ? 500 : 0);
   if (!(points >= 0 && points <= kills * 100 + 600)) return reply(400, { error: 'Ungültiges Ergebnis.' });
   const area = AREAS.includes(d.area) ? d.area : 'wald';
-  const entry = { name, cls: d.cls, area, dist, kills, won, score: dist + points, at: Date.now() };
+  const diff = DIFFS.includes(d.diff) ? d.diff : 'half';
+  // Deck des Laufs: Liste aus [Karten-Id, {Stat: Tier 1–5}], nur bekannte Formen
+  const deck = [];
+  if (Array.isArray(d.deck)) for (const c of d.deck.slice(0, MAX_DECK)) {
+    if (!Array.isArray(c) || typeof c[0] !== 'string' || !/^[a-z0-9_]{1,24}$/.test(c[0])) continue;
+    const t = {};
+    if (c[1] && typeof c[1] === 'object') for (const k of Object.keys(c[1]).slice(0, 4)) { const v = Math.floor(Number(c[1][k])); if (/^[a-z0-9_]{1,24}$/.test(k) && v >= 1 && v <= 5) t[k] = v; }
+    deck.push([c[0], t]);
+  }
+  const entry = { name, cls: d.cls, area, diff, dist, kills, won, score: dist + points, at: Date.now(), ...(deck.length ? { deck } : {}) };
   let list = await load(env);
-  const same = e => e.cls === entry.cls && (e.area || 'wald') === area;
-  const i = list.findIndex(e => same(e) && e.name.toLowerCase() === name.toLowerCase());   // je Name, Streiter und Gebiet ein bestes Ergebnis
-  const rankOf = e => list.filter(x => x.cls === e.cls && (x.area || 'wald') === (e.area || 'wald') && (x.score > e.score || (x.score === e.score && x.at < e.at))).length + 1;
+  const same = e => e.cls === entry.cls && (e.area || 'wald') === area && (e.diff || 'half') === diff;
+  const i = list.findIndex(e => same(e) && e.name.toLowerCase() === name.toLowerCase());   // je Name, Streiter, Gebiet und Schwierigkeit ein bestes Ergebnis
+  const rankOf = e => list.filter(x => x.cls === e.cls && (x.area || 'wald') === (e.area || 'wald') && (x.diff || 'half') === (e.diff || 'half') && (x.score > e.score || (x.score === e.score && x.at < e.at))).length + 1;
   if (i >= 0) { if (list[i].score >= entry.score) return reply(200, { rank: rankOf(list[i]), best: false, ...boards(list) }); list.splice(i, 1); }
   list.push(entry);
   list.sort((a, b) => b.score - a.score || a.at - b.at);

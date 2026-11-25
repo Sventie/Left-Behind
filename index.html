@@ -131,10 +131,18 @@ const AREA_STAGE = { wald: 0, moor: 3, schloss: 6, kerker: 10 };
 const PICKS_PER_AREA = 8;
 const ENEMY_HP_STEP = 1.039, ENEMY_DMG_STEP = 1.0156;   // je Gegnerstufe: +3,9 % Leben, +1,56 % Schaden (40 % weniger als zuvor: 6,5 % und 2,6 %)
 const bossDmgK = () => Math.pow(ENEMY_DMG_STEP, bossStageOf(G.area));   // Schadensfaktor der Bossangriffe (feste Bossstufe)
-const bossStageOf = a => (AREA_STAGE[a.id] || 0) + PICKS_PER_AREA;
+// Schwierigkeit je Gebiet: Halbmond / Vollmond / Blutmond. Die Gegner (und der Boss) starten 0 / 5 / 10 Stufen höher, Mondsilber und EP +0 / 20 / 40 %.
+// Die nächste Schwierigkeit öffnet sich, wenn der Boss der vorherigen besiegt ist.
+const DIFFS = [
+  { id: 'half', name: 'Halbmond', add: 0, reward: 1, sub: 'So hat alles begonnen.' },
+  { id: 'full', name: 'Vollmond', add: 5, reward: 1.2, sub: 'Die Gegner sind wacher.' },
+  { id: 'blood', name: 'Blutmond', add: 10, reward: 1.4, sub: 'Nur wer den Vollmond überlebt.' }
+];
+const diffOf = () => DIFFS[(G && G.diff) || 0];
+const bossStageOf = (a, d) => (AREA_STAGE[a.id] || 0) + PICKS_PER_AREA + DIFFS[d != null ? d : (G && G.diff) || 0].add;
 function enemyStage() {
   if (!G) return 0;
-  const s0 = AREA_STAGE[G.area.id] || 0;
+  const s0 = (AREA_STAGE[G.area.id] || 0) + diffOf().add;
   if (G.test) return G.testStage;
   if (G.bossOnly) return bossStageOf(G.area);
   if (!G.bossSpawned) return s0 + Math.min(PICKS_PER_AREA, G.stage - 1);
@@ -639,6 +647,8 @@ function loadSave() {
     for (const c of CARDS) { let n = sv.cards.filter(o => o.id === c.id).length; while (n++ < CHEAT_COUNT[c.rarity]) sv.cards.push(rollInst(c, ++sv.uidN)); }
     sv.silver = Math.max(sv.silver, 5000); sv.maxStage = Math.max(sv.maxStage, 5); sv.bossDown = true; for (const a of AREAS) sv.bossDownBy[a.id] = true;
   }
+  sv.diffDown = sv.diffDown || {};   // je Gebiet: welche Schwierigkeiten (half / full / blood) mit besiegtem Boss geschafft sind
+  for (const a of AREAS) { sv.diffDown[a.id] = sv.diffDown[a.id] || {}; if (sv.bossDownBy[a.id]) sv.diffDown[a.id].half = true; if (CHEAT) sv.diffDown[a.id] = { half: true, full: true, blood: true }; }
   sv.decks = sv.decks || {};
   const byU = new Map(sv.cards.map(o => [o.u, o]));
   for (const cls of CLASSES) {
@@ -1029,7 +1039,7 @@ let lastClass = Math.max(0, CLASSES.findIndex(c => c.id === (localStorage.getIte
 const keys = {};
 const held = a => !!keys[settings.binds[a]];
 const mouse = { x: VIEW_W / 2, y: VIEW_H / 2, fx: 0, fy: 0, down: false, rdown: false, pressed: false };
-let menuHover = -1, pickHover = -1, selectHover = -1;
+let menuHover = -1, pickHover = -1;
 
 const W = () => WEAPONS[G.cls.weapon];
 const wtype = () => W().type;
@@ -1054,10 +1064,10 @@ function recomputeStats() {
 function runHooks(ev, ctx) { const l = S.hooks && S.hooks[ev]; if (l) for (const f of l) f(ctx); }
 function stageLength(stage) { return 30 + Math.floor((stage - 1) / 3) * STAGE_STEP; }
 
-function newGame(cls, area) {
+function newGame(cls, area, diff) {
   area = area || AREAS[0]; floorPattern = null;
   G = {
-    cls, area, bossDist: area.len, pickStep: area.len / (PICKS_PER_AREA + 0.5), stageBlink: 0, arenaTop: -area.len * PX_PER_M - VIEW_H * 0.78,   // der Spieler steht am Marke im unteren Drittel, die Arena liegt darüber
+    cls, area, diff: diff || 0, deckSnap: deckOf(cls).map(c => ({ id: c.id, t: Object.assign({}, c.t) })), bossDist: area.len, pickStep: area.len / (PICKS_PER_AREA + 0.5), stageBlink: 0, arenaTop: -area.len * PX_PER_M - VIEW_H * 0.78,   // der Spieler steht am Marke im unteren Drittel, die Arena liegt darüber
     arenaBuilt: false,
     time: 0, camTop: 0, genTop: 0,
     obstacles: [], enemies: [], bullets: [], parts: [], arcs: [], rings: [], pickups: [],
@@ -1948,6 +1958,8 @@ function winRun() {
   G.enemies = G.enemies.filter(e => e.type !== 'irrlicht' && e.type !== 'trug' && e.type !== 'kessel'); G.clouds = []; G.hands = []; G.fogs = G.fogs.filter(f => !f.hexe && !f.call); G.obstacles = G.obstacles.filter(o => o.sty !== 'pilz'); G.rootT = 0; G.curseT = 0;
   const first = !SAVE.bossDown;
   const nextA = AREAS.find(a => a.after === G.area.id), newArea = nextA && !SAVE.bossDownBy[G.area.id];
+  const dd = SAVE.diffDown[G.area.id] || (SAVE.diffDown[G.area.id] = {}), newDiff = G.diff < DIFFS.length - 1 && !dd[DIFFS[G.diff].id];
+  dd[DIFFS[G.diff].id] = true;
   G.won = true; SAVE.bossDown = true; SAVE.bossDownBy[G.area.id] = true; persist(); G.endless = true; G.camLock = false;
   G.nextPick = G.dist; G.pickDelay = 0;
   sfx('stage_up');
@@ -1955,6 +1967,7 @@ function winRun() {
   const rewards = [{ icon: 'crown', title: '+' + ENEMY_POINTS.boss + ' Punkte', sub: 'Für den Sieg über ' + G.area.boss + '.' }, { icon: 'moon', title: '+' + ENEMY_POINTS.boss + ' Mondsilber', sub: 'Beute vom Boss.' }];
   if (first) rewards.push({ icon: 'book', title: 'Drachen-Booster', sub: 'Neues Boosterpack im Shop.', fresh: true });
   if (newArea) rewards.push({ icon: 'crown', title: 'Neues Gebiet: ' + nextA.name, sub: nextA.ready ? 'Jetzt in der Gebietswahl verfügbar.' : 'Freigeschaltet, aber noch nicht spielbar.', fresh: true });
+  if (newDiff) rewards.push({ icon: 'moon', title: 'Neue Schwierigkeit: ' + DIFFS[G.diff + 1].name, sub: 'In der Gebietswahl freigeschaltet: stärkere Gegner, mehr Belohnung.', fresh: true });
   G.victory = { rewards, scroll: 0 };
   mouse.down = false; mouse.rdown = false; mouse.pressed = false;
   state = 'victory';
@@ -2084,7 +2097,9 @@ let areaHold = null;   // Knopf „Nur Boss“ gedrückt gehalten: {id, t0}
 const bossTrainOpen = a => !!(SAVE.bossReached[a.id] || SAVE.bossDownBy[a.id]);
 function areaChoose(a, bossOnly) {
   if (!areaUnlocked(a) || !a.ready) return;
-  curArea = a; curBossOnly = !!bossOnly; selectHover = classLocked(lastClass) ? CLASSES.findIndex(c => c.id === 'waldlaeufer') : lastClass; state = 'select';
+  curArea = a; curBossOnly = !!bossOnly; curDiff = 0;
+  for (let i = DIFFS.length - 1; i > 0; i--) if (diffOpen(a, i)) { curDiff = i; break; }   // vorgewählt: die höchste freie Schwierigkeit
+  state = 'select';
 }
 function areaKey(e) {
   const i = AREAS.findIndex(a => a.id === areaSel);
@@ -2209,10 +2224,10 @@ function drawAreaScreen() {
 // ---------- Boss-Training: nur den Boss eines Gebiets, mit 5 Karten aus dem Deck ----------
 let bossCls = 0, bossSel = [];
 function openBossCards(i) { bossCls = i; bossSel = []; state = 'bosscards'; }
-function startBossOnly(ci, cardIds, area) {
+function startBossOnly(ci, cardIds, area, diff) {
   lastClass = ci;
-  newGame(CLASSES[ci], area);
-  G.bossOnly = true; G.cards = cardIds.slice(); G.bossRestart = { ci, cardIds: cardIds.slice(), area };
+  newGame(CLASSES[ci], area, diff);
+  G.bossOnly = true; G.cards = cardIds.slice(); G.bossRestart = { ci, cardIds: cardIds.slice(), area, diff };
   recomputeStats();
   const p = G.player; p.hp = S.maxHp; p.mag = S.magSize; p.mana = S.manaMax;
   G.nextPick = 1e9; G.nextWave = 1e9; G.nextSingle = 1e9; G.merchantDone = true;
@@ -2232,7 +2247,7 @@ function drawBossCardsScreen() {
   uiBtns = [];
   screenBackdrop();
   const cls = CLASSES[bossCls], deck = bossDeck(), need = Math.min(5, deck.length), a = curArea;
-  kicker('Boss-Training · ' + a.name, 40, 52);
+  kicker('Boss-Training · ' + a.name + (curDiff ? ' · ' + DIFFS[curDiff].name : ''), 40, 52);
   titleText('Wähle 5 Karten', 40, 104, 42);
   text(cls.name + ' · Boss: ' + a.boss + '. Du startest direkt vor dem Boss, nur mit diesen Karten aus deinem Deck.', 40, 134, 18, '#c8d4de', 'left', F_TEXT, 'italic');
   const k = 0.62, cw = 220 * k, ch = 320 * k, gap = 16, per = 6, x0 = (FRAME_W - (per * cw + (per - 1) * gap)) / 2, y0 = 168;
@@ -2249,26 +2264,22 @@ function drawBossCardsScreen() {
   if (!deck.length) text('Dein Deck ist leer. Du startest ohne Karten.', 640, 340, 20, '#8a9aa0', 'center', F_TEXT, 'italic');
   text(bossSel.length + ' / ' + need + ' Karten gewählt', 640, 584, 18, bossSel.length === need ? '#4fd08a' : '#c8d4de', 'center', F_TEXT);
   uiButton(440, 604, 190, 46, 'Zurück', () => { state = 'select'; }, { size: 17 });
-  uiButton(650, 604, 190, 46, 'Start', () => startBossOnly(bossCls, bossSel.map(i => deck[i]), curArea), { primary: true, size: 18, disabled: bossSel.length !== need });
+  uiButton(650, 604, 190, 46, 'Start', () => startBossOnly(bossCls, bossSel.map(i => deck[i]), curArea, curDiff), { primary: true, size: 18, disabled: bossSel.length !== need });
   if (hovered) drawCard(hovered, clamp(mouse.fx + 24, 10, 1040), clamp(mouse.fy - 150, 90, 330), 1.0, true);
 }
 
 // ---------- Charakterwahl ----------
-const SEL = { w: 300, h: 470, gap: 40, y: 150 };
-function selectLayout() {
-  // Vorerst nur der Waldläufer (siehe ACTIVE_CI): die anderen Streiter bleiben im Code, werden aber nicht angezeigt
-  const x0 = (FRAME_W - SEL.w) / 2;
-  return [{ c: CLASSES[ACTIVE_CI], i: ACTIVE_CI, x: x0, y: SEL.y, w: SEL.w, h: SEL.h }];
-}
-let curArea = AREAS[0], curBossOnly = false;
+let curArea = AREAS[0], curBossOnly = false, curDiff = 0;
+const diffOpen = (a, i) => i === 0 || !!(SAVE.diffDown[a.id] && SAVE.diffDown[a.id][DIFFS[i - 1].id]);
+const recKey = (aid, i) => i ? aid + '|' + DIFFS[i].id : aid;   // Rekorde: Halbmond unter der Gebiets-Id (wie bisher), die anderen mit Zusatz
 const classLocked = i => !!CLASSES[i] && CLASSES[i].id !== 'waldlaeufer';   // vorerst nur der Fernkämpfer
 function startRun(i) {
   if (classLocked(i)) { sfx('empty_click'); return; }
   if (curBossOnly) { openBossCards(i); return; }
   lastClass = i;
   try { localStorage.setItem('left-behind-class', CLASSES[i].id); } catch (e) {}
-  newGame(CLASSES[i], curArea);
-  G.banner = { t: 4.5, head: curArea.name.toUpperCase(), sub: 'Gegner: Stufe ' + enemyStage() + ' · mit jeder Kartenwahl werden sie stärker' };
+  newGame(CLASSES[i], curArea, curDiff);
+  G.banner = { t: 4.5, head: curArea.name.toUpperCase() + (curDiff ? ' · ' + DIFFS[curDiff].name.toUpperCase() : ''), sub: 'Gegner: Stufe ' + enemyStage() + ' · mit jeder Kartenwahl werden sie stärker' };
   mouse.down = false; mouse.rdown = false;
   state = 'play';
 }
@@ -3085,15 +3096,15 @@ function finishRun() {
   if (G.finished) return;
   G.finished = true;
   if (G.bossOnly) { G.earned = 0; return; }   // Boss-Training: kein Mondsilber, kein Rekord, keine Rangliste
-  G.lvBefore = accLevel(); G.xpGain = Math.floor(G.dist) + G.points; SAVE.xp = (SAVE.xp || 0) + G.xpGain; G.lvAfter = accLevel();   // Erfahrung: 1 EP je Meter und Gefallenem, auch beim Tod
-  G.earned = Math.max(0, Math.round(G.dist + G.killSilver) - G.spent);   // 1 Mondsilber pro Meter, je Gefallenem wie die Punkte, abzüglich Händler
+  G.lvBefore = accLevel(); G.xpGain = Math.round((Math.floor(G.dist) + G.points) * diffOf().reward); SAVE.xp = (SAVE.xp || 0) + G.xpGain; G.lvAfter = accLevel();   // Erfahrung: 1 EP je Meter und Gefallenem, auch beim Tod
+  G.earned = Math.max(0, Math.round((G.dist + G.killSilver) * diffOf().reward) - G.spent);   // 1 Mondsilber pro Meter, je Gefallenem wie die Punkte, abzüglich Händler
   SAVE.silver += G.earned;
   SAVE.maxStage = Math.max(SAVE.maxStage || 1, G.stage);
   persist();
-  const rec = SAVE.records[G.area.id] || (SAVE.records[G.area.id] = { dist: 0, points: 0 });
+  const rk = recKey(G.area.id, G.diff), rec = SAVE.records[rk] || (SAVE.records[rk] = { dist: 0, points: 0 });
   rec.dist = Math.max(rec.dist, Math.floor(G.dist)); rec.points = Math.max(rec.points, Math.floor(G.dist) + G.points);
   persist();
-  if (G.area.id === 'wald' && G.dist > best) {
+  if (G.area.id === 'wald' && !G.diff && G.dist > best) {
     best = G.dist;
     try { localStorage.setItem('left-behind-best', String(best)); } catch (e) {}
   }
@@ -5186,89 +5197,73 @@ function drawPickScreen() {
   text('1 · 2 · 3' + (lay.length > 3 ? ' · 4' : '') + ' oder Klick  ·  ' + keyLabel(bind('reload')) + ': neu würfeln  ·  Die Zeit steht still', 640, 672, 16, '#c8d4de', 'center', F_TEXT);
 }
 
-// Charakterwahl
+// Schwierigkeit wählen (nach der Gebietswahl): Halbmond, Vollmond, Blutmond
+function drawMoon(kind, cx, cy, r) {
+  const glow = ['#9ab8d8', '#f2e6a8', '#ff6a6a'][kind];
+  ctx.save(); ctx.shadowColor = glow; ctx.shadowBlur = r * 0.35;
+  ctx.fillStyle = kind === 0 ? '#2a3a4a' : kind === 1 ? '#f2eedd' : '#b8323c'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill();
+  ctx.shadowBlur = 0;
+  if (kind === 0) { ctx.fillStyle = '#dfe8f0'; ctx.beginPath(); ctx.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2); ctx.closePath(); ctx.fill(); }
+  else { ctx.fillStyle = kind === 1 ? '#d8d2bc' : '#8a2028'; for (const [dx, dy, k] of [[-0.3, -0.25, 0.19], [0.33, 0.3, 0.25], [0.2, -0.42, 0.12]]) { ctx.beginPath(); ctx.arc(cx + dx * r, cy + dy * r, k * r, 0, 7); ctx.fill(); } }
+  ctx.restore();
+}
+function startFromDiff() { startRun(classLocked(lastClass) ? ACTIVE_CI : lastClass); }
+function diffKey(e) {
+  const a = curArea;
+  if (e.code === 'Escape') { state = 'areas'; return; }
+  if (e.code === 'Enter' || e.code === 'Space') { startFromDiff(); return; }
+  let i = curDiff;
+  if (e.code === 'ArrowRight' || e.code === 'KeyD') i++;
+  else if (e.code === 'ArrowLeft' || e.code === 'KeyA') i--;
+  else if (/^Digit[1-3]$/.test(e.code)) i = Number(e.code.slice(5)) - 1;
+  else return;
+  if (i >= 0 && i < DIFFS.length) { if (diffOpen(a, i)) curDiff = i; else sfx('empty_click'); }
+}
 function drawSelectScreen() {
   uiBtns = [];
-  let g = ctx.createLinearGradient(0, 0, 0, FRAME_H);
-  g.addColorStop(0, '#0c1a2a'); g.addColorStop(0.5, '#12283a'); g.addColorStop(1, '#0a110d');
+  const a = curArea;
+  let g = ctx.createRadialGradient(640, 0, 0, 640, 0, 760); g.addColorStop(0, '#16304a'); g.addColorStop(0.55, '#0a1424'); g.addColorStop(1, '#050a10');
   ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
-  for (const s of stars) { ctx.fillStyle = 'rgba(255,255,255,' + s[3] + ')'; ctx.fillRect(s[0], s[1], s[2], s[2]); }
-  g = ctx.createRadialGradient(640, 420, 100, 640, 420, 700);
-  g.addColorStop(0, 'rgba(60,110,120,.25)'); g.addColorStop(1, 'rgba(2,5,4,.7)');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
-
-  text('DIE LETZTEN DER FALLENEN KRONE', 640, 54, 18, '#8ee8ff', 'center', F_TEXT, '500');
-  ctx.font = '48px ' + F_TITLE; ctx.textAlign = 'center';
-  ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 8;
-  ctx.fillStyle = silverGrad(70, 120); ctx.fillText('Dein Streiter', 640, 108);
-  ctx.shadowBlur = 0;
-
-  selectLayout().forEach(L => {
-    const c = L.c, hover = selectHover === L.i && !classLocked(L.i);
-    const lift = hover ? -10 : 0;
-    ctx.save(); ctx.translate(L.x, L.y + lift);
-    ctx.shadowColor = hover ? c.accent : 'rgba(0,0,0,.65)'; ctx.shadowBlur = hover ? 36 : 18; ctx.shadowOffsetY = hover ? 0 : 8;
-    const fg = ctx.createLinearGradient(0, 0, L.w, L.h);
-    fg.addColorStop(0, c.accent); fg.addColorStop(0.5, c.accent2); fg.addColorStop(1, c.accent);
-    rr(0, 0, L.w, L.h, 14); ctx.fillStyle = fg; ctx.fill();
-    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-    const pg = ctx.createLinearGradient(0, 0, 0, L.h);
-    pg.addColorStop(0, '#ece1c2'); pg.addColorStop(1, '#d8c89b');
-    rr(6, 6, L.w - 12, L.h - 12, 9); ctx.fillStyle = pg; ctx.fill();
-    ctx.strokeStyle = '#3a2a18'; ctx.lineWidth = 2; ctx.stroke();
-    // Name
-    text(c.name, L.w / 2, 44, 26, '#2a1f14', 'center', F_TITLE);
-    ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(24, 56); ctx.lineTo(L.w - 24, 56); ctx.stroke();
-    // Bogenfenster mit Figur
-    const ag = ctx.createRadialGradient(L.w / 2, 150, 6, L.w / 2, 150, 140);
-    ag.addColorStop(0, c.accent + '55'); ag.addColorStop(0.7, '#0c1210'); ag.addColorStop(1, '#0c1210');
-    rr(22, 66, L.w - 44, 150, [76, 76, 8, 8]); ctx.fillStyle = ag; ctx.fill();
-    ctx.strokeStyle = c.accent; ctx.lineWidth = 3; ctx.stroke();
-    ctx.save(); ctx.beginPath(); rr(22, 66, L.w - 44, 150, [76, 76, 8, 8]); ctx.clip();
-    drawFigure(c.id, L.w / 2 - 14, 162, -Math.PI / 2 + (hover ? 0.12 : 0), 2.3, { swing: -1 });
-    ctx.restore();
-    // Rolle
-    rr(L.w / 2 - 70, 204, 140, 22, 4); ctx.fillStyle = c.accent; ctx.fill(); ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 1; ctx.stroke();
-    text(c.role.toUpperCase(), L.w / 2, 220, 13, '#1c140c', 'center', F_TEXT, 'bold');
-    // Beschreibung
-    const bl = wrap(c.blurb, L.w - 56, 'italic 17px ' + F_TEXT);
-    bl.slice(0, 3).forEach((l, i) => text(l, L.w / 2, 252 + i * 19, 17, '#4a3a28', 'center', F_TEXT, 'italic'));
-    // Werte
-    let yy = 322;
-    for (const [label, val] of Object.entries(c.rating)) {
-      text(label.toUpperCase(), 28, yy + 4, 12, '#3a2a18', 'left', F_TEXT, 'bold');
-      for (let i = 0; i < 5; i++) {
-        ctx.fillStyle = i < val ? c.accent2 : 'rgba(58,42,24,.2)';
-        rr(116 + i * 34, yy - 6, 28, 12, 3); ctx.fill();
-        if (i < val) { ctx.strokeStyle = '#2a1f14'; ctx.lineWidth = 1; ctx.stroke(); }
-      }
-      yy += 22;
+  for (const st of stars) { ctx.fillStyle = 'rgba(255,255,255,' + st[3] * 0.6 + ')'; ctx.fillRect(st[0], st[1], st[2], st[2]); }
+  text(a.name.toUpperCase(), 640, 54, 18, '#8ee8ff', 'center', F_TEXT, '500');
+  titleText('Schwierigkeit wählen', 640, 108, 50, 'center');
+  uiButton(40, 36, 130, 42, '‹ Zurück', () => { state = 'areas'; }, { size: 16 });
+  const W = 330, H = 440, Y = 150, xs = [60, 475, 890], cols = ['#9ab8d8', '#f2e6a8', '#ff6a6a'];
+  DIFFS.forEach((d, i) => {
+    const x = xs[i], open = diffOpen(a, i), done = !!(SAVE.diffDown[a.id] && SAVE.diffDown[a.id][d.id]), sel = i === curDiff, hov = open && inside(x, Y, W, H);
+    ctx.save();
+    if (sel || hov) { ctx.shadowColor = sel ? 'rgba(242,193,78,.5)' : 'rgba(154,184,216,.35)'; ctx.shadowBlur = 34; }
+    rr(x, Y, W, H, 18); const cg = ctx.createLinearGradient(0, Y, 0, Y + H); cg.addColorStop(0, '#17261d'); cg.addColorStop(1, '#0e1812'); ctx.fillStyle = cg; ctx.fill();
+    ctx.shadowBlur = 0; ctx.strokeStyle = sel ? '#f2c14e' : open ? cols[i] : '#4a5a4e'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.globalAlpha = open ? 1 : 0.45;
+    drawMoon(i, x + W / 2, Y + 68, 46);
+    text(d.name, x + W / 2, Y + 160, 30, '#f0e6c8', 'center', F_TITLE);
+    text(d.sub, x + W / 2, Y + 186, 16, '#a8b8c0', 'center', F_TEXT, 'italic');
+    ctx.fillStyle = '#2e3e32'; ctx.fillRect(x + 26, Y + 204, W - 52, 1);
+    text('Gegner ab', x + 26, Y + 236, 17, '#a8b8c0', 'left', F_TEXT);
+    text('Stufe ' + ((AREA_STAGE[a.id] || 0) + d.add), x + W - 26, Y + 236, 19, '#f2c14e', 'right', F_TITLE);
+    let ty = Y + 264;
+    if (!d.add) { text('Gegner wie bisher.', x + 26, ty, 16, '#c8d4de', 'left', F_TEXT); ty += 22; }
+    else {
+      const hp = Math.round((Math.pow(ENEMY_HP_STEP, d.add) - 1) * 100), dm = Math.round((Math.pow(ENEMY_DMG_STEP, d.add) - 1) * 100);
+      for (const l of wrap('Gegner und Boss starten ' + d.add + ' Stufen höher: etwa +' + hp + ' % Leben, +' + dm + ' % Schaden.', W - 52, '500 16px ' + F_TEXT)) { text(l, x + 26, ty, 16, '#c8d4de', 'left', F_TEXT, '500'); ty += 21; }
+      ty += 4; text('Mondsilber und EP +' + Math.round((d.reward - 1) * 100) + ' %', x + 26, ty, 16, '#4fd08a', 'left', F_TEXT, 'bold');
     }
-    // Waffe und Spezial
-    ctx.strokeStyle = 'rgba(58,42,24,.45)'; ctx.beginPath(); ctx.moveTo(24, 408); ctx.lineTo(L.w - 24, 408); ctx.stroke();
-    wrap(c.weaponLine, L.w - 48, '500 15px ' + F_TEXT).slice(0, 2).forEach((l, i) => text(l, L.w / 2, 427 + i * 16, 15, '#2a1f14', 'center', F_TEXT, '500'));
-    text(c.special, L.w / 2, 458, 14, '#6a3a1a', 'center', F_TEXT, 'bold');
+    // Status
+    const lab = done ? '✓ Boss besiegt' : open ? 'Freigeschaltet' : 'Gesperrt', pc = done ? '#4fd08a' : open ? '#f2c14e' : '#8a9aa0';
+    ctx.font = '15px ' + F_TEXT; const pw = ctx.measureText(lab).width + 28, px = x + W / 2 - pw / 2;
+    rr(px, Y + 338, pw, 26, 13); ctx.strokeStyle = pc; ctx.lineWidth = 1.5; ctx.stroke(); text(lab, x + W / 2, Y + 356, 15, pc, 'center', F_TEXT);
+    const rec = SAVE.records[recKey(a.id, i)];
+    const info = rec && rec.dist ? 'Bester Weg ' + rec.dist + ' m · ' + (rec.points || 0).toLocaleString('de-DE') + ' Punkte' : open ? 'Noch kein Rekord' : 'Besiege den Boss im ' + DIFFS[i - 1].name + '.';
+    text(info, x + W / 2, Y + 396, 15, '#8a9aa0', 'center', F_TEXT);
     ctx.restore();
-    if (classLocked(L.i)) {   // gesperrt: abgedunkelt mit Schloss
-      ctx.save(); ctx.translate(L.x, L.y); rr(0, 0, L.w, L.h, 14); ctx.fillStyle = 'rgba(6,10,8,.72)'; ctx.fill();
-      ctx.strokeStyle = '#c8a860'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(L.w / 2, 180, 30, 0, 7); ctx.fillStyle = '#1a1410'; ctx.fill(); ctx.stroke();
-      ctx.save(); ctx.translate(L.w / 2 - 15, 165); ctx.scale(1.25, 1.25); ctx.strokeStyle = '#c8a860'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke(new Path2D(ICONS.lock)); ctx.restore();
-      text('Bald verfügbar', L.w / 2, 250, 17, '#e8dcbc', 'center', F_TITLE); ctx.restore();
-    } else {
-      const lv = accLevel(), fp = skillPointsFree();
-      const label = 'Stufe ' + lv + (fp > 0 ? ' · ' + fp + (fp === 1 ? ' offener Punkt' : ' offene Punkte') : '');
-      ctx.font = '14px ' + F_TEXT; const tw = ctx.measureText(label).width + 28, bx = L.x + L.w / 2 - tw / 2, by = L.y + L.h + 70;
-      rr(bx, by, tw, 28, 14); ctx.fillStyle = fp > 0 ? '#143a28' : '#101a14'; ctx.fill(); ctx.strokeStyle = fp > 0 ? '#4fd08a' : '#9a7a3a'; ctx.lineWidth = 1.5; ctx.stroke();
-      text(label, L.x + L.w / 2, by + 19, 14, fp > 0 ? '#d0f0dc' : '#e8dcbc', 'center', F_TEXT);
-      uiHit(bx, by, tw, 28, () => openSkills('select'));
-    }
-    const dn = deckOf(c).length;
-    text('Deck ' + dn + ' / ' + DECK_SIZE, L.x + L.w / 2, L.y + L.h + 58, 15, dn < DECK_SIZE ? '#f2c14e' : '#8ee8ff', 'center', F_TEXT);
+    if (!open) { ctx.save(); ctx.translate(x + W / 2 - 26, Y + 42); ctx.scale(2.2, 2.2); ctx.strokeStyle = '#c8a860'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke(new Path2D(ICONS.lock)); ctx.restore(); }
+    uiHit(x, Y, W, H, () => { if (open) curDiff = i; else sfx('empty_click'); });
   });
-  // Zurück
-  rr(40, 36, 120, 40, 20); ctx.fillStyle = selectHover === -2 ? '#1e2c22' : '#101a14'; ctx.fill(); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
-  text('‹ Zurück', 100, 62, 17, '#e8dcbc', 'center', F_TITLE);
-  text('Klick oder Enter zum Starten', 640, 134, 16, '#c8d4de', 'center', F_TEXT);
+  text('Die nächste Schwierigkeit öffnet sich, sobald du den Boss der vorherigen besiegt hast.', 640, 626, 15, '#8a9aa0', 'center', F_TEXT, 'italic');
+  uiButton(480, 650, 320, 54, curBossOnly ? 'Weiter · Karten wählen' : 'Los geht’s', startFromDiff, { primary: true, size: 20 });
+  const dn = deckOf(CLASSES[ACTIVE_CI]).length;
+  text('Deck ' + dn + ' / ' + DECK_SIZE, 1240, 684, 15, dn < DECK_SIZE ? '#f2c14e' : '#8ee8ff', 'right', F_TEXT);
 }
 
 // ---------- Kartenbuch (Sammlung) und Deck ----------
@@ -6434,7 +6429,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.11.2';
+const VERSION = 'v1.12.0';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
@@ -7159,7 +7154,7 @@ async function submitScore() {
   if (!name) { scoreSt.msg = 'Bitte einen Namen eingeben.'; scoreSt.kind = 'err'; return; }
   scoreSt.busy = true; scoreSt.msg = 'Speichere …'; scoreSt.kind = '';
   try {
-    const res = await fetch(SCORES_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, cls: run.cls.id, area: run.area.id, dist: Math.floor(run.dist), kills: run.kills, won: run.won, points: run.points }) });
+    const res = await fetch(SCORES_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, cls: run.cls.id, area: run.area.id, diff: DIFFS[run.diff || 0].id, deck: (run.deckSnap || []).map(c => [c.id, c.t]), dist: Math.floor(run.dist), kills: run.kills, won: run.won, points: run.points }) });
     const j = await res.json().catch(() => ({}));
     if (res.ok) {
       try { localStorage.setItem(NAME_KEY, name); } catch (e) {}
@@ -7180,7 +7175,7 @@ function drawBossOnlyEnd() {
   titleText(won ? G.area.boss + ' besiegt' : 'Gefallen', 640, 240, 54, 'center');
   text(G.cls.name + ' · ' + Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0') + ' Minuten · ' + G.cards.length + ' Karten', 640, 290, 22, '#f0e6c8', 'center', F_TEXT);
   text('Im Boss-Training gibt es kein Mondsilber, keinen Rekord und keinen Eintrag in die Rangliste.', 640, 340, 16, '#8a9aa0', 'center', F_TEXT, 'italic');
-  uiButton(400, 420, 220, 52, 'Nochmal', () => { const r = G.bossRestart; startBossOnly(r.ci, r.cardIds, r.area); }, { primary: true, size: 18 });
+  uiButton(400, 420, 220, 52, 'Nochmal', () => { const r = G.bossRestart; startBossOnly(r.ci, r.cardIds, r.area, r.diff); }, { primary: true, size: 18 });
   uiButton(660, 420, 220, 52, 'Zum Menü', () => { state = 'menu'; }, { size: 18 });
   drawCursor();
 }
@@ -7192,8 +7187,8 @@ function drawDeadScreen() {
   const form = !!SCORES_URL && !CHEAT && !G.cheated && !scoreSt.done;
   text(G.gaveUp ? 'Aufgegeben' : 'Gefallen', 640, 200, 56, G.gaveUp ? '#f2c14e' : '#ff7a8a', 'center', F_TITLE);
   if (G.won) text('✓ ' + G.area.boss + ' besiegt · Endlos bis ' + Math.floor(G.dist) + ' m', 640, 226, 18, '#4fd08a', 'center', F_TEXT);
-  text(G.cls.name + ' · ' + Math.floor(G.dist) + ' m · ' + G.kills + ' Gefallene · ' + G.cards.length + ' Karten', 640, 252, 24, '#f0e6c8', 'center', F_TEXT);
-  text('Rekord: ' + Math.floor((SAVE.records[G.area.id] || { dist: 0 }).dist) + ' m   ·   + ' + G.earned + ' Mondsilber', 640, 290, 19, '#b8c4d0', 'center', F_TEXT);
+  text(G.cls.name + (G.diff ? ' · ' + diffOf().name : '') + ' · ' + Math.floor(G.dist) + ' m · ' + G.kills + ' Gefallene · ' + G.cards.length + ' Karten', 640, 252, 24, '#f0e6c8', 'center', F_TEXT);
+  text('Rekord: ' + Math.floor((SAVE.records[recKey(G.area.id, G.diff)] || { dist: 0 }).dist) + ' m   ·   + ' + G.earned + ' Mondsilber' + (G.diff ? ' (+' + Math.round((diffOf().reward - 1) * 100) + ' %)' : ''), 640, 290, 19, '#b8c4d0', 'center', F_TEXT);
   titleText(runScore() + ' Punkte', 640, 352, 40, 'center');
   if (G.won) text('Weg + Punkte der besiegten Gegner (Boss 20)', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
   else text('Weg + Punkte der Gefallenen', 640, 380, 15, '#8a9aa0', 'center', F_TEXT);
@@ -7253,10 +7248,50 @@ function drawBoard() {
   boardTabRects.push({ id: 'open', x: x + 18, y: by, w: bw, h: 44 });
 }
 // ---------- Rangliste (ganzer Bildschirm) ----------
-let rankArea = 'all', rankCls = 'all', rankFrom = 'menu';
+let rankArea = 'all', rankDiff = 'all', rankFrom = 'menu', rankDeck = null;
 function openRanking(from) {
-  rankFrom = from || 'menu'; rankArea = 'all'; rankCls = 'all'; state = 'ranking';
+  rankFrom = from || 'menu'; rankArea = 'all'; rankDiff = 'all'; rankDeck = null; state = 'ranking';
   if (SCORES_URL && !board.loading && performance.now() - board.at > 3000) loadBoard();
+}
+const RAR_LABEL = { gewoehnlich: 'Eisen', selten: 'Smaragd', episch: 'Mondstein', legendaer: 'Drachengold' };
+// Deck eines Laufs aus der Rangliste: Karten wie im Deck-Screen, mit Hover-Vergrößerung
+function drawRankDeck(e) {
+  if (!e._deck) e._deck = (e.deck || []).filter(d => d && CARD_BY_ID[d[0]]).map(d => mkInst(CARD_BY_ID[d[0]], d[1])).sort(byRarity);
+  const cards = e._deck, PX = 130, PY = 50, PW = 1020, PH = 620;
+  ctx.fillStyle = 'rgba(4,8,6,.78)'; ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  uiHit(0, 0, FRAME_W, FRAME_H, () => { rankDeck = null; });
+  uiHit(PX, PY, PW, PH, null);
+  ctx.save(); ctx.shadowColor = '#000'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 18;
+  rr(PX, PY, PW, PH, 18); const pg = ctx.createLinearGradient(0, PY, 0, PY + PH); pg.addColorStop(0, '#17261d'); pg.addColorStop(1, '#0c1410'); ctx.fillStyle = pg; ctx.fill(); ctx.restore();
+  rr(PX, PY, PW, PH, 18); ctx.strokeStyle = '#9a7a3a'; ctx.lineWidth = 3; ctx.stroke();
+  kicker('Deck dieses Laufs', PX + 36, PY + 40);
+  text(e.name + ' · Waldläufer', PX + 36, PY + 84, 34, '#f0e6c8', 'left', F_TITLE);
+  const di = Math.max(0, DIFFS.findIndex(d => d.id === (e.diff || 'half'))), an = AREA_BY_ID[e.area || 'wald'];
+  drawMoon(di, PX + 47, PY + 112, 11);
+  text(DIFFS[di].name + ' · ' + (an ? (an.id === 'wald' ? 'Wald' : an.name.replace(/^(Das|Der) /, '')) : '') + ' · ' + e.dist + ' m · ' + fmtN(e.score) + ' Punkte', PX + 66, PY + 119, 16, '#c8d4de', 'left', F_TEXT);
+  const cl = inside(PX + PW - 58, PY + 16, 40, 40);
+  rr(PX + PW - 58, PY + 16, 40, 40, 20); ctx.fillStyle = cl ? '#1e2c22' : '#101a14'; ctx.fill(); ctx.strokeStyle = cl ? '#f2c14e' : '#9a7a3a'; ctx.lineWidth = 2; ctx.stroke();
+  text('✕', PX + PW - 38, PY + 44, 22, '#e8dcbc', 'center', F_TEXT);
+  uiHit(PX + PW - 58, PY + 16, 40, 40, () => { rankDeck = null; });
+  if (!cards.length) { text('Zu diesem Eintrag wurde kein Deck gespeichert.', PX + PW / 2, PY + 300, 20, '#8a9aa0', 'center', F_TEXT, 'italic'); return; }
+  let cx = PX + 36;
+  text(cards.length + ' Karten', cx, PY + 168, 20, '#f2c14e', 'left', F_TITLE); ctx.font = '20px ' + F_TITLE; cx += ctx.measureText(cards.length + ' Karten').width + 14;
+  for (const k of RARITY_KEYS) {
+    const n = cards.filter(c => c.rarity === k).length; if (!n) continue;
+    const lb = RAR_LABEL[k] + ' ' + n; ctx.font = '15px ' + F_TEXT; const w = ctx.measureText(lb).width + 34;
+    rr(cx, PY + 150, w, 28, 14); ctx.strokeStyle = RARITY[k].c; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = RARITY[k].c; ctx.beginPath(); ctx.arc(cx + 15, PY + 164, 5, 0, 7); ctx.fill();
+    text(lb, cx + 26, PY + 170, 15, RARITY[k].c, 'left', F_TEXT); cx += w + 8;
+  }
+  const K = 0.57, cw = 220 * K, ch = 320 * K, gap = 26, x0 = PX + (PW - (6 * cw + 5 * gap)) / 2;
+  let hov = null;
+  cards.forEach((c, i) => {
+    const x = x0 + (i % 6) * (cw + gap), y = PY + 196 + Math.floor(i / 6) * (ch + 16);
+    drawCard(c, x, y, K, false);
+    if (inside(x, y, cw, ch)) hov = { c, x, y };
+  });
+  if (hov) { const k2 = 0.95, w2 = 220 * k2, h2 = 320 * k2; drawCard(hov.c, clamp(hov.x + cw / 2 - w2 / 2, PX + 10, PX + PW - w2 - 10), clamp(hov.y + ch / 2 - h2 / 2 - 24, PY + 190, PY + PH - h2 - 10), k2, true); }
+  else text('Fahre über eine Karte, um sie zu vergrößern.', PX + PW - 36, PY + PH - 16, 14, '#8a9aa0', 'right', F_TEXT, 'italic');
 }
 function drawRankingScreen() {
   uiBtns = [];
@@ -7267,42 +7302,54 @@ function drawRankingScreen() {
   kicker('Vergleiche dich', 40, 46);
   titleText('Rangliste', 40, 92, 46);
   uiButton(FRAME_W - 40 - 140, 40, 140, 44, '‹ ' + (rankFrom === 'dead' ? 'Zurück' : 'Menü'), () => { state = rankFrom === 'dead' && G ? 'dead' : 'menu'; }, { size: 16 });
-  const chip = (x, y, label, on, act, iconId) => {
-    ctx.font = '14px ' + F_TITLE; const w = ctx.measureText(label).width + 30 + (iconId ? 22 : 0), hov = inside(x, y, w, 34);
+  const chip = (x, y, label, on, act, moon) => {
+    ctx.font = '14px ' + F_TITLE; const w = ctx.measureText(label).width + 30 + (moon != null ? 26 : 0), hov = inside(x, y, w, 34);
     rr(x, y, w, 34, 17); ctx.fillStyle = on ? '#1e2c22' : (hov ? '#16231b' : '#101a14'); ctx.fill(); ctx.strokeStyle = on ? '#f2c14e' : (hov ? '#9a7a3a' : '#2e3e32'); ctx.lineWidth = 1; ctx.stroke();
-    if (iconId) drawIcon(iconId, x + 22, y + 17, 16, on ? '#f2c14e' : '#c8d4de', 1.6);
-    text(label, x + 15 + (iconId ? 22 : 0), y + 23, 14, on ? '#f2c14e' : '#c8d4de', 'left', F_TITLE); uiHit(x, y, w, 34, act); return x + w + 8;
+    if (moon != null) drawMoon(moon, x + 24, y + 17, 9);
+    text(label, x + 15 + (moon != null ? 26 : 0), y + 23, 14, on ? '#f2c14e' : '#c8d4de', 'left', F_TITLE); uiHit(x, y, w, 34, act); return x + w + 8;
   };
-  text('GEBIET', 40, 144, 13, '#8a9aa0', 'left', F_TEXT);
-  let cx = 118; cx = chip(cx, 120, 'Alle', rankArea === 'all', () => { rankArea = 'all'; });
-  for (const a of AREAS) cx = chip(cx, 120, a.id === 'wald' ? 'Wald' : a.name.replace(/^(Das|Der) /, ''), rankArea === a.id, () => { rankArea = a.id; });
+  text('GEBIET', 40, 135, 13, '#8a9aa0', 'left', F_TEXT);
+  let cx = 118; cx = chip(cx, 112, 'Alle', rankArea === 'all', () => { rankArea = 'all'; });
+  for (const a of AREAS) cx = chip(cx, 112, a.id === 'wald' ? 'Wald' : a.name.replace(/^(Das|Der) /, ''), rankArea === a.id, () => { rankArea = a.id; });
+  text('SCHWIERIGKEIT', 40, 185, 13, '#8a9aa0', 'left', F_TEXT);
+  cx = 170; cx = chip(cx, 162, 'Alle', rankDiff === 'all', () => { rankDiff = 'all'; });
+  DIFFS.forEach((d, i) => { cx = chip(cx, 162, d.name, rankDiff === d.id, () => { rankDiff = d.id; }, i); });
   const all = board.entries || [], me = savedName().toLowerCase();
-  const list = all.filter(e => (rankArea === 'all' || (e.area || 'wald') === rankArea) && (rankCls === 'all' || e.cls === rankCls)).sort((a, b) => b.score - a.score);
+  const list = all.filter(e => (rankArea === 'all' || (e.area || 'wald') === rankArea) && (rankDiff === 'all' || (e.diff || 'half') === rankDiff)).sort((a, b) => b.score - a.score);
   const myRank = list.findIndex(e => me && e.name.toLowerCase() === me) + 1;
-  text('Zeigt die besten 10 · dein bester Platz: ' + (myRank || '—'), FRAME_W - 56, 190, 14, '#8a9aa0', 'right', F_TEXT);
-  const X = 40, Y = 218, W = 1200, H = 440;
+  text('Zeigt die besten 10 · dein bester Platz: ' + (myRank || '—'), FRAME_W - 56, 186, 14, '#8a9aa0', 'right', F_TEXT);
+  const X = 40, Y = 214, W = 1200, H = 466;
   rr(X, Y, W, H, 14); ctx.fillStyle = 'rgba(10,17,13,.6)'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke();
-  const colx = { n: 44, c: 260, a: 410, b: 560 };
-  const head = [['#', X + 22, 'left'], ['NAME', X + colx.n + 14, 'left'], ['STREITER', X + colx.c + 14, 'left'], ['GEBIET', X + colx.a + 14, 'left'], ['BOSS', X + colx.b + 14, 'left'], ['WEG', X + W - 230, 'right'], ['GEGNER', X + W - 118, 'right'], ['PUNKTE', X + W - 22, 'right']];
+  const head = [['#', X + 22, 'left'], ['NAME', X + 60, 'left'], ['GEBIET', X + 290, 'left'], ['SCHWIERIGKEIT', X + 400, 'left'], ['BOSS', X + 590, 'left'], ['WEG', X + W - 370, 'right'], ['GEGNER', X + W - 270, 'right'], ['PUNKTE', X + W - 150, 'right'], ['DECK', X + W - 24, 'right']];
   for (const [t, hx, al] of head) { if ('letterSpacing' in ctx) ctx.letterSpacing = '1.5px'; text(t, hx, Y + 28, 12, '#8a9aa0', al, F_TEXT); if ('letterSpacing' in ctx) ctx.letterSpacing = '0px'; }
   if (!board.entries) text(board.err ? 'Rangliste nicht erreichbar' : 'Lädt …', X + W / 2, Y + 200, 20, '#8a9aa0', 'center', F_TEXT, 'italic');
   else if (!list.length) text('Noch keine Einträge – sei der Erste!', X + W / 2, Y + 200, 20, '#8a9aa0', 'center', F_TEXT, 'italic');
   else list.slice(0, 10).forEach((e, i) => {
-    const ry = Y + 40 + i * 38, mine = me && e.name.toLowerCase() === me, col = mine ? '#f2c14e' : '#e8dcbc';
-    if (mine) { rr(X + 14, ry, W - 28, 34, 8); ctx.fillStyle = 'rgba(242,193,78,.08)'; ctx.fill(); }
-    text(String(i + 1), X + 22, ry + 23, 14, i < 3 ? '#f2c14e' : '#8a9aa0', 'left', F_TITLE);
-    marquee(e.name, X + colx.n + 14, ry + 4, 190, 17, col, mine, 'rgba(14,22,18,.95)');
-    if (CLASS_ICON[e.cls]) drawIcon(CLASS_ICON[e.cls], X + colx.c + 22, ry + 17, 16, '#f2c14e', 1.6);
-    const cn = (CLASSES.find(c => c.id === e.cls) || {}).name || ''; text(cn, X + colx.c + 38, ry + 22, 14, '#c8d4de', 'left', F_TEXT);
+    const ry = Y + 40 + i * 42, mine = me && e.name.toLowerCase() === me, col = mine ? '#f2c14e' : '#e8dcbc';
+    if (mine) { rr(X + 14, ry, W - 28, 38, 8); ctx.fillStyle = 'rgba(242,193,78,.08)'; ctx.fill(); }
+    text(String(i + 1), X + 22, ry + 25, 14, i < 3 ? '#f2c14e' : '#8a9aa0', 'left', F_TITLE);
+    marquee(e.name, X + 60, ry + 6, 210, 17, col, mine, 'rgba(14,22,18,.95)');
     const an = AREA_BY_ID[e.area || 'wald'], an2 = an ? (an.id === 'wald' ? 'Wald' : an.name.replace(/^(Das|Der) /, '')) : '';
-    ctx.font = '13px ' + F_TEXT; const aw = ctx.measureText(an2).width + 18; rr(X + colx.a + 14, ry + 8, aw, 20, 10); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke(); text(an2, X + colx.a + 23, ry + 22, 13, '#8ee8ff', 'left', F_TEXT);
-    if (e.won) { ctx.strokeStyle = '#4fd08a'; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(X + colx.b + 14, ry + 18); ctx.lineTo(X + colx.b + 18, ry + 22); ctx.lineTo(X + colx.b + 25, ry + 13); ctx.stroke(); text('besiegt', X + colx.b + 32, ry + 22, 13, '#4fd08a', 'left', F_TEXT); }
-    else text('—', X + colx.b + 14, ry + 22, 13, '#4a5a4e', 'left', F_TEXT);
-    text(e.dist + ' m', X + W - 230, ry + 22, 14, '#8a9aa0', 'right', F_TEXT);
-    text(String(e.kills), X + W - 118, ry + 22, 14, '#8a9aa0', 'right', F_TEXT);
-    text(fmtN(e.score), X + W - 22, ry + 23, 17, col, 'right', F_TITLE);
+    ctx.font = '13px ' + F_TEXT; const aw = ctx.measureText(an2).width + 18; rr(X + 290, ry + 9, aw, 20, 10); ctx.fillStyle = '#0a110d'; ctx.fill(); ctx.strokeStyle = '#2e3e32'; ctx.lineWidth = 1; ctx.stroke(); text(an2, X + 299, ry + 24, 13, '#8ee8ff', 'left', F_TEXT);
+    const di = Math.max(0, DIFFS.findIndex(d => d.id === (e.diff || 'half')));
+    drawMoon(di, X + 411, ry + 19, 10); text(DIFFS[di].name, X + 430, ry + 25, 15, '#c8d4de', 'left', F_TEXT);
+    if (e.won) { ctx.strokeStyle = '#4fd08a'; ctx.lineWidth = 2.4; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(X + 590, ry + 20); ctx.lineTo(X + 594, ry + 24); ctx.lineTo(X + 601, ry + 15); ctx.stroke(); text('besiegt', X + 608, ry + 24, 13, '#4fd08a', 'left', F_TEXT); }
+    else text('—', X + 590, ry + 24, 13, '#4a5a4e', 'left', F_TEXT);
+    text(e.dist + ' m', X + W - 370, ry + 24, 14, '#8a9aa0', 'right', F_TEXT);
+    text(String(e.kills), X + W - 270, ry + 24, 14, '#8a9aa0', 'right', F_TEXT);
+    text(fmtN(e.score), X + W - 150, ry + 25, 17, col, 'right', F_TITLE);
+    // Deck-Symbol: öffnet das Deck dieses Laufs
+    if (e.deck && e.deck.length) {
+      const bw = 66, bx = X + W - 24 - bw, by = ry + 4, hv = inside(bx, by, bw, 30);
+      rr(bx, by, bw, 30, 8); ctx.fillStyle = hv ? '#1e2c22' : '#101a14'; ctx.fill(); ctx.strokeStyle = hv ? '#f2c14e' : '#3a4a3e'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.save(); ctx.strokeStyle = hv ? '#f2c14e' : '#c8d4de'; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+      ctx.translate(bx + 22, by + 15); ctx.rotate(-0.2); rr(-8, -9, 12, 17, 2); ctx.stroke(); ctx.rotate(0.37); rr(-2, -9, 12, 17, 2); ctx.fillStyle = hv ? '#1e2c22' : '#101a14'; ctx.fill(); ctx.stroke(); ctx.restore();
+      text(String(e.deck.length), bx + 50, by + 21, 15, hv ? '#f2c14e' : '#c8d4de', 'center', F_TITLE);
+      uiHit(bx, by, bw, 30, () => { rankDeck = e; });
+    } else text('—', X + W - 24 - 33, ry + 24, 13, '#4a5a4e', 'center', F_TEXT);
   });
-  text('„besiegt“ heißt: der Boss des Gebiets ist gefallen.', 640, 692, 14, '#8a9aa0', 'center', F_TEXT);
+  text('„besiegt“ heißt: der Boss des Gebiets ist gefallen. Das Deck-Symbol zeigt das Deck dieses Laufs.', 640, 704, 14, '#8a9aa0', 'center', F_TEXT);
+  if (rankDeck) drawRankDeck(rankDeck);
 }
 const CLASS_ICON = { ritter: 'k_ritter', waldlaeufer: 'k_waldlaeufer', magier: 'k_magier' };
 
@@ -7534,15 +7581,10 @@ addEventListener('keydown', e => {
     if (e.code === 'ArrowLeft') deckPage--;
     return;
   }
-  if (state === 'select') {
-    if (/^Digit[1-9]$/.test(e.code)) { const i = Number(e.code.slice(5)) - 1; if (CLASSES[i]) startRun(i); return; }
-    if (e.code === 'Enter' || e.code === 'Space') { startRun(selectHover >= 0 ? selectHover : lastClass); return; }
-    if (e.code === 'Escape') state = 'areas';
-    return;
-  }
+  if (state === 'select') { diffKey(e); return; }
   if (state === 'areas') { areaKey(e); return; }
   if (state === 'bosscards') { if (e.code === 'Escape') state = 'select'; return; }
-  if (state === 'ranking') { if (e.code === 'Escape') state = rankFrom === 'dead' && G ? 'dead' : 'menu'; return; }
+  if (state === 'ranking') { if (e.code === 'Escape') { if (rankDeck) rankDeck = null; else state = rankFrom === 'dead' && G ? 'dead' : 'menu'; } return; }
   if (state === 'skills') { if (e.code === 'Escape') closeSkills(); return; }
   if (state === 'victory') { if (e.code === 'Enter' || e.code === 'Space') victoryContinue(); else if (G.victory && (e.code === 'ArrowDown' || e.code === 'ArrowUp')) G.victory.scroll += e.code === 'ArrowDown' ? 1 : -1; return; }
   if (state === 'merchant') { if (e.code === 'Escape' || e.code === bind('interact')) { state = 'play'; merchantNow = null; startCountdown(); } return; }
@@ -7573,11 +7615,6 @@ function setMouse(e) {
   if (state === 'areas' && areaDrag) areaScroll = clamp(areaDrag.s - (mouse.fx - areaDrag.x), 0, areaMaxScroll());
   if (state === 'menu') menuHover = menuButtons.findIndex(b => mouse.fx >= b.x && mouse.fx <= b.x + b.w && mouse.fy >= b.y && mouse.fy <= b.y + b.h);
   if (state === 'pick') pickHover = pickLayout().findIndex(L => mouse.fx >= L.x && mouse.fx <= L.x + L.w && mouse.fy >= L.y && mouse.fy <= L.y + L.h);
-  if (state === 'select') {
-    const hit = selectLayout().find(L => mouse.fx >= L.x && mouse.fx <= L.x + L.w && mouse.fy >= L.y && mouse.fy <= L.y + L.h);
-    selectHover = hit ? hit.i : (mouse.fx >= 40 && mouse.fx <= 160 && mouse.fy >= 36 && mouse.fy <= 76 ? -2 : selectHover === -2 ? -1 : selectHover);
-    if (hit) selectHover = hit.i;
-  }
 }
 canvas.addEventListener('mousemove', setMouse);
 canvas.addEventListener('mousedown', e => {
@@ -7603,12 +7640,7 @@ canvas.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
   if (state === 'menu' && silverSecret()) return;
   if (state === 'menu') { const bt = boardTabRects.find(r => mouse.fx >= r.x && mouse.fx <= r.x + r.w && mouse.fy >= r.y && mouse.fy <= r.y + r.h); if (bt) { sfx('ui_click'); if (bt.id === 'open') openRanking('menu'); else boardTab = bt.id; return; } const b = menuButtons[menuHover]; if (b && b.action) { sfx('ui_click'); b.action(); } return; }
-  if (state === 'select') {
-    if (uiClick()) return;   // Stufe-Abzeichen → Fähigkeiten
-    if (selectHover === -2) { state = 'areas'; return; }
-    if (selectHover >= 0) { sfx('ui_click'); startRun(selectHover); }
-    return;
-  }
+  if (state === 'select') { uiClick(); return; }
   if (state === 'dead') { uiClick(); return; }
   if (state === 'pick') { if (uiClick()) return; if (pickHover >= 0) choosePick(pickHover); return; }
   mouse.down = true; mouse.pressed = true;
