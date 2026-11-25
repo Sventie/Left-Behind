@@ -3916,7 +3916,7 @@ function bogenCover(e, other) {   // Platz hinter einer Deckung, von der man den
 }
 function bogenDash(e, after) {   // Sprung/Dash hinter eine andere Deckung; danach ggf. gleich der nächste Angriff
   const sp = bogenCover(e, true);
-  e.dashCd = rand(2.5, 4);
+  e.seenT = null;   // der nächste Sprung zählt erst ab dem nächsten Sichtkontakt
   if (!sp) { if (after) bogenStart(e, after); return false; }
   const d = Math.hypot(sp.x - e.x, sp.y - e.y);
   e.mode = 'act'; e.act = { name: 'dash', t: 0, tx: sp.x, ty: sp.y, dur: Math.min(1.3, d / 950 + 0.1), after };
@@ -3925,7 +3925,7 @@ function bogenDash(e, after) {   // Sprung/Dash hinter eine andere Deckung; dana
 function bogenBegin(e) {   // nächsten Angriff wählen; manchmal als Doppelangriff, Brandpfeile oft mit Scharfschuss danach
   const n = e.first === false ? bogenPick(e) : 'brand'; e.first = false;
   e.queue = [];
-  if (n === 'brand') { if (Math.random() < 0.5) e.queue.push('scharf'); bogenDash(e, 'brand'); return; }
+  if (n === 'brand') { if (Math.random() < 0.5) e.queue.push('scharf'); bogenStart(e, 'brand'); return; }   // kein Sprung mehr vor dem Brandpfeil
   if (Math.random() < 0.12) { const o = BOGEN_ATK.map(w => w[0]).filter(x => x !== n && x !== 'brand'); e.queue.push(o[Math.floor(Math.random() * o.length)]); }
   bogenStart(e, n);
 }
@@ -3999,7 +3999,11 @@ function updateBogen(e, dt) {
   const dx = p.x - e.x, dy = p.y - e.y, dist = Math.hypot(dx, dy) || 1;
   const go = (tx, ty, sp) => { const d = Math.hypot(tx - e.x, ty - e.y); if (d > 6) moveCircle(e, (tx - e.x) / d * sp * dt, (ty - e.y) / d * sp * dt); };
   e.lift = e.mode === 'act' && e.act && e.act.name === 'dash' ? e.lift : 0;
-  if (e.mode !== 'act') { e.dashCd = (e.dashCd === undefined ? rand(2.5, 4) : e.dashCd) - dt; if (e.dashCd <= 0) bogenDash(e, null); }
+  // Sprung: erst nach Sichtkontakt zum Spieler läuft ein Timer von 4 bis 6 s, in dieser Zeit greift er normal an; gesprungen wird danach, sobald er nicht gerade angreift
+  if (e.seenT === undefined) e.seenT = null;
+  if (e.seenT === null && hasLOS(e.x, e.y, p.x, p.y)) e.seenT = rand(4, 6);
+  if (e.seenT !== null) e.seenT -= dt;
+  if (e.mode !== 'act' && e.seenT !== null && e.seenT <= 0) bogenDash(e, null);
   if (e.mode === 'act' && e.act) bogenAct(e, dt);
   else if (e.mode === 'peek') {   // aus der Deckung treten, bis er den Spieler sieht
     e.modeT += dt; e.angle = Math.atan2(dy, dx);
@@ -6317,7 +6321,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.24';
+const VERSION = 'v1.25';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
