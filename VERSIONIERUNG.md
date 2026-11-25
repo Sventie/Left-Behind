@@ -10,5 +10,4 @@ Schema: **Major.Minor.Patch** (zum Beispiel `v1.10.0`). Die Nummer steht in `ind
 
 Regeln:
 - Der Commit-Text beginnt mit der vollen Nummer, zum Beispiel `v1.10.1: Bogenmeister springt seltener`.
-- Zu jedem Release auf `main` gehört ein Git-Tag mit der Nummer (`v1.10.1`).
 - Bis v1.25 (alt) zählte jede Änderung die Minor-Stelle hoch. Das neue Schema beginnt mit v1.10.0.
