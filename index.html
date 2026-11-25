@@ -3897,7 +3897,7 @@ function bogenNext(e, name) { if (BOGEN_LOS.includes(name) && !bogenSees(e)) { e
 const bogenStage = e => e.hp > e.maxHp * 0.66 ? 0 : e.hp > e.maxHp * 0.33 ? 1 : 2;   // Druck steigt in Stufen, keine Phase
 function bogenArrow(e, ang, sp, dmg, extra) { addBullet(e.x + Math.cos(ang) * e.r, e.y + Math.sin(ang) * e.r, ang, sp * (1 + 0.12 * bogenStage(e)), dmg * bossDmgK(), 'enemy', 4000, 0, Object.assign({ rad: 7, big: true, cull: true, owner: e }, extra || {})); }   // fliegt über die ganze Karte, bis er den Rand verlässt
 function bogenRing(e, x, y, shift) {   // Kreisangriff an einem festen Punkt (Mitte des Sprungs): Warnring, dann dichter Ring aus Pfeilen
-  const N = [24, 28, 32][bogenStage(e)];
+  const N = [20, 24, 28][bogenStage(e)];
   addAtk({ kind: 'tele', shape: 'ring', x, y, r: 150, T: 1.0, gaps: [], fire: () => { for (let i = 0; i < N; i++) { const a = (i + shift) / N * Math.PI * 2; addBullet(x + Math.cos(a) * e.r, y + Math.sin(a) * e.r, a, 310 * (1 + 0.12 * bogenStage(e)), 12 * bossDmgK(), 'enemy', 4000, 0, { rad: 7, big: true, cull: true, owner: e }); } sfx('enemy_shoot', 0.9); } });
 }
 function bogenPick(e) {
@@ -6345,7 +6345,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.10.7';
+const VERSION = 'v1.10.8';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
