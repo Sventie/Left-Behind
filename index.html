@@ -3719,7 +3719,7 @@ function pillarsIn(x, y, reach, ang, arc) {   // Säulen im Hieb (arc = ganzer B
 }
 function updateFires(dt) {
   const p = G.player;
-  for (const f of G.fires) { f.t += dt; f.tick -= dt; if (f.tick <= 0) { f.tick = 0.5; if (Math.hypot(p.x - f.x, p.y - f.y) < f.r + p.r * 0.4) { const el = f.el || 'feuer'; if (el === 'gift') applyVenom(3); else if (el === 'frost') G.slowT = Math.max(G.slowT, 0.6); else applyBurn(2); } } }
+  for (const f of G.fires) { f.t += dt; f.tick -= dt; if (f.tick <= 0) { f.tick = 0.5; if (!f.dying && Math.hypot(p.x - f.x, p.y - f.y) < f.r + p.r * 0.4) { const el = f.el || 'feuer'; if (el === 'gift') applyVenom(3); else if (el === 'frost') G.slowT = Math.max(G.slowT, 0.6); else applyBurn(2); } } }
   G.fires = G.fires.filter(f => f.t < f.life);
 }
 function updateAtk(dt) {
@@ -3895,6 +3895,11 @@ const BOGEN_LOS = ['dreier', 'faecher', 'scharf'];
 const bogenSees = e => hasLOS(e.x, e.y, G.player.x, G.player.y) && Math.hypot(G.player.x - e.x, G.player.y - e.y) < 760;
 function bogenNext(e, name) { if (BOGEN_LOS.includes(name) && !bogenSees(e)) { e.mode = 'seek'; e.modeT = 0; e.want = name; return; } bogenStart(e, name); }
 const bogenStage = e => e.hp > e.maxHp * 0.66 ? 0 : e.hp > e.maxHp * 0.33 ? 1 : 2;   // Druck steigt in Stufen, keine Phase
+function bogenFire(x, y) {   // Brandfläche des Bogenmeisters: höchstens 6 liegen gleichzeitig, die älteste erlischt (0,5 s ausblenden), Lebensdauer 14 s
+  const live = G.fires.filter(f => f.boss && !f.dying);
+  while (live.length >= 6) { const o = live.shift(); o.dying = true; o.life = o.t + 0.5; }
+  G.fires.push({ x, y, r: 46, t: 0, life: 14, tick: 0.2, boss: true });
+}
 function bogenArrow(e, ang, sp, dmg, extra) { addBullet(e.x + Math.cos(ang) * e.r, e.y + Math.sin(ang) * e.r, ang, sp * (1 + 0.12 * bogenStage(e)), dmg * bossDmgK(), 'enemy', 4000, 0, Object.assign({ rad: 7, big: true, cull: true, owner: e }, extra || {})); }   // fliegt über die ganze Karte, bis er den Rand verlässt
 function bogenRing(e, x, y, shift) {   // Kreisangriff an einem festen Punkt (Mitte des Sprungs): Warnring, dann dichter Ring aus Pfeilen
   const N = [20, 24, 28][bogenStage(e)];
@@ -3998,7 +4003,7 @@ function bogenAct(e, dt) {
     while (a.n < 3 && a.t >= 0.2 + a.n * 0.45) {
       const ang = a.th + a.n * 2.094, q0 = a.predict(0.6), q = { x: clamp(q0.x + Math.cos(ang) * 90, 50, WORLD_W - 50), y: clamp(q0.y + Math.sin(ang) * 90, G.camTop + 40, G.camTop + VIEW_H - 40) };
       a.n++;
-      addAtk({ kind: 'tele', shape: 'circle', style: 'brand', x: q.x, y: q.y, r: 40, T: 0.8, fire: t => { sfx('hit_enemy', 0.6); G.fires.push({ x: t.x, y: t.y, r: 46, t: 0, life: 20, tick: 0.2 }); if (Math.hypot(p.x - t.x, p.y - t.y) < t.r + p.r * 0.5) hurtPlayer(10 * bossDmgK(), Math.atan2(t.y - p.y, t.x - p.x)); } });
+      addAtk({ kind: 'tele', shape: 'circle', style: 'brand', x: q.x, y: q.y, r: 40, T: 0.8, fire: t => { sfx('hit_enemy', 0.6); bogenFire(t.x, t.y); if (Math.hypot(p.x - t.x, p.y - t.y) < t.r + p.r * 0.5) hurtPlayer(10 * bossDmgK(), Math.atan2(t.y - p.y, t.x - p.x)); } });
     }
   }
   const more = e.queue && e.queue.length;
@@ -6345,7 +6350,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.10.9';
+const VERSION = 'v1.10.10';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
