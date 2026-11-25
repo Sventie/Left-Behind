@@ -3913,7 +3913,8 @@ function bogenCover(e, other) {   // Platz hinter einer Deckung, von der man den
     const hx = ocx + ux / ul * (R + e.r + 16), hy = ocy + uy / ul * (R + e.r + 16);
     if (hx < e.r + 20 || hx > WORLD_W - e.r - 20 || hy < G.camTop + e.r + 30 || hy > G.camTop + VIEW_H - e.r - 10) continue;
     if (other && Math.hypot(hx - e.x, hy - e.y) < 110) continue;
-    const d = Math.hypot(hx - e.x, hy - e.y) + (Math.hypot(hx - p.x, hy - p.y) < 220 ? 400 : 0) + (other ? rand(0, 250) : 0);
+    // Sprung (other): möglichst weit weg über die ganze Karte, mit etwas Zufall unter den weitesten Plätzen; normale Deckung: die nächste
+    const d = other ? -Math.hypot(hx - e.x, hy - e.y) + (Math.hypot(hx - p.x, hy - p.y) < 220 ? 700 : 0) + rand(0, 150) : Math.hypot(hx - e.x, hy - e.y) + (Math.hypot(hx - p.x, hy - p.y) < 220 ? 400 : 0);
     if (d < bd) { bd = d; best = { x: hx, y: hy }; }
   }
   return bd < (other ? 1e8 : 560) ? best : null;   // Dash: hinter jede Deckung auf der Karte
@@ -6330,7 +6331,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.10.2';
+const VERSION = 'v1.10.3';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
