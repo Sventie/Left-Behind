@@ -3889,13 +3889,17 @@ function bogenArena() {   // Boss-Arena im Wald: nur 6 bis 8 Bäume, locker im K
 }
 // Eine Phase. Nach jedem Angriff geht er hinter eine Deckung (Baum, Fels), kommt hervor und greift wieder an.
 // Angriffe: Dreierschuss, Fächerschuss, Pfeilregen, Kreissalve, Pfeilwand, Scharfschuss, Brandpfeile (zufällig nach Gewicht, nie zweimal derselbe).
-const BOGEN_ATK = [['dreier', 20], ['faecher', 17], ['regen', 13], ['kreis', 12], ['wand', 8], ['scharf', 15], ['brand', 28]];
+const BOGEN_ATK = [['dreier', 20], ['faecher', 17], ['regen', 13], ['wand', 8], ['scharf', 15], ['brand', 28]];   // der Kreisangriff kommt nur noch im Sprung (bogenRing)
 // Angriffe, die Sichtkontakt zum Spieler brauchen: er startet sie nur mit Sichtlinie. Die anderen (Pfeilregen, Wand, Brandpfeile) kommen auch aus der Deckung.
-const BOGEN_LOS = ['dreier', 'faecher', 'scharf', 'kreis'];
+const BOGEN_LOS = ['dreier', 'faecher', 'scharf'];
 const bogenSees = e => hasLOS(e.x, e.y, G.player.x, G.player.y) && Math.hypot(G.player.x - e.x, G.player.y - e.y) < 760;
 function bogenNext(e, name) { if (BOGEN_LOS.includes(name) && !bogenSees(e)) { e.mode = 'seek'; e.modeT = 0; e.want = name; return; } bogenStart(e, name); }
 const bogenStage = e => e.hp > e.maxHp * 0.66 ? 0 : e.hp > e.maxHp * 0.33 ? 1 : 2;   // Druck steigt in Stufen, keine Phase
 function bogenArrow(e, ang, sp, dmg, extra) { addBullet(e.x + Math.cos(ang) * e.r, e.y + Math.sin(ang) * e.r, ang, sp * (1 + 0.12 * bogenStage(e)), dmg * bossDmgK(), 'enemy', 4000, 0, Object.assign({ rad: 7, big: true, cull: true, owner: e }, extra || {})); }   // fliegt über die ganze Karte, bis er den Rand verlässt
+function bogenRing(e, x, y, shift) {   // Kreisangriff an einem festen Punkt (Mitte des Sprungs): Warnring, dann dichter Ring aus Pfeilen
+  const N = [30, 35, 40][bogenStage(e)];
+  addAtk({ kind: 'tele', shape: 'ring', x, y, r: 150, T: 1.0, gaps: [], fire: () => { for (let i = 0; i < N; i++) { const a = (i + shift) / N * Math.PI * 2; addBullet(x + Math.cos(a) * e.r, y + Math.sin(a) * e.r, a, 310 * (1 + 0.12 * bogenStage(e)), 12 * bossDmgK(), 'enemy', 4000, 0, { rad: 7, big: true, cull: true, owner: e }); } sfx('enemy_shoot', 0.9); } });
+}
 function bogenPick(e) {
   const list = BOGEN_ATK.filter(w => w[0] !== e.last), tot = list.reduce((s, w) => s + w[1], 0);
   let r = Math.random() * tot;
@@ -3933,7 +3937,7 @@ function bogenDash(e, after) {   // Sprung/Dash hinter eine andere Deckung; dana
   if (!sp) { if (after) bogenStart(e, after); return false; }
   e.hist = (e.hist || []).concat([{ x: sp.x, y: sp.y }]).slice(-2);   // die letzten zwei Sprungziele
   const d = Math.hypot(sp.x - e.x, sp.y - e.y);
-  e.mode = 'act'; e.act = { name: 'dash', t: 0, tx: sp.x, ty: sp.y, dur: Math.min(1.3, d / 950 + 0.1), after };
+  e.mode = 'act'; e.act = { name: 'dash', t: 0, sx: e.x, sy: e.y, tx: sp.x, ty: sp.y, dur: Math.min(1.3, d / 950 + 0.1), after };
   sfx('dash', 0.7); return true;
 }
 function bogenBegin(e) {   // nächsten Angriff wählen; manchmal als Doppelangriff, Brandpfeile oft mit Scharfschuss danach
@@ -3977,6 +3981,7 @@ function bogenAct(e, dt) {
   if (a.name === 'dash') {
     const d = Math.hypot(a.tx - e.x, a.ty - e.y); e.lift = Math.sin(Math.min(1, a.t / a.dur) * Math.PI);
     e.angle = Math.atan2(p.y - e.y, p.x - e.x);
+    if (!a.ringed && Math.hypot(e.x - a.sx, e.y - a.sy) >= 0.5 * Math.hypot(a.tx - a.sx, a.ty - a.sy)) { a.ringed = true; bogenRing(e, e.x, e.y, 0); e.ringQ = { t: 1.0, x: e.x, y: e.y }; }   // Kreisangriff in der Mitte des Sprungs, ein zweiter versetzter Ring eine Sekunde später
     if (d > 8 && a.t < a.dur + 0.3) { const st = Math.min(d, 950 * dt); moveCircle(e, (a.tx - e.x) / d * st, (a.ty - e.y) / d * st); if (Math.random() < 0.6) G.parts.push({ x: e.x, y: e.y, vx: rand(-40, 40), vy: rand(-40, 40), life: 0.3, color: '#9a8a6a' }); }
     else { e.lift = 0; e.act = null; e.mode = 'cover'; e.modeT = 0; e.spotT = 0; e.spot = null; e.coverT = 0.5; if (a.after) bogenStart(e, a.after); }
     return;
@@ -4015,6 +4020,7 @@ function updateBogen(e, dt) {
   const dx = p.x - e.x, dy = p.y - e.y, dist = Math.hypot(dx, dy) || 1;
   const go = (tx, ty, sp) => { const d = Math.hypot(tx - e.x, ty - e.y); if (d > 6) moveCircle(e, (tx - e.x) / d * sp * dt, (ty - e.y) / d * sp * dt); };
   e.lift = e.mode === 'act' && e.act && e.act.name === 'dash' ? e.lift : 0;
+  if (e.ringQ) { e.ringQ.t -= dt; if (e.ringQ.t <= 0) { bogenRing(e, e.ringQ.x, e.ringQ.y, 0.5); e.ringQ = null; } }
   // Sprung: nach Schaden läuft ein Timer von 1 bis 2,5 s; danach springt er hinter eine andere Deckung, sobald er nicht gerade angreift
   if (e.hpPrev === undefined) e.hpPrev = e.hp;
   if (e.hp < e.hpPrev - 0.01 && e.jumpT == null) e.jumpT = rand(1, 2.5);
@@ -6340,7 +6346,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.10.4';
+const VERSION = 'v1.10.5';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
