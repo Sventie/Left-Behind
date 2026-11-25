@@ -947,6 +947,34 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const normAngle = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
 const deg = Math.PI / 180;
 
+// Abgerundete Hindernisse (Felsen, Hecken): die Hitbox ist ein Vieleck mit denselben runden Ecken wie die Zeichnung. Es dient für Bewegung, Schüsse, Sicht und Schatten.
+function roundRectPoly(x, y, w, h, r, seg) {
+  r = Math.min(r, w / 2, h / 2); seg = seg || 6;
+  const pts = [], cs = [[x + w - r, y + r, -90], [x + w - r, y + h - r, 0], [x + r, y + h - r, 90], [x + r, y + r, 180]];
+  for (const [cx, cy, a0] of cs) for (let i = 0; i <= seg; i++) { const a = (a0 + 90 * i / seg) * Math.PI / 180; pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); }
+  return pts;
+}
+function polyClosest(poly, px, py) {   // nächster Punkt auf dem Rand und Innen/Außen (konvex, im Uhrzeigersinn)
+  let best = Infinity, bx = 0, by = 0, nx = 0, ny = 0, inside = true;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length], ex = b[0] - a[0], ey = b[1] - a[1], el = Math.hypot(ex, ey) || 1;
+    if (ex * (py - a[1]) - ey * (px - a[0]) < 0) inside = false;
+    const t = clamp(((px - a[0]) * ex + (py - a[1]) * ey) / (el * el), 0, 1), qx = a[0] + ex * t, qy = a[1] + ey * t, d = Math.hypot(px - qx, py - qy);
+    if (d < best) { best = d; bx = qx; by = qy; nx = ey / el; ny = -ex / el; }
+  }
+  return { d: best, x: bx, y: by, nx, ny, inside };
+}
+function segPoly(x1, y1, x2, y2, poly) {   // Trefferzeit (0..1) einer Strecke mit einem Vieleck, Infinity ohne Treffer
+  if (polyClosest(poly, x1, y1).inside) return 0;
+  let best = Infinity; const dx = x2 - x1, dy = y2 - y1;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length], ex = b[0] - a[0], ey = b[1] - a[1], den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const t = ((a[0] - x1) * ey - (a[1] - y1) * ex) / den, u = ((a[0] - x1) * dy - (a[1] - y1) * dx) / den;
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1 && t < best) best = t;
+  }
+  return best;
+}
 function segRect(x1, y1, x2, y2, r) {
   let tmin = 0, tmax = 1;
   const dx = x2 - x1, dy = y2 - y1;
@@ -1135,6 +1163,7 @@ function generate() {
         const o = { kind, seed: Math.random(), x: rand(70, WORLD_W - 70 - w), y: rand(y0 + 30, y1 - h - 30), w, h };
         if (moor && kind === 'tree') o.dead = true;
         if (kind === 'tree') { o.r = w / 2; o.cx = o.x + o.r; o.cy = o.y + o.r; }   // Bäume haben runde Hitboxen
+        if (kind === 'rock') o.poly = roundRectPoly(o.x, o.y, o.w, o.h, Math.min(o.w, o.h) * 0.45);   // Felsen: Hitbox so rund wie gezeichnet
         if (k === 0 && o.y + o.h > -230 && o.x < 700 && o.x + o.w > 260) continue;
         if (G.obstacles.some(p => rectsGap(o, p, moor ? 50 : 80))) continue;
         G.obstacles.push(o);
@@ -1399,6 +1428,13 @@ function resolve(e) {
       }
       continue;
     }
+    if (o.poly) {   // abgerundetes Hindernis: Kreis gegen Vieleck
+      if (e.x < o.x - e.r || e.x > o.x + o.w + e.r) continue;
+      const c = polyClosest(o.poly, e.x, e.y);
+      if (c.inside) { e.x = c.x + c.nx * e.r; e.y = c.y + c.ny * e.r; }
+      else if (c.d < e.r && c.d > 1e-6) { e.x += (e.x - c.x) / c.d * (e.r - c.d); e.y += (e.y - c.y) / c.d * (e.r - c.d); }
+      continue;
+    }
     const cx = clamp(e.x, o.x, o.x + o.w), cy = clamp(e.y, o.y, o.y + o.h);
     const dx = e.x - cx, dy = e.y - cy, d2 = dx * dx + dy * dy;
     if (d2 >= e.r * e.r) continue;
@@ -1421,7 +1457,7 @@ function moveCircle(e, dx, dy) {
 }
 // Trefferzeit (0..1) einer Strecke mit einer Deckung; Bäume sind Kreise
 function hitObstacle(o, x1, y1, x2, y2) {
-  return o.kind === 'tree' ? segCircle(x1, y1, x2, y2, o.cx, o.cy, o.r) : segRect(x1, y1, x2, y2, o);
+  return o.kind === 'tree' ? segCircle(x1, y1, x2, y2, o.cx, o.cy, o.r) : o.poly ? segPoly(x1, y1, x2, y2, o.poly) : segRect(x1, y1, x2, y2, o);
 }
 function hasLOS(x1, y1, x2, y2) {
   for (const o of G.obstacles) {
@@ -2859,6 +2895,7 @@ function steerBullet(b, M, extra, dt) {
 function bounceBullet(b, o, hx, hy) {
   let nx, ny;
   if (o.kind === 'tree') { nx = hx - o.cx; ny = hy - o.cy; const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l; }
+  else if (o.poly) { const c = polyClosest(o.poly, hx, hy); nx = c.nx; ny = c.ny; }
   else {
     const dl = Math.abs(hx - o.x), dr = Math.abs(hx - (o.x + o.w)), dtp = Math.abs(hy - o.y), db = Math.abs(hy - (o.y + o.h)), m = Math.min(dl, dr, dtp, db);
     if (m === dl) { nx = -1; ny = 0; } else if (m === dr) { nx = 1; ny = 0; } else if (m === dtp) { nx = 0; ny = -1; } else { nx = 0; ny = 1; }
@@ -3069,7 +3106,7 @@ function visionParams() {
 }
 // Ecken für Sichtstrahlen; Bäume als 16-Eck
 function obstacleCorners(o) {
-  if (o.kind !== 'tree') return [[o.x, o.y], [o.x + o.w, o.y], [o.x + o.w, o.y + o.h], [o.x, o.y + o.h]];
+  if (o.kind !== 'tree') return o.poly || [[o.x, o.y], [o.x + o.w, o.y], [o.x + o.w, o.y + o.h], [o.x, o.y + o.h]];
   if (!o.poly) o.poly = Array.from({ length: 16 }, (_, i) => [o.cx + Math.cos(i / 16 * Math.PI * 2) * o.r * 1.02, o.cy + Math.sin(i / 16 * Math.PI * 2) * o.r * 1.02]);
   return o.poly;
 }
@@ -3255,6 +3292,7 @@ function ensureCastle(topY) {
     G.castlePlan = castlePlan();
     const w = addCastleWall(40, 80, { kind: 'gate', gx: 395, gw: 170 });   // Stadtmauer mit Tor
     G.obstacles.push({ kind: 'wall', hidden: true, x: 395, y: 40 - 40, w: 170, h: 80 });   // das Tor ist unten geschlossen
+    for (const tx of [w.gx - 14, w.gx + w.gw + 14]) G.obstacles.push({ kind: 'tree', hidden: true, r: 54, cx: tx, cy: w.y + 10, x: tx - 54, y: w.y + 10 - 54, w: 108, h: 108 });   // die Türme am Tor sind rund
     w.closed = true; G.castleTop = 40; G.castleN = 0;
   }
   while (G.castleTop > topY) buildCastleRoom();
@@ -3298,6 +3336,7 @@ function fillCastleRoom(room, topWall, botWall) {
   const prop = (sty, x, y, w, h, round) => {
     const o = { kind: round ? 'tree' : 'wall', sty, seed: Math.random(), x, y, w, h };
     if (round) { o.r = w / 2; o.cx = x + o.r; o.cy = y + o.r; }
+    if (sty === 'hecke') o.poly = roundRectPoly(x, y, w, h, Math.min(w, h) / 2.4);   // Hecken sind gezeichnet mit runden Ecken
     G.obstacles.push(o); return o;
   };
   const lane = (y, w, h) => y < y0 + 150 || y + h > y1 - 150;   // vor den Türen bleibt es frei
@@ -6392,7 +6431,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.11.0';
+const VERSION = 'v1.11.1';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
