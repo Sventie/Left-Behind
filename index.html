@@ -3981,7 +3981,7 @@ function bogenAct(e, dt) {
   if (a.name === 'dash') {
     const d = Math.hypot(a.tx - e.x, a.ty - e.y); e.lift = Math.sin(Math.min(1, a.t / a.dur) * Math.PI);
     e.angle = Math.atan2(p.y - e.y, p.x - e.x);
-    if (!a.ringed && Math.hypot(e.x - a.sx, e.y - a.sy) >= 0.5 * Math.hypot(a.tx - a.sx, a.ty - a.sy)) { a.ringed = true; bogenRing(e, e.x, e.y, 0); e.ringQ = { t: 1.0, x: e.x, y: e.y }; }   // Kreisangriff in der Mitte des Sprungs, ein zweiter versetzter Ring eine Sekunde später
+    if (!a.ringed && Math.hypot(e.x - a.sx, e.y - a.sy) >= 0.5 * Math.hypot(a.tx - a.sx, a.ty - a.sy)) { a.ringed = true; bogenRing(e, e.x, e.y, 0); }   // Kreisangriff in der Mitte des Sprungs, nur ein Ring
     if (d > 8 && a.t < a.dur + 0.3) { const st = Math.min(d, 950 * dt); moveCircle(e, (a.tx - e.x) / d * st, (a.ty - e.y) / d * st); if (Math.random() < 0.6) G.parts.push({ x: e.x, y: e.y, vx: rand(-40, 40), vy: rand(-40, 40), life: 0.3, color: '#9a8a6a' }); }
     else { e.lift = 0; e.act = null; e.mode = 'cover'; e.modeT = 0; e.spotT = 0; e.spot = null; e.coverT = 0.5; if (a.after) bogenStart(e, a.after); }
     return;
@@ -4020,7 +4020,6 @@ function updateBogen(e, dt) {
   const dx = p.x - e.x, dy = p.y - e.y, dist = Math.hypot(dx, dy) || 1;
   const go = (tx, ty, sp) => { const d = Math.hypot(tx - e.x, ty - e.y); if (d > 6) moveCircle(e, (tx - e.x) / d * sp * dt, (ty - e.y) / d * sp * dt); };
   e.lift = e.mode === 'act' && e.act && e.act.name === 'dash' ? e.lift : 0;
-  if (e.ringQ) { e.ringQ.t -= dt; if (e.ringQ.t <= 0) { bogenRing(e, e.ringQ.x, e.ringQ.y, 0.5); e.ringQ = null; } }
   // Sprung: nach Schaden läuft ein Timer von 1 bis 2,5 s; danach springt er hinter eine andere Deckung, sobald er nicht gerade angreift
   if (e.hpPrev === undefined) e.hpPrev = e.hp;
   if (e.hp < e.hpPrev - 0.01 && e.jumpT == null) e.jumpT = rand(1, 2.5);
@@ -6346,7 +6345,7 @@ function drawCursor() {
 }
 
 // ---------- Pause, Optionen, Steuerung, Feedback ----------
-const VERSION = 'v1.10.5';
+const VERSION = 'v1.10.6';
 const FEEDBACK_REPO = 'sventie/left-behind';
 const TOKEN_KEY = 'left-behind-gh-token';
 // Adresse des Feedback-Dienstes (Cloudflare Worker, siehe feedback-worker/). Leer = direkt mit eigenem GitHub-Token senden.
